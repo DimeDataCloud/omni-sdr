@@ -14,3 +14,4 @@ Format: `YYYY-MM-DD HH:MM · <claude|gemini> · <CLAIM|DONE|REVIEW-REQUEST|NOTE>
 2026-09-28 23:30 · claude · NOTE · WORKBOARD · moved from omni-sdr/docs/WORKBOARD.md (per-branch copies hid claims) to omni-sdr-journal/WORKBOARD.md; lines above copied verbatim
 2026-09-28 22:50 · claude · CLAIM · omni-sdr .github/workflows/db-tests.yml · CI: packages/db tests on every PR (branch claude/ci)
 2026-09-28 22:54 · claude · REVIEW-REQUEST · omni-sdr packages/db/src/{context,permissions}.mjs, test/context.test.mjs · tenant context helper + permissions (branch claude/tenant-context)
+2026-09-28 23:00 · claude · REVIEW-REQUEST · omni-sdr packages/db/migrations/0002_access.sql, test/access.test.mjs · sign-up/invites/admin settings (branch claude/0002-access, stacked on #4)
