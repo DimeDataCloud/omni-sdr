@@ -1,4 +1,4 @@
-# Citations index: open [VERIFY] items
+# Citations index: cited (partial) gcp-platform-costs.md |[VERIFY] itemsundefinedcited (partial: Gemini API, not Vertex) gemini-models-and-grounding.md |(scope class cited; timeline not)undefinedgoogle-oauth-scopes.md |undefinedcitedundefinedcloudflare-for-saas.md |undefinedcited (partial)undefinedgoogle-oauth-scopes.md |undefinedcited (partial: Gemini API IDs; Pro is preview)undefinedgemini-models-and-grounding.md |undefinedcitedundefinedemail-compliance-can-spam.md |undefinedcited (partial) + SLA findingundefinedgcp-platform-costs.md |
 
 Source list: `omni-sdr/docs/claude/SPEC.md` §15 (2026-09-28). Status: `open` → `cited` (link the file) or `contradicted` (the spec needs changing; tell Christian).
 
