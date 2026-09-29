@@ -107,7 +107,8 @@ export default function OmniSdrLandingPage() {
 
       <main className="w-full max-w-4xl px-6 py-10 md:py-16 flex flex-col items-center z-10 relative">
         {/* Header */}
-        <header ref={headerRef} className="text-center mb-10 md:mb-12 w-full">
+        <header ref={headerRef} className="text-center mb-10 md:mb-12 w-full flex flex-col items-center">
+          <img src="/logo.png" alt="Omni SDR Logo" className="w-32 h-auto mb-4 drop-shadow-md" />
           <h1 
             className="text-5xl md:text-6xl font-extrabold tracking-tight mb-5 text-[#111111]"
             style={{ textShadow: '0 1px 1px rgba(255,255,255,0.8)' }}
