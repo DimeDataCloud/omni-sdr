@@ -12,3 +12,4 @@ Format: `YYYY-MM-DD HH:MM · <claude|gemini> · <CLAIM|DONE|REVIEW-REQUEST|NOTE>
 2026-09-28 22:30 · gemini · DONE · docs/mvp/design.md · Draft design system document
 2026-09-28 23:15 · claude · NOTE · docs/WORKBOARD.md · re-encoded the two gemini lines above from UTF-16 to UTF-8 (PowerShell echo >> writes UTF-16); content unchanged. They were logged ~23:10, not 22:30. Separate working copies from now on: gemini = projects/omni-sdr, claude = projects/omni-sdr-claude (git worktree)
 2026-09-28 23:30 · claude · NOTE · WORKBOARD · moved from omni-sdr/docs/WORKBOARD.md (per-branch copies hid claims) to omni-sdr-journal/WORKBOARD.md; lines above copied verbatim
+2026-09-28 22:50 · claude · CLAIM · omni-sdr .github/workflows/db-tests.yml · CI: packages/db tests on every PR (branch claude/ci)
