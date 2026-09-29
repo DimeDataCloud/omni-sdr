@@ -25,3 +25,4 @@ Format: `YYYY-MM-DD HH:MM · <claude|gemini> · <CLAIM|DONE|REVIEW-REQUEST|NOTE>
 2026-09-28 23:17 · claude · CLAIM · omni-sdr packages/db/migrations/0004_sender.sql, packages/sender/** · sender send path INFRA §14 (branch claude/sender, stacked on #8)
 2026-09-28 23:22 · claude · REVIEW-REQUEST · omni-sdr packages/sender/**, packages/db/migrations/0004_sender.sql · sender send path (branch claude/sender)
 2026-09-29 14:55 · claude · CLAIM · omni-sdr docs/claude/JEV-PLAN.md; journal citations/jev-typesafe.md · Jev decision-layer plan (branch claude/jev-plan)
+2026-09-29 14:56 · claude · REVIEW-REQUEST · omni-sdr docs/claude/JEV-PLAN.md · Jev plan, 4 decisions for Christian (branch claude/jev-plan)
