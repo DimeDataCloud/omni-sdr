@@ -121,3 +121,50 @@ test('withoutTenant: refuses unknown roles and malformed user ids; sees no tenan
   const n = await withoutTenant(db, {}, (tx) => tx.query(`SELECT count(*)::int AS n FROM contacts`).then((r) => r.rows[0].n));
   assert.equal(n, 0);
 });
+
+test('create_workspace: org-wide admins of agencies only; an owner account keeps one workspace', async () => {
+  const db = await freshDb();
+  const a = await seedTenant(db, 'alpha');                       // seeded as an owner account with one workspace
+  const call = (userId, org, name = 'Client B') =>
+    withoutTenant(db, { userId }, (tx) => tx.query(`SELECT create_workspace($1, $2) AS id`, [org, name]).then((r) => r.rows[0].id));
+  assert.match(await refused(call(a.user, a.org)), /owner account has one workspace/);
+  await db.query(`UPDATE orgs SET account_type = 'agency' WHERE id = $1`, [a.org]);
+  const id = await call(a.user, a.org);
+  assert.equal((await one(db, `SELECT org_id FROM workspaces WHERE id = $1`, [id])).org_id, a.org);
+  // An admin narrowed to one workspace, an operator, and a stranger are all refused.
+  await db.query(`UPDATE memberships SET workspace_ids = ARRAY[$2::uuid] WHERE org_id = $1`, [a.org, a.ws]);
+  assert.match(await refused(call(a.user, a.org)), /org-wide admin only/);
+  await db.query(`UPDATE memberships SET workspace_ids = NULL, role = 'operator' WHERE org_id = $1`, [a.org]);
+  assert.match(await refused(call(a.user, a.org)), /org-wide admin only/);
+  const b = await seedTenant(db, 'bravo');
+  assert.match(await refused(call(b.user, a.org)), /org-wide admin only/);
+  assert.match(await refused(call(null, a.org)), /org-wide admin only/);
+});
+
+test('gate findings are cleared with the gate pass when the text changes', async () => {
+  const db = await freshDb();
+  const a = await seedTenant(db, 'alpha');
+  const id = (await one(db, `SELECT id FROM drafts WHERE org_id = $1 AND status = 'approved' LIMIT 1`, [a.org])).id;
+  await as(db, 'gate_svc', { org: a.org, ws: [a.ws] }, () =>
+    db.query(`UPDATE drafts SET gate_findings = '[{"code":"x"}]' WHERE id = $1`, [id]));
+  assert.match(await refused(withTenant(db, ctxOf(a), (tx) =>
+    tx.query(`UPDATE drafts SET gate_findings = '[]' WHERE id = $1`, [id]))), /permission denied/);
+  await withTenant(db, ctxOf(a), (tx) => tx.query(`UPDATE drafts SET body = body || ' Edited.' WHERE id = $1`, [id]));
+  assert.deepEqual(await one(db, `SELECT gate_findings, status, gate_passed FROM drafts WHERE id = $1`, [id]),
+    { gate_findings: null, status: 'gating', gate_passed: false });
+});
+
+test('booking converts an enrollment a reply stopped, but never one an unsubscribe stopped', async () => {
+  const db = await freshDb();
+  const a = await seedTenant(db, 'alpha');
+  const book = () => withTenant(db, ctxOf(a), (tx) => tx.query(
+    `INSERT INTO meetings (org_id, workspace_id, contact_id, provider, starts_at, ends_at)
+     VALUES ($1, $2, $3, 'native', now() + interval '1 day', now() + interval '1 day 30 minutes')`, [a.org, a.ws, a.contact]));
+  await db.query(`UPDATE enrollments SET state = 'stopped', stop_reason = 'unsubscribe' WHERE id = $1`, [a.enrollment]);
+  await book();
+  assert.deepEqual(await one(db, `SELECT state, stop_reason FROM enrollments WHERE id = $1`, [a.enrollment]),
+    { state: 'stopped', stop_reason: 'unsubscribe' });
+  await db.query(`UPDATE enrollments SET state = 'stopped', stop_reason = 'reply:meeting_request' WHERE id = $1`, [a.enrollment]);
+  await book();
+  assert.equal((await one(db, `SELECT state FROM enrollments WHERE id = $1`, [a.enrollment])).state, 'converted');
+});

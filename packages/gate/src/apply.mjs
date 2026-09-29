@@ -26,9 +26,9 @@ export async function gateDraft(client, { orgId, workspaceId, draftId, competito
     const verdict = checkDraft(d, { contactId: d.contact_id, evidence, now, competitors });
     const upd = await tx.query(
       `UPDATE drafts SET gate_passed = $2, gate_body_sha = CASE WHEN $2 THEN $3 ELSE NULL END, gate_version = $4,
-              gated_at = now(), status = CASE WHEN $2 THEN 'review' ELSE 'blocked' END
+              gated_at = now(), status = CASE WHEN $2 THEN 'review' ELSE 'blocked' END, gate_findings = $5
        WHERE id = $1 AND status = 'gating' AND draft_sha(subject, body) = $3`,
-      [draftId, verdict.passed, d.sha, GATE_VERSION]);
+      [draftId, verdict.passed, d.sha, GATE_VERSION, JSON.stringify(verdict.findings)]);
     const affected = upd.affectedRows ?? upd.rowCount ?? 0; // PGlite reports affectedRows, pg reports rowCount
     if (!affected) return { outcome: 'stale', findings: verdict.findings };
 

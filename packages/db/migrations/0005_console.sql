@@ -44,6 +44,32 @@ ALTER FUNCTION my_memberships() OWNER TO tenancy_owner;
 REVOKE EXECUTE ON FUNCTION ensure_user(text, text), my_memberships() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION ensure_user(text, text), my_memberships() TO app_rw;
 
+-- Agencies add client workspaces; an owner account has exactly one. Only an org-wide admin (a membership
+-- not narrowed to some workspaces) may create one, since a narrowed admin can't see the rest of the org.
+CREATE FUNCTION create_workspace(p_org uuid, p_name text) RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE w uuid; kind text;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM memberships m WHERE m.org_id = p_org AND m.user_id = app_user()
+                 AND m.role = 'admin' AND m.workspace_ids IS NULL) THEN
+    RAISE EXCEPTION 'create_workspace: org-wide admin only' USING ERRCODE = '42501';
+  END IF;
+  IF coalesce(btrim(p_name), '') = '' OR length(p_name) > 120 THEN
+    RAISE EXCEPTION 'create_workspace: a name of 1-120 characters is required' USING ERRCODE = '22023';
+  END IF;
+  SELECT account_type INTO kind FROM orgs WHERE id = p_org AND status = 'active';
+  IF kind IS NULL THEN RAISE EXCEPTION 'create_workspace: org not active' USING ERRCODE = '42501'; END IF;
+  IF kind = 'owner' AND EXISTS (SELECT 1 FROM workspaces WHERE org_id = p_org) THEN
+    RAISE EXCEPTION 'create_workspace: an owner account has one workspace; upgrade to agency for more' USING ERRCODE = 'P0001';
+  END IF;
+  INSERT INTO workspaces (org_id, name) VALUES (p_org, btrim(p_name)) RETURNING id INTO w;
+  INSERT INTO audit_log (org_id, actor, action, entity_type, entity_id) VALUES (p_org, app_user()::text, 'create', 'workspace', w::text);
+  RETURN w;
+END $$;
+ALTER FUNCTION create_workspace(uuid, text) OWNER TO tenancy_owner;
+REVOKE EXECUTE ON FUNCTION create_workspace(uuid, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION create_workspace(uuid, text) TO app_rw;
+
 -- ─── the approval queue's fields ────────────────────────────────────────────
 ALTER TABLE contacts ADD COLUMN company text CHECK (company IS NULL OR length(company) <= 200);
 ALTER TABLE contacts ADD COLUMN title   text CHECK (title IS NULL OR length(title) <= 200);
@@ -53,6 +79,24 @@ ALTER TABLE contacts ADD COLUMN fit_score smallint CHECK (fit_score IS NULL OR f
 -- Rejection reasons are an Auto-adjust source (SPEC Station 08), so they are kept.
 ALTER TABLE drafts ADD COLUMN rejection_reason text CHECK (rejection_reason IS NULL OR length(rejection_reason) <= 500);
 GRANT UPDATE (rejection_reason) ON drafts TO app_rw;
+
+-- The gate's findings, so the approval card can say why a draft was blocked. Written only by gate_svc,
+-- cleared with the rest of the gate columns when the text changes.
+ALTER TABLE drafts ADD COLUMN gate_findings jsonb CHECK (gate_findings IS NULL OR jsonb_typeof(gate_findings) = 'array');
+GRANT UPDATE (gate_findings) ON drafts TO gate_svc;
+CREATE OR REPLACE FUNCTION drafts_edit_voids_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.subject IS DISTINCT FROM OLD.subject OR NEW.body IS DISTINCT FROM OLD.body THEN
+    NEW.gate_passed   := false;
+    NEW.gate_body_sha := NULL;
+    NEW.gated_at      := NULL;
+    NEW.gate_findings := NULL;
+    NEW.approved_by   := NULL;
+    NEW.approved_at   := NULL;
+    IF NEW.status IN ('review', 'approved') THEN NEW.status := 'gating'; END IF;
+  END IF;
+  RETURN NEW;
+END $$;
 
 -- The inbox links a reply to the message it answers.
 ALTER TABLE messages ADD CONSTRAINT messages_tenant_key UNIQUE (org_id, workspace_id, id);
@@ -142,6 +186,7 @@ CREATE TABLE inbound_messages (
                        'out_of_office', 'not_interested', 'unsubscribe', 'wrong_person', 'bounce', 'unclassified')),
   intent_confidence  real CHECK (intent_confidence IS NULL OR intent_confidence BETWEEN 0 AND 1),
   classified_by      text,
+  external_id        text CHECK (external_id IS NULL OR length(external_id) <= 998),  -- Message-ID etc.; makes worker retries idempotent
   sla_due_at         timestamptz,
   handled_at         timestamptz,
   handled_by         uuid REFERENCES users(id),
@@ -150,6 +195,7 @@ CREATE TABLE inbound_messages (
   FOREIGN KEY (org_id, workspace_id, contact_id) REFERENCES contacts(org_id, workspace_id, id),
   FOREIGN KEY (org_id, workspace_id, message_id) REFERENCES messages(org_id, workspace_id, id),
   UNIQUE (org_id, workspace_id, id),
+  UNIQUE (workspace_id, channel, external_id),
   CHECK ((handled_at IS NULL) = (handled_by IS NULL))
 );
 CREATE INDEX inbound_open ON inbound_messages (workspace_id, received_at) WHERE handled_at IS NULL;
@@ -195,12 +241,14 @@ CREATE TABLE meetings (
 );
 
 -- A booked meeting ends the sequence for that contact in this workspace (acceptance story step 8).
+-- Enrollments a reply already stopped become 'converted' too (the meeting is the outcome); ones stopped by an
+-- unsubscribe or anything else stay stopped.
 CREATE FUNCTION meetings_convert_enrollments() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF NEW.status = 'booked' AND NEW.contact_id IS NOT NULL THEN
     UPDATE enrollments SET state = 'converted', stop_reason = 'meeting_booked', next_run_at = NULL
       WHERE org_id = NEW.org_id AND workspace_id = NEW.workspace_id AND contact_id = NEW.contact_id
-        AND state NOT IN ('stopped', 'converted', 'completed');
+        AND (state NOT IN ('stopped', 'converted', 'completed') OR (state = 'stopped' AND stop_reason LIKE 'reply:%'));
   END IF;
   RETURN NEW;
 END $$;
