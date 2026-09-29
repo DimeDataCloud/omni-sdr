@@ -2,7 +2,7 @@
 //
 // withTenant() opens a transaction, drops to a service role, proves the user's membership in the
 // requested org + workspace from the database itself, sets app.org_id / app.workspace_ids for that
-// transaction only (SET LOCAL semantics, so a pooled connection never carries a tenant into the
+// (plus app.user_id, which 0002 triggers use for admin checks) for that transaction only (SET LOCAL semantics, so a pooled connection never carries a tenant into the
 // next request), runs fn, and commits. Any error rolls back everything fn wrote.
 //
 // Works with any client exposing query(sql, params): PGlite in tests, a checked-out pg client in prod
@@ -41,7 +41,8 @@ export async function withTenant(client, { userId, orgId, workspaceId, role = 'a
   try {
     await client.query(`SET LOCAL ROLE ${role}`);
     // Scope to the org first: memberships is RLS-filtered by app.org_id, so only this org's rows are visible.
-    await client.query(`SELECT set_config('app.org_id', $1, true), set_config('app.workspace_ids', '', true)`, [orgId]);
+    await client.query(`SELECT set_config('app.org_id', $1, true), set_config('app.workspace_ids', '', true), set_config('app.user_id', $2, true)`,
+      [orgId, userId]);
     const m = (await client.query(
       `SELECT role, workspace_ids FROM memberships WHERE org_id = $1 AND user_id = $2`, [orgId, userId])).rows[0];
     if (!m) throw new TenantAccessError('no membership in this org');

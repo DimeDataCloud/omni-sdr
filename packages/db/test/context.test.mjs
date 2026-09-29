@@ -47,9 +47,10 @@ test('withTenant: the tenant context ends with the transaction (no leak to the n
   const db = await freshDb();
   const a = await seedTenant(db, 'alpha');
   await withTenant(db, ctxOf(a), async () => {});
-  const s = await one(db, `SELECT current_setting('app.org_id', true) AS org, current_setting('app.workspace_ids', true) AS ws, current_user AS u`);
+  const s = await one(db, `SELECT current_setting('app.org_id', true) AS org, current_setting('app.workspace_ids', true) AS ws, current_setting('app.user_id', true) AS uid, current_user AS u`);
   assert.ok(!s.org, `app.org_id leaked: ${s.org}`);
   assert.ok(!s.ws, `app.workspace_ids leaked: ${s.ws}`);
+  assert.ok(!s.uid, `app.user_id leaked: ${s.uid}`);
   assert.notEqual(s.u, 'app_rw', 'role leaked past the transaction');
 });
 
