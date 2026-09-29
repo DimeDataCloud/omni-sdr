@@ -19,3 +19,4 @@ Format: `YYYY-MM-DD HH:MM · <claude|gemini> · <CLAIM|DONE|REVIEW-REQUEST|NOTE>
 2026-09-28 23:04 · claude · REVIEW-REQUEST · omni-sdr docs/mvp/04-platform.md · Station 04 platform plan, 4 decisions for Christian (branch claude/station-04)
 2026-09-28 23:05 · claude · CLAIM · omni-sdr packages/gate/**, packages/db/src/context.mjs (withService) · claims gate service INFRA §12.1 (branch claude/gate, stacked on #5)
 2026-09-28 23:10 · claude · REVIEW-REQUEST · omni-sdr packages/gate/**, packages/db/src/context.mjs · claims gate service (branch claude/gate, stacked on #5)
+2026-09-28 23:11 · claude · NOTE · WORKBOARD · correction: the claude lines stamped 23:15 and 23:30 were hand-typed estimates and are later than real time (the machine clock read ~22:5x then). From 23:02 on, every claude line is stamped by `date`.
