@@ -255,3 +255,10 @@ The registry (Station 24) assigns each task a tier, with a fallback tier and an 
 ## 2026-09-28 — No launch date; quality first
 Station: 27 · Decided by: Christian
 Pilot customers start when the MVP acceptance script (Station 26) passes end to end in prod. The 9 sprints stay as an order of work, not a calendar.
+
+## 2026-09-29 — The AI Studio Fleet Console is the product floor; Claude builds the backend
+Station: 02/03 (IA, frontend) and 05–16 (backend) · Decided by: Christian
+Christian: "use this as your grand floor on what the product will look like. i want you to build the actual backend while me and gemini continue working on the design"
+- The AI Studio app "Omni SDR - Autonomous Fleet Console" (export audited in AUDIT-2026-09-29-ai-studio-fleet-console.md) is the baseline for the product's screens: agents with chat threads, approvals, inbound replies with SLA, meetings, routines, capacity, analytics, connections, settings.
+- Lanes for this work: **Claude builds the backend** (API server, services, migrations, workers). **Christian and Gemini own the design** (UI). This moves "API routes and server actions" from Gemini's lane (Rails §4) to Claude's; the rails lane table needs the matching edit (proposed on the backend PR).
+- Not decided by this entry: the app's Firestore data layer and its browser-side Gmail sending stay out (audit P0s); every backend path runs on Postgres with RLS, the gate and send_guard.
