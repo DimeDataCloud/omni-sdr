@@ -1,7 +1,7 @@
 name: db-tests
 
 # The schema's guarantees (RLS, tenant FKs, claims gate, send guard, credits) are proved by
-# packages/db's suite. It runs on every PR and every push to master; a red run blocks merge.
+# packages/db's suite; the claims gate by packages/gate's. gate imports db's helpers, so db installs first. It runs on every PR and every push to master; a red run blocks merge.
 on:
   pull_request:
   push:
@@ -16,17 +16,24 @@ concurrency:
 
 jobs:
   test:
+    name: test (${{ matrix.package }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [db, gate]
     defaults:
       run:
-        working-directory: packages/db
+        working-directory: packages/${{ matrix.package }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: packages/db/package-lock.json
+          cache-dependency-path: packages/*/package-lock.json
+      - run: npm ci --prefix ../db
+        if: matrix.package == 'gate'
       - run: npm ci
       - run: npm test
