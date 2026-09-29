@@ -19,8 +19,8 @@ test('withTenant: a member sees only its own workspace rows, and the membership 
   const { rows, m } = await withTenant(db, ctxOf(a), async (tx, m) => ({
     rows: (await tx.query('SELECT org_id FROM contacts')).rows, m }));
   assert.equal(m.role, 'admin');
-  assert.equal(rows.length, 1);
-  assert.equal(rows[0].org_id, a.org);
+  assert.equal(rows.length, 2); // the seed gives each tenant 2 contacts in its workspace (0005 adds a meeting guest)
+  assert.ok(rows.every((r) => r.org_id === a.org));
 });
 
 test('withTenant: refuses another org, a workspace outside the membership, and a foreign workspace', async () => {

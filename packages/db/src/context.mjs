@@ -70,7 +70,7 @@ export async function withTenant(client, { userId, orgId, workspaceId, role = 'a
 // Worker modules (gate, sender, sequencer) act for a tenant without a signed-in user. Same
 // transaction-scoped context as withTenant, but no membership check and no app.user_id, so the
 // 0002 admin-only triggers can never pass for a service role.
-export const WORKER_ROLES = Object.freeze(['gate_svc', 'sender_svc']);
+export const WORKER_ROLES = Object.freeze(['gate_svc', 'sender_svc', 'inbox_svc']);
 
 export async function withService(client, { orgId, workspaceId, role }, fn) {
   assertUuid(orgId, 'orgId');
@@ -81,6 +81,27 @@ export async function withService(client, { orgId, workspaceId, role }, fn) {
     await client.query(`SET LOCAL ROLE ${role}`);
     await client.query(`SELECT set_config('app.org_id', $1, true), set_config('app.workspace_ids', $2, true), set_config('app.user_id', '', true)`,
       [orgId, workspaceId]);
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  }
+}
+
+// Before a tenant is known: first sign-in (ensure_user), "which orgs am I in" (my_memberships), sign-up
+// (create_org_with_admin), invite acceptance, and the public unsubscribe route. No org or workspace is
+// set, so every RLS-scoped read returns nothing; only the narrow definer functions do anything useful.
+// userId is optional (null for the public routes) and, when given, must come from a verified token.
+export async function withoutTenant(client, { role = 'app_rw', userId = null } = {}, fn) {
+  if (!SERVICE_ROLES.includes(role) && !WORKER_ROLES.includes(role)) throw new TenantAccessError(`role ${JSON.stringify(role)} is not a service role`);
+  if (userId !== null) assertUuid(userId, 'userId');
+  await client.query('BEGIN');
+  try {
+    await client.query(`SET LOCAL ROLE ${role}`);
+    await client.query(`SELECT set_config('app.org_id', '', true), set_config('app.workspace_ids', '', true), set_config('app.user_id', $1, true)`,
+      [userId ?? '']);
     const result = await fn(client);
     await client.query('COMMIT');
     return result;

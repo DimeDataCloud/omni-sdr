@@ -69,12 +69,28 @@ export async function seedTenant(db, label, { cap = 5, trust = 1, heat = 1 } = {
     [org, `invitee@${label}.test`, `seed-token-${label}`, user]);
   await db.query(`INSERT INTO audit_log (org_id, actor, action, entity_type, entity_id) VALUES ($1, 'seed', 'create', 'org', $2)`, [org, org]);
 
-  const t = { org, ws, user, contact, campaign, enrollment, mailbox };
+  // 0005: console tables. The meeting uses its own contact (no enrollment), so the seed doesn't convert
+  // the tenant's live enrollment and tests that count live enrollments stay meaningful.
+  const agent = (await one(db, `INSERT INTO agents (org_id, workspace_id, name, created_by) VALUES ($1, $2, 'Sales Outbound', $3) RETURNING id`,
+    [org, ws, user])).id;
+  await db.query(`INSERT INTO agent_messages (org_id, workspace_id, agent_id, sender, author_id, body) VALUES ($1, $2, $3, 'user', $4, 'hello')`,
+    [org, ws, agent, user]);
+  await db.query(`INSERT INTO routines (org_id, workspace_id, agent_id, name, category, schedule) VALUES ($1, $2, $3, 'Morning briefing', 'briefing', 'daily 08:00')`,
+    [org, ws, agent]);
+  const t = { org, ws, user, contact, campaign, enrollment, mailbox, agent };
   const draft = await approvedDraft(db, t);
-  await as(db, 'sender_svc', { org, ws: [ws] }, () => db.query(
-    `INSERT INTO messages (org_id, workspace_id, draft_id, mailbox_id, channel) VALUES ($1, $2, $3, $4, 'email')`,
-    [org, ws, draft, mailbox]));
-  return t;
+  const message = (await as(db, 'sender_svc', { org, ws: [ws] }, () => one(db,
+    `INSERT INTO messages (org_id, workspace_id, draft_id, mailbox_id, channel) VALUES ($1, $2, $3, $4, 'email') RETURNING id`,
+    [org, ws, draft, mailbox]))).id;
+  const inbound = (await one(db,
+    `INSERT INTO inbound_messages (org_id, workspace_id, contact_id, message_id, channel, from_address, body, received_at, intent)
+     VALUES ($1, $2, $3, $4, 'email', $5, 'Thanks, not now.', now(), 'not_interested') RETURNING id`,
+    [org, ws, contact, message, `pat@${label}.test`])).id;
+  const guest = (await one(db, `INSERT INTO contacts (org_id, workspace_id, name, email) VALUES ($1, $2, 'Guest', $3) RETURNING id`,
+    [org, ws, `guest@${label}.test`])).id;
+  await db.query(`INSERT INTO meetings (org_id, workspace_id, contact_id, inbound_message_id, provider, starts_at, ends_at)
+    VALUES ($1, $2, $3, $4, 'native', now() + interval '1 day', now() + interval '1 day 30 minutes')`, [org, ws, guest, inbound]);
+  return { ...t, message, inbound };
 }
 
 // A new draft for the tenant's enrollment, passed through the gate and approved.
