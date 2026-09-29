@@ -1,0 +1,32 @@
+name: db-tests
+
+# The schema's guarantees (RLS, tenant FKs, claims gate, send guard, credits) are proved by
+# packages/db's suite. It runs on every PR and every push to master; a red run blocks merge.
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: packages/db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: packages/db/package-lock.json
+      - run: npm ci
+      - run: npm test
