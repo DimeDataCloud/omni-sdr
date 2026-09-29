@@ -15,3 +15,11 @@ ALTER TABLE messages ADD COLUMN reply_token_hash text UNIQUE CHECK (reply_token_
 -- The sender must read the recipient address and the evidence-free parts of the contact it writes to.
 GRANT SELECT (id, org_id, workspace_id, name, email, phone) ON contacts TO sender_svc;
 GRANT SELECT ON enrollments TO sender_svc;
+
+-- Unknown outcomes: a message claimed but never recorded as sent/failed (a crash between the provider
+-- call and the record step). Nothing may resend these (draft_id is UNIQUE); a human checks the
+-- provider's Sent folder and records the truth. security_invoker keeps RLS in force for whoever reads it.
+CREATE VIEW ops_unknown_outcomes WITH (security_invoker = true) AS
+  SELECT id, org_id, workspace_id, draft_id, mailbox_id, channel, claimed_at
+  FROM messages WHERE state = 'claimed' AND claimed_at < now() - interval '15 minutes';
+GRANT SELECT ON ops_unknown_outcomes TO ops;

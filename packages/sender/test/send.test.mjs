@@ -114,3 +114,19 @@ test('gmail adapter: sends raw as base64url with the bearer token; maps status c
     assert.equal(err?.kind, kind, `status ${status}`);
   }
 });
+
+test('ops_unknown_outcomes: a claim that never got recorded surfaces after 15 minutes; recorded sends never do', async () => {
+  const { db, t, draft } = await setup();
+  const r = await sendDraft(db, opts(t, draft, fakeAdapter()));
+  const d2 = await approvedDraft(db, t);
+  // Simulate a crash after the claim: insert the row the way the claim step does, then never record it.
+  await as(db, 'sender_svc', { org: t.org, ws: [t.ws] }, () => db.query(
+    `INSERT INTO messages (org_id, workspace_id, draft_id, mailbox_id, channel) VALUES ($1, $2, $3, $4, 'email')`,
+    [t.org, t.ws, d2, t.mailbox]));
+  await db.query(`UPDATE messages SET claimed_at = now() - interval '20 minutes' WHERE draft_id = ANY ($1::uuid[])`, [[draft, d2]]);
+  const rows = await as(db, 'ops', null, () => q(db, `SELECT draft_id FROM ops_unknown_outcomes`));
+  assert.deepEqual(rows.map((x) => x.draft_id), [d2]);
+  assert.equal(r.outcome, 'sent');
+  // And the stuck draft can't be sent again by the normal path.
+  assert.equal((await sendDraft(db, opts(t, d2, fakeAdapter()))).outcome, 'already_claimed');
+});
