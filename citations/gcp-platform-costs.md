@@ -23,3 +23,17 @@
 - Excerpt: free tier "0-49,999 monthly active users" for Tier 1; then "$0.0055 per MAU for 50,000-99,999"; Tier 2 (OIDC/SAML) free "0-49 MAUs", then "$0.015 per MAU"
 - Used in: Station 05, SPEC §4 [VERIFY free MAU tier] (resolves it)
 - Confidence: partial (official page, but seen through a search extract). Re-check that email-link sign-in counts as Tier 1 before launch.
+
+## Custom domains on Cloud Run: the load balancer is the recommended route; Cloud Run domain mapping is preview and "not recommended for production"
+- Source: https://docs.cloud.google.com/run/docs/mapping-custom-domains
+- Retrieved: 2026-09-28 by claude
+- Excerpt: "Cloud Run domain mappings are in the preview launch stage...they are not production-ready and are not supported at General Availability." / "At the moment, this option is not recommended for production services." (us-central1 is a supported region.)
+- Used in: Station 04 (edge options)
+- Confidence: confirmed
+
+## External Application Load Balancer: $0.025/hour for up to 5 forwarding rules (~$18/month); Cloud Armor Standard: $5 per policy per month + $1 per rule per month
+- Source: https://cloud.google.com/load-balancing/pricing and https://cloud.google.com/armor/pricing (via search extract of the official pages)
+- Retrieved: 2026-09-28 by claude
+- Excerpt: "You can create up to 5 forwarding rules for the price of $0.025/hour." / "security policies cost $5 per policy per month. Additionally, rules cost $1 per rule per month."
+- Used in: Station 04 cost floor (INFRA §21's LB + Armor edge)
+- Confidence: partial (search extract; data processing charges not included)
