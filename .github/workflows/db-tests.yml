@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [db, gate]
+        package: [db, gate, sender]
     defaults:
       run:
         working-directory: packages/${{ matrix.package }}
@@ -34,6 +34,6 @@ jobs:
           cache: npm
           cache-dependency-path: packages/*/package-lock.json
       - run: npm ci --prefix ../db
-        if: matrix.package == 'gate'
+        if: matrix.package != 'db'
       - run: npm ci
       - run: npm test
