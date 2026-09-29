@@ -66,12 +66,15 @@ the agency's domain (full white-label).
 
 | Item | State | Evidence |
 |---|---|---|
-| Schema `packages/db/migrations/0001_core.sql` | 18 tenant tables, forced RLS, composite tenant FKs, claims-gate constraint, `send_guard()`, credits, outbox, audit log, versioned ICPs | `npm test` → **20 pass, 0 fail**; guard refuses 15/15; RLS matrix 18/18; 16 tenant FKs checked |
+| Schema `packages/db` | On master: 0001 (18 tenant tables, forced RLS, composite tenant FKs, claims-gate constraint, `send_guard()`, credits, outbox, audit log, versioned ICPs). In PRs (2026-09-28): `withTenant`/`can` (#4), 0002 access (#5), 0003 unsubscribe (#8), 0004 sender (#9) | Local `npm test`: **35 pass, 0 fail**; RLS matrix 20/20; guard refuses 15/15; 16 tenant FKs |
+| Claims gate `packages/gate` (#7) | INFRA §12.1 as a pure check + gate_svc writer | 8 pass; **blocked 21 of 21** seeded bad drafts |
+| Sender `packages/sender` (#9) | claim → compose → Gmail adapter → record; no auto-retry | 6 pass |
+| CI (#3) | `db-tests` matrix: db, gate, sender | **Blocked:** GitHub refuses to start jobs (account billing) |
 | Cloud SQL | **Does not exist**; the Cloud SQL Admin API isn't enabled | `gcloud sql instances list` |
 | GCP project | `hip-well-509308-m9` (name `omni-sdr`) is **prod**; there is no other project. Enabled: Run, Pub/Sub, Vertex AI, Storage. Not enabled: Cloud SQL Admin, Cloud Tasks, KMS, Secret Manager, Identity Platform | `gcloud services list --enabled` |
 | GitHub repo `DimeDataCloud/omni-sdr` | Private; bootstrap commit `559df2d` on `master`. Journal repo `omni-sdr-journal` beside it | `gh repo view`, `git log` |
 | `omnisdr.com` | Live on Cloudflare (Pages): a waitlist landing page Gemini built. **Not an approved decision** (marketing deferred) | HTTP 200, `server: cloudflare` |
-| Waitlist ingest `omni-waitlist-api` (Cloud Function gen2) | Writes signups to `gs://omnisdr-leads/leads/`. **P0: the public GET leaks every signup.** Patched locally, not deployed (§14) | See the audit |
+| Waitlist ingest `omni-waitlist-api` (Cloud Function gen2) | Writes signups to `gs://omnisdr-leads/leads/`. The public GET leak is **closed** (revision 00005, 22:03; GET returns 405). Still runs as the default compute SA | `curl …?format=csv` → 405 |
 | `try.omnisdr.com` | Not live | curl: no response |
 | Front-end `src/` | Mock prototype | — |
 
@@ -356,7 +359,7 @@ The guide's 9 sprints assumed a dev environment, HubSpot, LinkedIn assist-only a
 
 ## 14. Christian's action list (these aren't agent work)
 
-1. **P0: close the waitlist data leak.** The fix is already in `cloud-functions/waitlist-ingest/index.js` (the public GET is removed).
+1. ~~**P0: close the waitlist data leak.**~~ **Done** (GET → 405, verified 2026-09-28). Kept for the record: The fix is already in `cloud-functions/waitlist-ingest/index.js` (the public GET is removed).
    Deploy it (this keeps the POST that the landing page uses):
    `gcloud functions deploy omni-waitlist-api --gen2 --region=us-central1 --runtime=nodejs22 --source=cloud-functions/waitlist-ingest --entry-point=waitlistIngest --trigger-http --allow-unauthenticated --project=hip-well-509308-m9`
    then check: `curl -s -o /dev/null -w "%{http_code}" "https://omni-waitlist-api-eb7lrmqqwa-uc.a.run.app?format=csv"` → `405`.
@@ -364,8 +367,10 @@ The guide's 9 sprints assumed a dev environment, HubSpot, LinkedIn assist-only a
 2. The waitlist form's edge fallback told users "your spot is secured" when nothing was saved. **Fixed in source** (`functions/api/waitlist.ts` now returns 502 and the page shows the error),
    but the deployed `dist-pages/_worker.js` still has the old code. There's no build/deploy script, because Gemini built `dist-pages/` by hand: rebuild the worker and redeploy Pages.
 3. Move the waitlist function off the default compute service account onto `omni-waitlist-writer` (give it object-create on that one bucket only).
-4. Delete `projects/omni-sdr/secrets/` (an empty `gcs-key.json`; WIF means no key file should exist).
+4. ~~Delete `projects/omni-sdr/secrets/`~~ Done (the folder is gone).
 5. ~~Create the private repo~~ Done 2026-09-28.
+5a. **Fix GitHub billing** (Settings → Billing & plans): Actions won't start jobs until then, so CI (#3) can't run.
+5b. **Merge order** for the open PRs, once reviewed: #1 → #3 (after #7, #9) → #4 → #5 → #7 → #8 → #9 → #6. #2 is Gemini's design PR (two P1 fixes pending).
 6. Submit Google OAuth verification for `gmail.send` early. Apply for LinkedIn Community Management API access.
 7. Set prices and plan limits before Station 22.
 8. Book the LinkedIn automation lawyer review before paid launch.
@@ -375,6 +380,16 @@ The guide's 9 sprints assumed a dev environment, HubSpot, LinkedIn assist-only a
 ## 15. Open items
 
 **Decision still open:** plan prices and limits (Station 1 → decide by Station 22). Everything else in guide §4.3 is answered in DECISIONS.md.
+
+**Proposals awaiting Christian (from the 2026-09-28 autonomous run; none is in force until approved):**
+| # | Proposal | Where |
+|---|---|---|
+| P1 | Rails v1.1: journal as the grounding source, shared workboard in the journal repo, separate working copies, UTF-8 workboard | PR #1 |
+| P2 | Station 04 D1–D4: `db-f1-micro` until pilot 1 (it has **no SLA**, cited), Cloudflare Worker edge instead of ALB+Armor, built-in DB connector, Claude runs setup after per-step approval | PR #6 |
+| P3 | Gate: a first-touch draft must cite at least one fact (`no_evidence`) | PR #7 |
+| P4 | `send_guard` also refuses drafts whose enrollment is stopped/converted/completed (changes a §5 invariant) | PR #8 |
+| P5 | Factor the guard checks into a function callable on retry, then allow transient retries (today: no auto-retry) | PR #9 |
+| P6 | Enable the Cloud Billing Catalog API (read-only price lookups for exact `[VERIFY]` costs) | journal citations |
 
 **[VERIFY] register** (each gets resolved with a doc link in its station):
 Cloud Identity Free limits · Identity Platform free MAU · `gmail.send` verification timeline · Gemini Search grounding price and quota ·
