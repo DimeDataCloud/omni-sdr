@@ -62,6 +62,9 @@ Writing outside your lane: propose the change in your report instead. The owner 
 4. When finished, append `DONE` (or `REVIEW-REQUEST`) with the same paths and a one-line result. A `DONE` releases the claim.
 5. A claim older than 4 hours without a `DONE` is stale: ask Christian before taking it over.
 6. Once the GitHub repo exists: each agent works on its own branch (`claude/<topic>`, `gemini/<topic>`), and work merges only through a PR that the other agent has reviewed and Christian has approved. `master` is never edited directly.
+7. **Separate working copies:** Gemini works in `projects/omni-sdr` (its IDE workspace). Claude works in the git worktree `projects/omni-sdr-claude`.
+   Before editing, create or switch to your own branch: `git switch -c gemini/<topic>` or `claude/<topic>`. Never leave uncommitted work on the other agent's branch.
+8. **Workboard lines are UTF-8 and carry the real time.** In PowerShell use `Add-Content -Encoding utf8`, never `echo >>` (Windows PowerShell 5.1 writes UTF-16).
 
 ## 6. Cross-audit (the author is never the auditor)
 - **Author:** runs the tests, writes the task report (§7), appends `REVIEW-REQUEST` to the workboard.
