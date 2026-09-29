@@ -69,7 +69,7 @@ the agency's domain (full white-label).
 | Schema `packages/db/migrations/0001_core.sql` | 18 tenant tables, forced RLS, composite tenant FKs, claims-gate constraint, `send_guard()`, credits, outbox, audit log, versioned ICPs | `npm test` → **20 pass, 0 fail**; guard refuses 15/15; RLS matrix 18/18; 16 tenant FKs checked |
 | Cloud SQL | **Does not exist**; the Cloud SQL Admin API isn't enabled | `gcloud sql instances list` |
 | GCP project | `hip-well-509308-m9` (name `omni-sdr`) is **prod**; there is no other project. Enabled: Run, Pub/Sub, Vertex AI, Storage. Not enabled: Cloud SQL Admin, Cloud Tasks, KMS, Secret Manager, Identity Platform | `gcloud services list --enabled` |
-| GitHub repo `DimeDataCloud/omni-sdr` | **Does not exist yet** | `gh repo view` → not found (as DimeDataCloud) |
+| GitHub repo `DimeDataCloud/omni-sdr` | Private; bootstrap commit `559df2d` on `master`. Journal repo `omni-sdr-journal` beside it | `gh repo view`, `git log` |
 | `omnisdr.com` | Live on Cloudflare (Pages): a waitlist landing page Gemini built. **Not an approved decision** (marketing deferred) | HTTP 200, `server: cloudflare` |
 | Waitlist ingest `omni-waitlist-api` (Cloud Function gen2) | Writes signups to `gs://omnisdr-leads/leads/`. **P0: the public GET leaks every signup.** Patched locally, not deployed (§14) | See the audit |
 | `try.omnisdr.com` | Not live | curl: no response |
@@ -118,7 +118,7 @@ Anything missing from this table is out of scope until Christian adds it to DECI
   Until approved: testing mode (≤100 named users, weekly re-auth) plus the smtp_imap fallback. **No Gmail read scopes**: replies return via Reply-To.
 - **Domains:** `app.omnisdr.com` (app), `audit.omnisdr.com` (audit pages), `reply.omnisdr.com` (inbound), `notify.omnisdr.com` (transactional),
   `try.omnisdr.com` (Omni-SDR's own marketing, deferred), agency custom hostnames via Cloudflare for SaaS [VERIFY price per hostname; bill it to the agency].
-- **Repo + CI:** a new private repo `DimeDataCloud/omni-sdr`, outside the Drive-synced folder. GitHub Actions → Cloud Run via **Workload Identity Federation**.
+- **Repo + CI:** the private repo `DimeDataCloud/omni-sdr` (created and pushed 2026-09-28). The working tree also stays in Drive, with git data kept outside Drive in `~/.halo-git/omni-sdr`. The grounding journal is `DimeDataCloud/omni-sdr-journal` (sibling folder). GitHub Actions → Cloud Run via **Workload Identity Federation**.
   **Service-account key files are never created.** CI runs the `packages/db` tests on every PR. Migrations run as a job before deploy, after a backup.
 - **Target layout (INFRA §4):** `apps/web`, `worker/`, `packages/{core,db,ai,connectors,events}`, `infra/terraform`, `edge/email-worker`; npm workspaces.
 - **Browser rule:** no model, mailbox or vendor call ever leaves the browser (INFRA principle 7).
@@ -365,7 +365,7 @@ The guide's 9 sprints assumed a dev environment, HubSpot, LinkedIn assist-only a
    but the deployed `dist-pages/_worker.js` still has the old code. There's no build/deploy script, because Gemini built `dist-pages/` by hand: rebuild the worker and redeploy Pages.
 3. Move the waitlist function off the default compute service account onto `omni-waitlist-writer` (give it object-create on that one bucket only).
 4. Delete `projects/omni-sdr/secrets/` (an empty `gcs-key.json`; WIF means no key file should exist).
-5. Create the private repo `DimeDataCloud/omni-sdr`.
+5. ~~Create the private repo~~ Done 2026-09-28.
 6. Submit Google OAuth verification for `gmail.send` early. Apply for LinkedIn Community Management API access.
 7. Set prices and plan limits before Station 22.
 8. Book the LinkedIn automation lawyer review before paid launch.

@@ -1,11 +1,11 @@
 # Omni-SDR — Agent Rails (shared by Claude and Gemini)
 
-**Rails v1.0 · 2026-09-28 · Changes only with Christian's approval (§11).**
+**Rails v1.1 · 2026-09-28 · Changes only with Christian's approval (§11).**
 This file is identical for both agents. It lives at `projects/omni-sdr/AGENT-RAILS.md` and nowhere else.
 `CLAUDE.md`, `GEMINI.md` and `AGENTS.md` point here; never copy these rules into another file.
 
 ## 0. Load check
-Start every task report with **`Rails v1.0 loaded`**. If you can't say it truthfully, read this file first.
+Start every task report with **`Rails v1.1 loaded`**. If you can't say it truthfully, read this file first.
 
 ## 1. Who does what
 - **Christian:** the only decision-maker. The only one who approves deploys, spend, cloud changes and changes to decisions or to this file.
@@ -19,6 +19,9 @@ Start every task report with **`Rails v1.0 loaded`**. If you can't say it truthf
 3. `packages/db/migrations/*.sql`: the only schema. No document outranks it on tables and columns.
 4. `docs/MVP-BUILD-GUIDE.md`, then `docs/INFRASTRUCTURE.md`.
 5. `docs/mvp/*`: proposals until they appear in #1.
+
+**Grounding:** platform facts (limits, prices, scopes, API behaviour, law) come from `projects/omni-sdr-journal/citations/`.
+Cite the file. If a fact isn't there, it's `[VERIFY]` until someone adds a sourced citation (format in the journal README).
 
 If two sources conflict, **stop and report the conflict**. Don't pick one silently.
 
@@ -47,6 +50,7 @@ Approval for one action never extends to the next one.
 | `docs/mvp/**` station drafts | Gemini | Claude reconciles with DECISIONS; Christian decides |
 | `functions/**`, `cloud-functions/**`, `dist-pages/**` (waitlist/landing) | Gemini | Claude audits every public endpoint |
 | `docs/WORKBOARD.md` | Both, **append-only** | — |
+| `omni-sdr-journal` repo: `journal/` entries and `citations/` | Both, **append-only** for journal entries; one topic file per citation. Commits go straight to its `main` (no PR) | The other agent spot-checks citations it relies on |
 | Anything not listed | Claim it on the workboard first; if both want it, Christian decides | — |
 
 Writing outside your lane: propose the change in your report instead. The owner makes it.
@@ -72,9 +76,10 @@ Writing outside your lane: propose the change in your report instead. The owner 
 ## 7. Evidence and the task report
 Never claim a thing exists, runs, passes or is deployed without the command and its output from this session. Otherwise label it **UNVERIFIED**.
 Never invent platform facts (limits, scopes, prices, model IDs); mark them `[VERIFY] <doc URL>`.
+Every task that changes something also appends a journal entry (`omni-sdr-journal/journal/YYYY-MM-DD.md`).
 Every task ends with this report:
 ```
-Rails v1.0 loaded
+Rails v1.1 loaded
 Task: <what was asked>
 Read: <files read>
 Changed: <files written, with one line each>

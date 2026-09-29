@@ -1,7 +1,7 @@
 # Omni-SDR agents: read AGENT-RAILS.md first
 
 Every agent (Claude, Gemini, any other) must read and follow **AGENT-RAILS.md** in full before any task.
-It holds the shared rules, the lanes, and the workboard protocol. Begin every task report with `Rails v1.0 loaded`.
+It holds the shared rules, the lanes, and the workboard protocol. Begin every task report with `Rails v1.1 loaded`.
 
 <!-- BEGIN:nextjs-agent-rules -->
 

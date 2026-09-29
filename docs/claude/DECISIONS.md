@@ -255,3 +255,13 @@ The registry (Station 24) assigns each task a tier, with a fallback tier and an 
 ## 2026-09-28 — No launch date; quality first
 Station: 27 · Decided by: Christian
 Pilot customers start when the MVP acceptance script (Station 26) passes end to end in prod. The 9 sprints stay as an order of work, not a calendar.
+
+## 2026-09-28 — Code home: Drive + GitHub (supersedes "out of the Drive-synced folder")
+Decided by: Christian ("keep everything in drive as well")
+- The working tree stays in the Drive-synced Halo folder (`projects/omni-sdr`) AND is pushed to the private repo DimeDataCloud/omni-sdr.
+- Git data is kept out of Drive (`~/.halo-git/omni-sdr`, via a `.git` pointer file) so Drive never syncs half-written git objects, matching the brain repo.
+- Real data never enters git: `data/` (waitlist signups) is gitignored.
+
+## 2026-09-28 — Project grounding journal: DimeDataCloud/omni-sdr-journal
+Decided by: Christian ("a specific secondary journal for this project only, for grounding purposes")
+Local: `projects/omni-sdr-journal` (Drive + GitHub, git data in `~/.halo-git/omni-sdr-journal`). It holds dated journal entries and cited sources for every [VERIFY] fact. Decisions stay here, not in the journal.
