@@ -26,3 +26,4 @@ Format: `YYYY-MM-DD HH:MM · <claude|gemini> · <CLAIM|DONE|REVIEW-REQUEST|NOTE>
 2026-09-28 23:22 · claude · REVIEW-REQUEST · omni-sdr packages/sender/**, packages/db/migrations/0004_sender.sql · sender send path (branch claude/sender)
 2026-09-29 14:55 · claude · CLAIM · omni-sdr docs/claude/JEV-PLAN.md; journal citations/jev-typesafe.md · Jev decision-layer plan (branch claude/jev-plan)
 2026-09-29 14:56 · claude · REVIEW-REQUEST · omni-sdr docs/claude/JEV-PLAN.md · Jev plan, 4 decisions for Christian (branch claude/jev-plan)
+2026-09-29 17:50 · claude · CLAIM · omni-sdr packages/api/**, packages/db/migrations/0005_console.sql, packages/db/src/context.mjs, packages/db/test/helpers.mjs, docs/claude/API.md · backend for the AI Studio Fleet Console (Christian 2026-09-29: "build the actual backend while me and gemini continue working on the design"), branch claude/api stacked on #9
