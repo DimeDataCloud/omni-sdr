@@ -11,7 +11,7 @@ Start every task report with **`Rails v1.1 loaded`**. If you can't say it truthf
 - **Christian:** the only decision-maker. The only one who approves deploys, spend, cloud changes and changes to decisions or to this file.
 - **Claude** (Claude Code panel, Opus 5.5): schema, safety spine, auth/tenant isolation, CI, deploy preparation, reconciling specs, auditing Gemini.
 - **Gemini** (Antigravity agent portal, Gemini 3.1 Pro): UI, API routes and server actions, station drafts, connector drafts, prompts/evals, visual QA in the browser, GCP console reads, `[VERIFY]` research, auditing Claude.
-- The two agents can't see each other. **All coordination goes through files:** `docs/WORKBOARD.md`, git, and the task reports. Christian relays when needed.
+- The two agents can't see each other. **All coordination goes through files:** `omni-sdr-journal/WORKBOARD.md`, git, and the task reports. Christian relays when needed.
 
 ## 2. Authority (highest first)
 1. `docs/claude/DECISIONS.md`: Christian's decisions. Only Claude writes it, and only to record what Christian said.
@@ -49,14 +49,15 @@ Approval for one action never extends to the next one.
 | `packages/connectors/**`, `packages/ai/prompts/**`, eval cases | Gemini | Claude reviews |
 | `docs/mvp/**` station drafts | Gemini | Claude reconciles with DECISIONS; Christian decides |
 | `functions/**`, `cloud-functions/**`, `dist-pages/**` (waitlist/landing) | Gemini | Claude audits every public endpoint |
-| `docs/WORKBOARD.md` | Both, **append-only** | — |
+| `omni-sdr-journal/WORKBOARD.md` | Both, **append-only** | — |
 | `omni-sdr-journal` repo: `journal/` entries and `citations/` | Both, **append-only** for journal entries; one topic file per citation. Commits go straight to its `main` (no PR) | The other agent spot-checks citations it relies on |
+| `docs/mvp/` docs for Claude-lane stations: 04 platform, 25 data model, and the data/backend sections other stations need | Claude | Gemini audits |
 | Anything not listed | Claim it on the workboard first; if both want it, Christian decides | — |
 
 Writing outside your lane: propose the change in your report instead. The owner makes it.
 
 ## 5. One writer per file at a time
-1. Before editing, read `docs/WORKBOARD.md`. If an open `CLAIM` overlaps your path, don't edit it; report instead.
+1. Before editing, read `omni-sdr-journal/WORKBOARD.md`. If an open `CLAIM` overlaps your path, don't edit it; report instead.
 2. Append your claim: `YYYY-MM-DD HH:MM · <claude|gemini> · CLAIM · <paths/globs> · <task>`.
 3. Before overwriting any file you didn't write last, re-read it from disk. If it changed since you read it, merge; never clobber.
 4. When finished, append `DONE` (or `REVIEW-REQUEST`) with the same paths and a one-line result. A `DONE` releases the claim.

@@ -387,7 +387,7 @@ Cloud SQL smallest-tier cost.
 
 ## 16. Handoff prompt (copy-paste to a fresh agent)
 ```
-You are a build agent for Omni-SDR. Read, in order: AGENT-RAILS.md, docs/WORKBOARD.md, docs/claude/DECISIONS.md, docs/claude/SPEC.md
+You are a build agent for Omni-SDR. Read, in order: AGENT-RAILS.md, omni-sdr-journal/WORKBOARD.md, docs/claude/DECISIONS.md, docs/claude/SPEC.md
 (sections 0, 3, 5, 6, 7 and the station you're given in section 8), then that station in
 docs/MVP-BUILD-GUIDE.md and the INFRA sections it cites. Claim your paths on the workboard first.
 Task: Run Station <NN>. Write docs/mvp/<NN>-<slug>.md using the guide's template (§1.3), applying every
