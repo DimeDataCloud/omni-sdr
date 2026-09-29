@@ -66,3 +66,26 @@ export async function withTenant(client, { userId, orgId, workspaceId, role = 'a
     throw err;
   }
 }
+
+// Worker modules (gate, sender, sequencer) act for a tenant without a signed-in user. Same
+// transaction-scoped context as withTenant, but no membership check and no app.user_id, so the
+// 0002 admin-only triggers can never pass for a service role.
+export const WORKER_ROLES = Object.freeze(['gate_svc', 'sender_svc']);
+
+export async function withService(client, { orgId, workspaceId, role }, fn) {
+  assertUuid(orgId, 'orgId');
+  assertUuid(workspaceId, 'workspaceId');
+  if (!WORKER_ROLES.includes(role)) throw new TenantAccessError(`role ${JSON.stringify(role)} is not a worker role`);
+  await client.query('BEGIN');
+  try {
+    await client.query(`SET LOCAL ROLE ${role}`);
+    await client.query(`SELECT set_config('app.org_id', $1, true), set_config('app.workspace_ids', $2, true), set_config('app.user_id', '', true)`,
+      [orgId, workspaceId]);
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  }
+}
