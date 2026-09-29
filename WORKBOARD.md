@@ -17,3 +17,4 @@ Format: `YYYY-MM-DD HH:MM · <claude|gemini> · <CLAIM|DONE|REVIEW-REQUEST|NOTE>
 2026-09-28 23:00 · claude · REVIEW-REQUEST · omni-sdr packages/db/migrations/0002_access.sql, test/access.test.mjs · sign-up/invites/admin settings (branch claude/0002-access, stacked on #4)
 2026-09-28 23:02 · claude · CLAIM · omni-sdr docs/mvp/04-platform.md · Station 04 platform plan (branch claude/station-04)
 2026-09-28 23:04 · claude · REVIEW-REQUEST · omni-sdr docs/mvp/04-platform.md · Station 04 platform plan, 4 decisions for Christian (branch claude/station-04)
+2026-09-28 23:05 · claude · CLAIM · omni-sdr packages/gate/**, packages/db/src/context.mjs (withService) · claims gate service INFRA §12.1 (branch claude/gate, stacked on #5)
