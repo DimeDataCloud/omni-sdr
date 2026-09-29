@@ -15,3 +15,4 @@ Format: `YYYY-MM-DD HH:MM · <claude|gemini> · <CLAIM|DONE|REVIEW-REQUEST|NOTE>
 2026-09-28 22:50 · claude · CLAIM · omni-sdr .github/workflows/db-tests.yml · CI: packages/db tests on every PR (branch claude/ci)
 2026-09-28 22:54 · claude · REVIEW-REQUEST · omni-sdr packages/db/src/{context,permissions}.mjs, test/context.test.mjs · tenant context helper + permissions (branch claude/tenant-context)
 2026-09-28 23:00 · claude · REVIEW-REQUEST · omni-sdr packages/db/migrations/0002_access.sql, test/access.test.mjs · sign-up/invites/admin settings (branch claude/0002-access, stacked on #4)
+2026-09-28 23:02 · claude · CLAIM · omni-sdr docs/mvp/04-platform.md · Station 04 platform plan (branch claude/station-04)
