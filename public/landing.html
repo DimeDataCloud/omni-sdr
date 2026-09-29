@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Omni SDR - Your All-in-One AI SDR</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --satin-black: #111111;
+            --pastel-neon-green: #a3ffb1;
+            --pastel-neon-green-hover: #8cf29c;
+            --sandy-bg: #f5f3ef;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--sandy-bg);
+            color: var(--satin-black);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            /* Subtle texture gradient for the sandy background */
+            background-image: radial-gradient(circle at top right, #fdfbf7, transparent 70%),
+                              radial-gradient(circle at bottom left, #eae4d9, transparent 70%);
+        }
+
+        /* Satin text effect */
+        .satin-text {
+            color: var(--satin-black);
+            text-shadow: 0 1px 1px rgba(255,255,255,0.8);
+        }
+
+        /* Translucent sandy glass card */
+        .glass-card {
+            background: rgba(253, 251, 248, 0.65);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.04), 
+                        inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+        }
+
+        /* Pastel Neon Green Elements */
+        .neon-btn {
+            background-color: var(--pastel-neon-green);
+            color: var(--satin-black);
+            box-shadow: 0 4px 15px rgba(163, 255, 177, 0.5), 
+                        inset 0 1px 0 rgba(255,255,255,0.6);
+            transition: all 0.3s ease;
+        }
+
+        .neon-btn:hover {
+            background-color: var(--pastel-neon-green-hover);
+            box-shadow: 0 6px 20px rgba(163, 255, 177, 0.7),
+                        inset 0 1px 0 rgba(255,255,255,0.8);
+            transform: translateY(-2px);
+        }
+
+        /* Custom Input Styling */
+        .custom-input {
+            background: rgba(255, 255, 255, 0.5);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            color: var(--satin-black);
+            transition: all 0.3s ease;
+        }
+        
+        .custom-input::placeholder {
+            color: rgba(17, 17, 17, 0.4);
+        }
+
+        .custom-input:focus {
+            outline: none;
+            background: rgba(255, 255, 255, 0.9);
+            border-color: var(--pastel-neon-green);
+            box-shadow: 0 0 0 3px rgba(163, 255, 177, 0.4);
+        }
+        
+        /* Subtle background blobs for depth */
+        .bg-blob {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(80px);
+            z-index: -1;
+            opacity: 0.6;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center relative overflow-hidden">
+
+    <div class="bg-blob w-[500px] h-[500px] bg-[#e0f8e3] top-[-10%] left-[-10%]"></div>
+    <div class="bg-blob w-[600px] h-[600px] bg-[#fbf5eb] bottom-[-20%] right-[-10%]"></div>
+
+    <main class="w-full max-w-4xl px-6 py-12 md:py-20 flex flex-col items-center z-10 relative">
+        
+        <header class="text-center mb-12 w-full">
+            <h1 class="text-5xl md:text-6xl font-bold tracking-tight mb-6 satin-text">
+                Omni SDR
+            </h1>
+            <p class="text-lg md:text-xl font-medium max-w-3xl mx-auto leading-relaxed text-[#333333]">
+                Your all-in-one AI SDR for outbound, inbound, and marketing—find new opportunities and never miss a lead.
+            </p>
+        </header>
+
+        <section class="w-full max-w-xl glass-card rounded-3xl p-8 md:p-10">
+            <div class="text-center mb-8">
+                <h2 class="text-3xl font-semibold satin-text mb-2">Get Your Discount</h2>
+                <p class="text-sm font-medium text-gray-500">Secure your spot and lock in early pricing.</p>
+            </div>
+
+            <form id="discount-form" class="space-y-5">
+                <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+                    
+                    <!-- Name (Required) -->
+                    <div class="col-span-1 md:col-span-2">
+                        <label for="name" class="block text-sm font-semibold mb-1 satin-text">Name <span class="text-[#111]">*</span></label>
+                        <input type="text" id="name" name="name" required
+                            class="w-full custom-input rounded-xl px-4 py-3"
+                            placeholder="Alex Smith">
+                    </div>
+
+                    <!-- Email (Required) -->
+                    <div class="col-span-1 md:col-span-2">
+                        <label for="email" class="block text-sm font-semibold mb-1 satin-text">Email <span class="text-[#111]">*</span></label>
+                        <input type="email" id="email" name="email" required
+                            class="w-full custom-input rounded-xl px-4 py-3"
+                            placeholder="alex@example.com">
+                    </div>
+
+                    <!-- Company Name (Optional) -->
+                    <div>
+                        <label for="company" class="block text-sm font-semibold mb-1 satin-text">Company <span class="font-normal text-gray-400 text-xs ml-1">(Optional)</span></label>
+                        <input type="text" id="company" name="company"
+                            class="w-full custom-input rounded-xl px-4 py-3"
+                            placeholder="Acme Inc.">
+                    </div>
+
+                    <!-- Phone Number (Optional) -->
+                    <div>
+                        <label for="phone" class="block text-sm font-semibold mb-1 satin-text">Phone <span class="font-normal text-gray-400 text-xs ml-1">(Optional)</span></label>
+                        <input type="tel" id="phone" name="phone"
+                            class="w-full custom-input rounded-xl px-4 py-3"
+                            placeholder="(555) 000-0000">
+                    </div>
+
+                    <!-- Location (Optional) -->
+                    <div class="col-span-1 md:col-span-2">
+                        <label for="location" class="block text-sm font-semibold mb-1 satin-text">Location <span class="font-normal text-gray-400 text-xs ml-1">(Optional)</span></label>
+                        <input type="text" id="location" name="location"
+                            class="w-full custom-input rounded-xl px-4 py-3"
+                            placeholder="e.g., San Francisco, CA">
+                    </div>
+                </div>
+
+                <div class="pt-6">
+                    <button type="submit" id="submit-btn"
+                        class="w-full neon-btn font-bold py-4 px-6 rounded-xl focus:outline-none focus:ring-4 focus:ring-[#a3ffb1] focus:ring-opacity-50">
+                        Get Your Discount
+                    </button>
+                </div>
+                
+                <!-- Feedback Messages -->
+                <div id="success-message" class="hidden mt-4 p-4 bg-[#e5fcf2] border border-[#a3ffb1] rounded-xl text-green-800 text-sm font-medium text-center shadow-sm">
+                    Thank you! Your spot and discount have been saved.
+                </div>
+                <div id="error-message" class="hidden mt-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm font-medium text-center shadow-sm">
+                    Something went wrong. Please try again later.
+                </div>
+            </form>
+        </section>
+        
+        <section id="coming-soon-section" class="w-full max-w-xl glass-card rounded-3xl p-8 md:p-10 mt-10 cursor-pointer hover:bg-[rgba(255,255,255,0.8)] transition-all duration-300 group">
+            <div class="text-center">
+                <h2 class="text-3xl font-semibold satin-text mb-4">See Omni in Action</h2>
+                <div id="demo-action-btn" class="inline-block px-5 py-2 rounded-full bg-[#111] text-[#a3ffb1] font-bold text-sm tracking-wide uppercase shadow-sm group-hover:scale-105 transition-transform duration-300">
+                    Watch Demo
+                </div>
+                <div id="coming-soon-badge" class="hidden px-5 py-2 rounded-full bg-[var(--pastel-neon-green)] text-[var(--satin-black)] font-bold text-sm tracking-wide uppercase shadow-sm transition-transform duration-300">
+                    Coming Soon...
+                </div>
+                <p id="demo-helper-text" class="text-sm font-medium text-gray-500 mt-4 group-hover:text-gray-800 transition-colors">
+                    Click to view the interactive preview
+                </p>
+            </div>
+        </section>
+
+        <footer class="mt-16 text-gray-400 text-sm font-medium">
+            &copy; <span id="year"></span> Omni SDR. All rights reserved.
+        </footer>
+    </main>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Set current year
+        document.getElementById('year').textContent = new Date().getFullYear();
+
+        // Environment variables setup
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'omni-sdr-default';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+            projectId: "demo-project" 
+        };
+
+        let db, auth, currentUser;
+
+        // Initialize Firebase
+        async function initFirebase() {
+            try {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                // Check for injected token first, otherwise anonymous
+                if (typeof __initial_auth_token !== 'undefined') {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                currentUser = auth.currentUser;
+                console.log("Firebase authenticated.");
+            } catch (error) {
+                console.error("Authentication error:", error);
+            }
+        }
+
+        initFirebase();
+
+        const form = document.getElementById('discount-form');
+        const submitBtn = document.getElementById('submit-btn');
+        const successMessage = document.getElementById('success-message');
+        const errorMessage = document.getElementById('error-message');
+
+        // Handle form submission
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            if (!currentUser || !db) {
+                showError("System connecting. Please wait a second and try again.");
+                return;
+            }
+
+            const originalBtnText = submitBtn.innerHTML;
+            submitBtn.innerHTML = 'Securing Discount...';
+            submitBtn.disabled = true;
+            submitBtn.style.opacity = '0.7';
+            
+            successMessage.classList.add('hidden');
+            errorMessage.classList.add('hidden');
+
+            const formData = new FormData(form);
+            const data = {
+                name: formData.get('name'),
+                email: formData.get('email'),
+                company: formData.get('company') || null,
+                phone: formData.get('phone') || null,
+                location: formData.get('location') || null,
+                timestamp: new Date().toISOString()
+            };
+
+            try {
+                // strict path: public/data/{collection}
+                const waitlistRef = collection(db, 'artifacts', appId, 'public', 'data', 'waitlist');
+                await addDoc(waitlistRef, data);
+                
+                successMessage.classList.remove('hidden');
+                form.reset();
+            } catch (error) {
+                console.error("Save error:", error);
+                showError("Could not secure your discount. Please try again.");
+            } finally {
+                submitBtn.innerHTML = originalBtnText;
+                submitBtn.disabled = false;
+                submitBtn.style.opacity = '1';
+            }
+        });
+
+        function showError(msg) {
+            errorMessage.textContent = msg;
+            errorMessage.classList.remove('hidden');
+        }
+
+        // Handle Coming Soon Click
+        const comingSoonSection = document.getElementById('coming-soon-section');
+        const demoActionBtn = document.getElementById('demo-action-btn');
+        const comingSoonBadge = document.getElementById('coming-soon-badge');
+        const demoHelperText = document.getElementById('demo-helper-text');
+
+        if (comingSoonSection) {
+            comingSoonSection.addEventListener('click', () => {
+                // Reveal the "Coming Soon" badge
+                if (demoActionBtn) {
+                    demoActionBtn.classList.remove('inline-block');
+                    demoActionBtn.classList.add('hidden');
+                }
+                if (comingSoonBadge) {
+                    comingSoonBadge.classList.remove('hidden');
+                    comingSoonBadge.classList.add('inline-block');
+                }
+                if (demoHelperText) {
+                    demoHelperText.textContent = "Heading back up to secure your discount...";
+                }
+
+                // Add a small delay so they can read "Coming Soon..." before scrolling
+                setTimeout(() => {
+                    document.querySelector('header').scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    
+                    // Draw focus to the form after scrolling
+                    setTimeout(() => {
+                        const nameInput = document.getElementById('name');
+                        if (nameInput) nameInput.focus({ preventScroll: true });
+                    }, 600); 
+                }, 900); 
+            });
+        }
+    </script>
+</body>
+</html>

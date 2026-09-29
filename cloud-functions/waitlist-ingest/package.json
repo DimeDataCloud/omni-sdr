@@ -1,0 +1,9 @@
+{
+  "name": "omni-waitlist-api",
+  "version": "1.0.0",
+  "description": "Serverless ingest endpoint for Omni SDR waitlist leads into GCS",
+  "main": "index.js",
+  "dependencies": {
+    "@google-cloud/storage": "^7.15.0"
+  }
+}
