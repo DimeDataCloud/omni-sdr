@@ -62,6 +62,8 @@ export async function seedTenant(db, label, { cap = 5, trust = 1, heat = 1 } = {
   await db.query(`INSERT INTO credit_balances (org_id, meter, balance) VALUES ($1, 'media', 100)`, [org]);
   await db.query(`INSERT INTO credit_ledger (org_id, meter, delta, kind) VALUES ($1, 'media', 100, 'grant')`, [org]);
   await db.query(`INSERT INTO outbox (org_id, topic, key, payload) VALUES ($1, 'events', 'k', '{}')`, [org]);
+  await db.query(`INSERT INTO unsubscribe_tokens (token_hash, org_id, workspace_id, contact_id)
+    VALUES (encode(sha256(convert_to($1, 'UTF8')), 'hex'), $2, $3, $4)`, [`unsub-${label}`, org, ws, contact]);
   await db.query(`INSERT INTO invites (org_id, email_hash, role, token_hash, invited_by, expires_at)
     VALUES ($1, value_hash($2), 'reviewer', encode(sha256(convert_to($3, 'UTF8')), 'hex'), $4, now() + interval '7 days')`,
     [org, `invitee@${label}.test`, `seed-token-${label}`, user]);
