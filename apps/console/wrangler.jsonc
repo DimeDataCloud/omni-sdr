@@ -1,0 +1,22 @@
+// The suite at suite.omnisdr.com: static build behind the sign-in Worker (worker/index.ts).
+// Secrets, never in this file: LOGIN_EMAIL, PASSWORD_HASH, SESSION_SECRET (set with `wrangler secret bulk` from ~/.halo-keys).
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "omnisdr-suite",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-09-01",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "suite.omnisdr.com", "custom_domain": true }],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    // Every request, including static files, goes through the sign-in check first.
+    "run_worker_first": true
+  },
+  // Holds only the owner-set password hash and its version (worker/index.ts).
+  "kv_namespaces": [{ "binding": "AUTH", "id": "eb432761faa748cd97030e488d26a853" }],
+  "ratelimits": [{ "name": "LOGIN_LIMITER", "namespace_id": "4401", "simple": { "limit": 5, "period": 60 } }],
+  "observability": { "enabled": true }
+}

@@ -1,0 +1,65 @@
+/* Tailwind v4 mapping of tokens.css (the app is Next.js 16 + Tailwind 4: `@import "tailwindcss"` in globals.css).
+ * Usage in apps/web/src/app/globals.css:
+ *   @import "tailwindcss";
+ *   @import "./tokens.css";
+ *   @import "./tailwind-theme.css";
+ * Then write classes like `bg-surface-glass text-text border-border rounded-lg shadow-md`.
+ * Never hard-code hex values in components; the mock's 45 arbitrary colors (bg-[#a3ffb1] …) are what this replaces.
+ */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-glass: var(--bg-glass);
+  --color-surface: var(--surface);
+  --color-surface-glass: var(--surface-glass);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-surface-inverse: var(--surface-inverse);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-text-inverse: var(--text-inverse);
+  --color-on-accent: var(--text-on-accent);
+  --color-accent: var(--brand-fill);
+  --color-accent-hover: var(--brand-fill-hover);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-border: var(--border);
+  --color-border-control: var(--border-control);
+  --color-ring: var(--focus-ring);
+  --color-success: var(--success);   --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);   --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);     --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);         --color-info-soft: var(--info-soft);
+  --color-chart-1: var(--chart-1); --color-chart-2: var(--chart-2); --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4); --color-chart-5: var(--chart-5); --color-chart-6: var(--chart-6);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  --text-xs: var(--text-xs);     --text-xs--line-height: var(--lh-xs);
+  --text-sm: var(--text-sm);     --text-sm--line-height: var(--lh-sm);
+  --text-base: var(--text-base); --text-base--line-height: var(--lh-base);
+  --text-md: var(--text-md);     --text-md--line-height: var(--lh-md);
+  --text-lg: var(--text-lg);     --text-lg--line-height: var(--lh-lg);
+  --text-xl: var(--text-xl);     --text-xl--line-height: var(--lh-xl);
+  --text-2xl: var(--text-2xl);   --text-2xl--line-height: var(--lh-2xl);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+
+  --ease-out: var(--ease-out);
+}
+
+@layer base {
+  html { background: var(--bg); color: var(--text); font-family: var(--font-sans); font-size: var(--text-base); line-height: var(--lh-base); }
+  :focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+  ::selection { background: var(--accent); color: var(--text-on-accent); }
+}
+
+@layer components {
+  .glass { background: var(--surface-glass); backdrop-filter: blur(var(--blur)); -webkit-backdrop-filter: blur(var(--blur)); border: 1px solid var(--border); }
+}

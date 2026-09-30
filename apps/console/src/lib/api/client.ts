@@ -1,0 +1,81 @@
+// One client contract, two adapters: `demo` (in-browser data, same shapes and rules as the API) and `http`
+// (the real backend, docs/claude/API.md). Screens only ever see this interface.
+import type {
+  Me, Settings, Members, ApprovalsList, ApprovalCard, InboxItem, Meeting, Agent, ChatMessage, Routine, Capacity,
+  Analytics, Credits, Connector, Contact, ContactDetail, Role, ModelTier, DraftStatus, Id,
+} from './types';
+
+export class ApiError extends Error {
+  constructor(public status: number, public code: string, message: string, public details?: Record<string, unknown>) {
+    super(message);
+  }
+}
+
+export interface Icp { id: Id; lineageId: Id; name: string; version: number; data: Record<string, unknown>; createdAt: string }
+export interface Campaign { id: Id; name: string; status: 'draft' | 'active' | 'paused' | 'archived'; icpId: Id | null; autoAuditEnabled: boolean; enrolled: number; live: number }
+export interface ActivityItem { id: string; actor: string; actorEmail: string | null; action: string; entityType: string; entityId: string; at: string }
+export interface ImportResult { created: { index: number; id: Id; emailStatus: string; role: boolean; reason: string | null }[]; skipped: { index: number; reason: string }[] }
+
+export interface Scope { orgId: Id; workspaceId: Id }
+
+export interface Client {
+  mode: 'demo' | 'http';
+  me(): Promise<Me>;
+  createWorkspace(orgId: Id, name: string): Promise<{ workspaceId: Id }>;
+
+  settings(s: Scope): Promise<Settings>;
+  patchSettings(s: Scope, patch: Partial<Pick<Settings['workspace'], 'name' | 'timezone' | 'clientApprovalsEnabled' | 'autoAdjustEnabled' | 'autoAdjustSources' | 'postalAddress'>>): Promise<void>;
+  members(s: Scope): Promise<Members>;
+  invite(s: Scope, body: { email: string; role: Role; workspaceIds?: Id[] | null }): Promise<{ id: Id; expiresAt: string; inviteUrl: string }>;
+  revokeInvite(s: Scope, id: Id): Promise<void>;
+  activity(s: Scope): Promise<ActivityItem[]>;
+
+  approvals(s: Scope, q?: { status?: DraftStatus | 'all'; minFit?: number }): Promise<ApprovalsList>;
+  approval(s: Scope, id: Id): Promise<ApprovalCard>;
+  approve(s: Scope, id: Id): Promise<void>;
+  bulkApprove(s: Scope, ids: Id[]): Promise<{ results: { id: Id; ok: boolean; error?: string }[]; approved: number }>;
+  reject(s: Scope, id: Id, reason?: string): Promise<void>;
+  editDraft(s: Scope, id: Id, patch: { subject?: string | null; body?: string }): Promise<{ gate: string; item: ApprovalCard }>;
+  createDraft(s: Scope, body: { enrollmentId: Id; step?: number; subject?: string | null; body: string; claims?: { text: string; evidence_id: Id; fact_key: string }[]; agentId?: Id | null }): Promise<{ id: Id; gate: string; findings: { code: string; detail: string }[] }>;
+
+  inbox(s: Scope, q?: { status?: 'open' | 'handled' | 'all' }): Promise<InboxItem[]>;
+  handle(s: Scope, id: Id): Promise<void>;
+  bookFromReply(s: Scope, id: Id, body: { startsAt: string; endsAt: string; meetUrl?: string | null }): Promise<Meeting>;
+  meetings(s: Scope, range?: 'upcoming' | 'past' | 'all'): Promise<Meeting[]>;
+  patchMeeting(s: Scope, id: Id, patch: { status?: Meeting['status'] }): Promise<Meeting>;
+
+  agents(s: Scope): Promise<Agent[]>;
+  createAgent(s: Scope, body: Partial<Pick<Agent, 'name' | 'station' | 'badge' | 'modelTier' | 'systemPrompt' | 'contextSources' | 'autonomousMode'>> & { name: string }): Promise<Agent>;
+  patchAgent(s: Scope, id: Id, patch: Partial<Pick<Agent, 'name' | 'station' | 'badge' | 'modelTier' | 'systemPrompt' | 'contextSources' | 'autonomousMode'>>): Promise<Agent>;
+  archiveAgent(s: Scope, id: Id): Promise<void>;
+  messages(s: Scope, agentId: Id): Promise<ChatMessage[]>;
+  sendMessage(s: Scope, agentId: Id, body: string, modelTier?: ModelTier): Promise<{ userMessage: ChatMessage; reply: ChatMessage }>;
+
+  routines(s: Scope): Promise<Routine[]>;
+  createRoutine(s: Scope, body: { name: string; category: Routine['category']; schedule: string; agentId?: Id | null; active?: boolean }): Promise<Routine>;
+  patchRoutine(s: Scope, id: Id, patch: Partial<Pick<Routine, 'name' | 'schedule' | 'active' | 'category'>>): Promise<Routine>;
+
+  capacity(s: Scope): Promise<Capacity>;
+  setHold(s: Scope, body: { scopeType: 'workspace' | 'campaign' | 'mailbox'; scopeId?: Id; reason: string }): Promise<void>;
+  clearHold(s: Scope, scopeType: string, id: Id): Promise<void>;
+  suppress(s: Scope, email: string, reason?: string): Promise<void>;
+  credits(s: Scope): Promise<Credits>;
+  analytics(s: Scope, days: 7 | 30 | 90): Promise<Analytics>;
+  connectors(s: Scope): Promise<Connector[]>;
+
+  contacts(s: Scope, q?: string): Promise<Contact[]>;
+  contact(s: Scope, id: Id): Promise<ContactDetail>;
+  importContacts(s: Scope, rows: { name?: string; email?: string; company?: string; title?: string; phone?: string }[]): Promise<ImportResult>;
+  icps(s: Scope): Promise<Icp[]>;
+  createIcp(s: Scope, body: { name: string; data: Record<string, unknown>; lineageId?: Id }): Promise<Icp>;
+  campaigns(s: Scope): Promise<Campaign[]>;
+  createCampaign(s: Scope, body: { name: string; icpId?: Id | null }): Promise<Campaign>;
+  patchCampaign(s: Scope, id: Id, patch: Partial<Pick<Campaign, 'name' | 'status' | 'autoAuditEnabled'>>): Promise<Campaign>;
+  enroll(s: Scope, campaignId: Id, contactIds: Id[]): Promise<{ enrolled: number; skipped: number }>;
+}
+
+// Mutations tell every mounted query to refetch. Simple and correct for a single-user console.
+type Listener = () => void;
+const listeners = new Set<Listener>();
+export const onInvalidate = (fn: Listener) => { listeners.add(fn); return () => { listeners.delete(fn); }; };
+export const invalidate = () => { for (const fn of listeners) fn(); };

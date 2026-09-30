@@ -1,0 +1,513 @@
+// The demo adapter: the same Client contract as the API, answered from the in-browser world with the API's rules:
+// the SPEC §7 role matrix (the real can()), the real claims gate, the real reply rules, status transitions that
+// match routes/*.mjs, and a 403 wherever the API would give one.
+import { can } from '@db/permissions.mjs';
+import { CONNECTORS, freeEmailChecks } from '@rules/catalog.mjs';
+import { ApiError, invalidate, type Client, type Scope, type Campaign, type Icp } from '../client';
+import type { ApprovalCard, Agent, ChatMessage, Contact, InboxItem, Meeting, Routine, Role, Analytics, Me } from '../types';
+import { load, save, gate, newId, personaEmail, convertOnMeeting } from './store';
+import { answer } from './brain';
+import type { World, DraftRow, MemberRow } from './seed';
+
+const latency = (min = 120, spread = 160) => new Promise((r) => setTimeout(r, min + Math.random() * spread));
+const nowIso = () => new Date().toISOString();
+
+function me(w: World): MemberRow {
+  const m = w.members.find((x) => x.email === personaEmail()) ?? w.members[0];
+  return m;
+}
+
+/** withTenant + can(): the membership must reach the workspace, and the role must allow the action. */
+function tenant(w: World, s: Scope, action: string) {
+  const m = me(w);
+  const ws = w.workspaces.find((x) => x.id === s.workspaceId);
+  if (s.orgId !== w.org.id || !ws || (m.workspaceIds && !m.workspaceIds.includes(ws.id))) throw new ApiError(404, 'not_found', 'workspace not found');
+  if (!can({ role: m.role, clientApprovalsEnabled: ws.clientApprovalsEnabled }, action)) throw new ApiError(403, 'forbidden', 'your role cannot do that here');
+  return { m, ws };
+}
+
+async function read<T>(fn: (w: World) => T): Promise<T> {
+  await latency();
+  return structuredClone(fn(load()));
+}
+async function write<T>(fn: (w: World) => T): Promise<T> {
+  await latency(160, 200);
+  const out = fn(load());
+  save();
+  invalidate();
+  return structuredClone(out);
+}
+const audit = (w: World, ws: string | null, actor: string, action: string, entityType: string, entityId: string) =>
+  w.audit.push({ id: newId(), ws, actor, action, entityType, entityId, at: nowIso() });
+const nf = (what: string) => new ApiError(404, 'not_found', `${what} not found`);
+const conflict = (msg: string) => new ApiError(409, 'conflict', msg);
+
+function card(w: World, d: DraftRow): ApprovalCard {
+  const enr = w.enrollments.find((e) => e.id === d.enrollmentId)!;
+  const c = w.contacts.find((x) => x.id === enr.contactId)!;
+  const camp = w.campaigns.find((x) => x.id === enr.campaignId)!;
+  const a = d.agentId ? w.agents.find((x) => x.id === d.agentId) : null;
+  const ws = w.workspaces.find((x) => x.id === d.ws)!;
+  return {
+    id: d.id, status: d.status, dispatched: w.sent.some((s) => s.draftId === d.id), channel: d.channel, step: d.step, subject: d.subject, body: d.body,
+    recipient: { contactId: c.id, name: c.name, title: c.title, company: c.company, email: c.email, emailStatus: c.emailStatus },
+    fitScore: c.fitScore, campaign: { id: camp.id, name: camp.name }, agent: a ? { id: a.id, name: a.name, modelTier: a.modelTier } : null,
+    gate: { passed: d.gatePassed, version: d.gateVersion, gatedAt: d.gatedAt, findings: d.gateFindings ?? [] },
+    claims: d.claims.map((cl) => {
+      const e = w.evidence.find((x) => x.id === cl.evidence_id);
+      return { text: cl.text, factKey: cl.fact_key, evidence: e ? { id: e.id, type: e.type, sourceUri: e.sourceUri, fetchedAt: e.fetchedAt, facts: e.facts, expiresAt: e.expiresAt } : null };
+    }),
+    sequence: w.drafts.filter((x) => x.enrollmentId === d.enrollmentId && !['discarded', 'superseded'].includes(x.status))
+      .sort((a1, b1) => a1.step - b1.step).map((x) => ({ id: x.id, step: x.step, subject: x.subject, body: x.body, status: x.status })),
+    trustLevel: ws.trustLevel, rejectionReason: d.rejectionReason, approvedBy: d.approvedBy, approvedAt: d.approvedAt, createdAt: d.createdAt,
+  };
+}
+
+function approveOne(w: World, s: Scope, id: string, userId: string) {
+  const d = w.drafts.find((x) => x.id === id && x.ws === s.workspaceId);
+  if (!d) throw nf('draft');
+  if (d.status !== 'review' || w.sent.some((x) => x.draftId === id)) throw conflict(`draft is ${d.status}; only drafts in review can be approved`);
+  if (!d.gatePassed) throw conflict('the gate has not passed this text'); // approved_requires_gate CHECK
+  d.status = 'approved'; d.approvedBy = userId; d.approvedAt = nowIso();
+  audit(w, s.workspaceId, userId, 'approve', 'draft', id);
+}
+
+function agentOut(w: World, a: World['agents'][number]): Agent {
+  const last = w.chat.filter((m) => m.agentId === a.id).at(-1);
+  return { id: a.id, name: a.name, station: a.station, badge: a.badge as Agent['badge'], modelTier: a.modelTier, systemPrompt: a.systemPrompt,
+    contextSources: a.contextSources, autonomousMode: a.autonomousMode, appearance: a.appearance, archivedAt: a.archivedAt, createdBy: a.createdBy, createdAt: a.createdAt,
+    lastMessage: last ? { preview: last.body.slice(0, 120), sender: last.sender, at: last.createdAt } : null,
+    activeRoutines: w.routines.filter((r) => r.agentId === a.id && r.active && !r.pausedReason).length };
+}
+const routineOut = (w: World, r: World['routines'][number]): Routine => ({ id: r.id, agentId: r.agentId, agentName: w.agents.find((a) => a.id === r.agentId)?.name ?? null,
+  name: r.name, category: r.category, schedule: r.schedule, active: r.active, pausedReason: r.pausedReason, pausedByOps: Boolean(r.pausedReason?.startsWith('ops:')),
+  lastRunAt: r.lastRunAt, nextRunAt: r.nextRunAt, createdAt: r.createdAt });
+const chatOut = (m: World['chat'][number]): ChatMessage => ({ id: m.id, sender: m.sender, authorId: m.authorId, body: m.body, meta: m.meta as ChatMessage['meta'], createdAt: m.createdAt });
+function meetingOut(w: World, m: World['meetings'][number]): Meeting {
+  const c = w.contacts.find((x) => x.id === m.contactId);
+  return { id: m.id, contactId: m.contactId, contactName: c?.name ?? null, contactCompany: c?.company ?? null, inboundMessageId: m.inboundMessageId, provider: m.provider,
+    externalId: m.externalId, startsAt: m.startsAt, endsAt: m.endsAt, meetUrl: m.meetUrl, status: m.status, createdBy: m.createdBy, createdAt: m.createdAt };
+}
+const contactOut = (c: World['contacts'][number]): Contact => ({ id: c.id, name: c.name, email: c.email, emailStatus: c.emailStatus, phone: c.phone, company: c.company,
+  title: c.title, fitScore: c.fitScore, createdAt: c.createdAt });
+const campaignOut = (w: World, c: World['campaigns'][number]): Campaign => {
+  const enr = w.enrollments.filter((e) => e.campaignId === c.id);
+  return { id: c.id, name: c.name, status: c.status, icpId: c.icpId, autoAuditEnabled: c.autoAuditEnabled, enrolled: enr.length,
+    live: enr.filter((e) => !['stopped', 'converted', 'completed'].includes(e.state)).length };
+};
+const icpOut = (i: World['icps'][number]): Icp => ({ id: i.id, lineageId: i.lineageId, name: i.name, version: i.version, data: i.data, createdAt: i.createdAt });
+
+function dayKey(d: Date, tz: string) { return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d); }
+
+export const demoClient: Client = {
+  mode: 'demo',
+
+  me: () => read((w): Me => {
+    const m = me(w);
+    return { user: { id: m.userId, email: m.email }, orgs: [{ id: w.org.id, name: w.org.name, accountType: w.org.accountType, subscriptionStatus: w.org.subscriptionStatus,
+      role: m.role, workspaces: w.workspaces.filter((x) => !m.workspaceIds || m.workspaceIds.includes(x.id)).map((x) => ({ id: x.id, name: x.name })) }] };
+  }),
+  createWorkspace: (orgId, name) => write((w) => {
+    const m = me(w);
+    if (orgId !== w.org.id || m.role !== 'admin' || m.workspaceIds) throw new ApiError(403, 'forbidden', 'only an org-wide admin can add a workspace');
+    const trimmed = name.trim();
+    if (!trimmed || trimmed.length > 80) throw new ApiError(400, 'bad_request', 'name: 1 to 80 characters');
+    const id = newId();
+    w.workspaces.push({ ...w.workspaces[0], id, name: trimmed, clientApprovalsEnabled: false, createdAt: nowIso() });
+    audit(w, id, m.userId, 'create', 'workspace', id);
+    return { workspaceId: id };
+  }),
+
+  settings: (s) => read((w) => {
+    const { m, ws } = tenant(w, s, 'reports_view');
+    return { workspace: { id: ws.id, name: ws.name, timezone: ws.timezone, trustLevel: ws.trustLevel, clientApprovalsEnabled: ws.clientApprovalsEnabled,
+      autoAdjustEnabled: ws.autoAdjustEnabled, autoAdjustSources: ws.autoAdjustSources as never, postalAddress: ws.postalAddress, customDomain: ws.customDomain, createdAt: ws.createdAt },
+      org: { id: w.org.id, name: w.org.name, accountType: w.org.accountType, subscriptionStatus: w.org.subscriptionStatus, trialEndsAt: w.org.trialEndsAt, featureFlags: w.org.featureFlags },
+      you: { userId: m.userId, role: m.role } };
+  }),
+  patchSettings: (s, patch) => write((w) => {
+    const { m, ws } = tenant(w, s, 'workspace_settings');
+    if (patch.name !== undefined && (!patch.name.trim() || patch.name.length > 80)) throw new ApiError(400, 'bad_request', 'name: 1 to 80 characters');
+    Object.assign(ws, patch);
+    audit(w, ws.id, m.userId, 'update', 'workspace', ws.id);
+  }),
+  members: (s) => read((w) => {
+    tenant(w, s, 'members');
+    return { members: w.members.map((x) => ({ userId: x.userId, email: x.email, role: x.role, workspaceIds: x.workspaceIds })),
+      pendingInvites: w.invites.filter((i) => !i.revokedAt && !i.acceptedAt && new Date(i.expiresAt) > new Date())
+        .map((i) => ({ id: i.id, role: i.role, workspaceIds: i.workspaceIds, expiresAt: i.expiresAt, createdAt: i.createdAt })) };
+  }),
+  invite: (s, body) => write((w) => {
+    const { m } = tenant(w, s, 'members');
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(body.email)) throw new ApiError(400, 'bad_request', 'email: not an email address');
+    if (body.role === 'client_viewer' && !body.workspaceIds?.length) throw new ApiError(400, 'bad_request', 'a client must be limited to at least one workspace');
+    const id = newId();
+    const expiresAt = new Date(Date.now() + 7 * 86400e3).toISOString();
+    w.invites.push({ id, email: body.email, role: body.role, workspaceIds: body.workspaceIds ?? null, expiresAt, createdAt: nowIso(), revokedAt: null, acceptedAt: null });
+    audit(w, s.workspaceId, m.userId, 'invite', 'invite', id);
+    // Demo: nothing is emailed. The real API returns a single-use link the admin shares.
+    return { id, expiresAt, inviteUrl: 'demo: invites are not sent in demo mode' };
+  }),
+  revokeInvite: (s, id) => write((w) => {
+    const { m } = tenant(w, s, 'members');
+    const i = w.invites.find((x) => x.id === id && !x.revokedAt);
+    if (!i) throw nf('invite');
+    i.revokedAt = nowIso();
+    audit(w, s.workspaceId, m.userId, 'revoke', 'invite', id);
+  }),
+  activity: (s) => read((w) => {
+    tenant(w, s, 'members');
+    return w.audit.filter((a) => a.ws === s.workspaceId || a.ws === null).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 50)
+      .map((a) => ({ id: a.id, actor: a.actor, actorEmail: w.members.find((x) => x.userId === a.actor)?.email ?? null, action: a.action, entityType: a.entityType, entityId: a.entityId, at: a.at }));
+  }),
+
+  approvals: (s, q = {}) => read((w) => {
+    tenant(w, s, 'approve');
+    const status = q.status ?? 'review';
+    const all = w.drafts.filter((d) => d.ws === s.workspaceId);
+    const items = all.filter((d) => (status === 'all' || d.status === status))
+      .map((d) => card(w, d)).filter((c) => q.minFit === undefined || (c.fitScore ?? 0) >= q.minFit)
+      .sort((a, b) => (b.fitScore ?? -1) - (a.fitScore ?? -1) || a.createdAt.localeCompare(b.createdAt) || a.step - b.step).slice(0, 50);
+    const counts: Record<string, number> = {};
+    for (const d of all) counts[d.status] = (counts[d.status] ?? 0) + 1;
+    return { items, counts };
+  }),
+  approval: (s, id) => read((w) => {
+    tenant(w, s, 'approve');
+    const d = w.drafts.find((x) => x.id === id && x.ws === s.workspaceId);
+    if (!d) throw nf('draft');
+    return card(w, d);
+  }),
+  approve: (s, id) => write((w) => { const { m } = tenant(w, s, 'approve'); approveOne(w, s, id, m.userId); }),
+  bulkApprove: (s, ids) => write((w) => {
+    const { m } = tenant(w, s, 'approve');
+    const results = ids.map((id) => {
+      try { approveOne(w, s, id, m.userId); return { id, ok: true }; } catch (e) { return { id, ok: false, error: (e as Error).message }; }
+    });
+    return { results, approved: results.filter((r) => r.ok).length };
+  }),
+  reject: (s, id, reason) => write((w) => {
+    const { m } = tenant(w, s, 'approve');
+    const d = w.drafts.find((x) => x.id === id && x.ws === s.workspaceId);
+    if (!d) throw nf('draft');
+    if (!['gating', 'blocked', 'review', 'approved'].includes(d.status) || w.sent.some((x) => x.draftId === id)) throw conflict(`draft is ${d.status}; it can't be rejected`);
+    d.status = 'discarded'; d.rejectionReason = reason?.slice(0, 500) || null;
+    audit(w, s.workspaceId, m.userId, 'reject', 'draft', id);
+  }),
+  editDraft: (s, id, patch) => write((w) => {
+    const { m } = tenant(w, s, 'approve');
+    const d = w.drafts.find((x) => x.id === id && x.ws === s.workspaceId);
+    if (!d) throw nf('draft');
+    if (!['gating', 'blocked', 'review', 'approved'].includes(d.status) || w.sent.some((x) => x.draftId === id)) throw conflict(`draft is ${d.status}; it can't be edited`);
+    if (patch.body !== undefined && (!patch.body.trim() || patch.body.length > 20000)) throw new ApiError(400, 'bad_request', 'body: 1 to 20000 characters');
+    if ('subject' in patch) d.subject = patch.subject ?? null;
+    if (patch.body !== undefined) d.body = patch.body;
+    // drafts_edit_voids_gate: new text voids the old verdict and any approval, then the gate runs again.
+    d.approvedBy = null; d.approvedAt = null; d.gatePassed = false; d.gateFindings = null;
+    audit(w, s.workspaceId, m.userId, 'edit', 'draft', id);
+    const v = gate(w, d, new Date());
+    d.status = v.passed ? 'review' : 'blocked';
+    return { gate: v.passed ? 'passed' : 'blocked', item: card(w, d) };
+  }),
+  createDraft: (s, body) => write((w) => {
+    const { m } = tenant(w, s, 'build');
+    const enr = w.enrollments.find((e) => e.id === body.enrollmentId && e.ws === s.workspaceId);
+    if (!enr) throw nf('enrollment');
+    const d: DraftRow = { id: newId(), ws: s.workspaceId, enrollmentId: enr.id, step: body.step ?? 0, channel: 'email', subject: body.subject ?? null, body: body.body,
+      claims: body.claims ?? [], status: 'gating', gatePassed: false, gateVersion: null, gatedAt: null, gateFindings: null, rejectionReason: null, approvedBy: null,
+      approvedAt: null, createdAt: nowIso(), agentId: body.agentId ?? null };
+    w.drafts.push(d);
+    const v = gate(w, d, new Date());
+    d.status = v.passed ? 'review' : 'blocked';
+    audit(w, s.workspaceId, m.userId, 'create', 'draft', d.id);
+    return { id: d.id, gate: v.passed ? 'passed' : 'blocked', findings: v.findings };
+  }),
+
+  inbox: (s, q = {}) => read((w) => {
+    tenant(w, s, 'inbox_read');
+    const now = Date.now();
+    const status = q.status ?? 'open';
+    return w.inbound.filter((r) => r.ws === s.workspaceId && (status === 'all' || (status === 'open' ? !r.handledAt : Boolean(r.handledAt))))
+      .sort((a, b) => (a.slaDueAt ? 0 : 1) - (b.slaDueAt ? 0 : 1) || (a.slaDueAt ?? '').localeCompare(b.slaDueAt ?? '') || b.receivedAt.localeCompare(a.receivedAt))
+      .slice(0, 100)
+      .map((r): InboxItem => {
+        const c = w.contacts.find((x) => x.id === r.contactId);
+        return { id: r.id, channel: r.channel, fromAddress: r.fromAddress, subject: r.subject, body: r.body, receivedAt: r.receivedAt, intent: r.intent as InboxItem['intent'],
+          intentConfidence: r.intentConfidence, classifiedBy: r.classifiedBy, slaDueAt: r.slaDueAt,
+          slaMinutesRemaining: r.slaDueAt && !r.handledAt ? Math.round((new Date(r.slaDueAt).getTime() - now) / 60000) : null,
+          needsHuman: r.intentConfidence === null || r.intentConfidence < 0.8, handledAt: r.handledAt, handledBy: r.handledBy, messageId: r.messageId,
+          contactId: r.contactId, contactName: c?.name ?? null, contactCompany: c?.company ?? null, contactTitle: c?.title ?? null };
+      });
+  }),
+  handle: (s, id) => write((w) => {
+    const { m } = tenant(w, s, 'inbox_draft');
+    const r = w.inbound.find((x) => x.id === id && x.ws === s.workspaceId);
+    if (!r) throw nf('reply');
+    if (r.handledAt) throw conflict('reply already handled');
+    r.handledAt = nowIso(); r.handledBy = m.userId;
+    audit(w, s.workspaceId, m.userId, 'handle', 'inbound_message', id);
+  }),
+  bookFromReply: (s, id, body) => write((w) => {
+    const { m } = tenant(w, s, 'inbox_draft');
+    const r = w.inbound.find((x) => x.id === id && x.ws === s.workspaceId);
+    if (!r) throw nf('reply');
+    const start = new Date(body.startsAt); const end = new Date(body.endsAt);
+    if (!(end > start)) throw new ApiError(400, 'bad_request', 'endsAt: must be after startsAt');
+    if (body.meetUrl && !/^https:\/\/\S+$/.test(body.meetUrl)) throw new ApiError(400, 'bad_request', 'meetUrl: must be an https link');
+    const row = { id: newId(), ws: s.workspaceId, contactId: r.contactId, inboundMessageId: r.id, provider: 'native' as const, externalId: null, startsAt: start.toISOString(),
+      endsAt: end.toISOString(), meetUrl: body.meetUrl ?? null, status: 'booked' as const, createdBy: m.userId, createdAt: nowIso() };
+    w.meetings.push(row);
+    if (!r.handledAt) { r.handledAt = nowIso(); r.handledBy = m.userId; }
+    convertOnMeeting(w, r.contactId);
+    audit(w, s.workspaceId, m.userId, 'book', 'meeting', row.id);
+    return meetingOut(w, row);
+  }),
+  meetings: (s, range = 'upcoming') => read((w) => {
+    tenant(w, s, 'reports_view');
+    const now = new Date().toISOString();
+    return w.meetings.filter((x) => x.ws === s.workspaceId && (range === 'all' || (range === 'upcoming' ? x.endsAt >= now : x.endsAt < now)))
+      .sort((a, b) => (range === 'past' ? b.startsAt.localeCompare(a.startsAt) : a.startsAt.localeCompare(b.startsAt))).map((x) => meetingOut(w, x));
+  }),
+  patchMeeting: (s, id, patch) => write((w) => {
+    const { m } = tenant(w, s, 'inbox_draft');
+    const x = w.meetings.find((y) => y.id === id && y.ws === s.workspaceId);
+    if (!x) throw nf('meeting');
+    if (patch.status) x.status = patch.status;
+    audit(w, s.workspaceId, m.userId, 'update', 'meeting', id);
+    return meetingOut(w, x);
+  }),
+
+  agents: (s) => read((w) => { tenant(w, s, 'reports_view'); return w.agents.filter((a) => a.ws === s.workspaceId && !a.archivedAt).map((a) => agentOut(w, a)); }),
+  createAgent: (s, body) => write((w) => {
+    const { m } = tenant(w, s, 'build');
+    if (!body.name?.trim() || body.name.length > 60) throw new ApiError(400, 'bad_request', 'name: 1 to 60 characters');
+    const a = { id: newId(), ws: s.workspaceId, name: body.name.trim(), station: body.station ?? 'custom', badge: body.badge ?? 'OPS', modelTier: body.modelTier ?? 'flash',
+      systemPrompt: body.systemPrompt ?? '', contextSources: body.contextSources ?? [], autonomousMode: body.autonomousMode ?? false, appearance: {}, archivedAt: null,
+      createdBy: m.userId, createdAt: nowIso() };
+    w.agents.push(a);
+    audit(w, s.workspaceId, m.userId, 'create', 'agent', a.id);
+    return agentOut(w, a);
+  }),
+  patchAgent: (s, id, patch) => write((w) => {
+    const { m } = tenant(w, s, 'build');
+    const a = w.agents.find((x) => x.id === id && x.ws === s.workspaceId && !x.archivedAt);
+    if (!a) throw nf('agent');
+    Object.assign(a, patch);
+    audit(w, s.workspaceId, m.userId, 'update', 'agent', id);
+    return agentOut(w, a);
+  }),
+  archiveAgent: (s, id) => write((w) => {
+    const { m } = tenant(w, s, 'build');
+    const a = w.agents.find((x) => x.id === id && x.ws === s.workspaceId && !x.archivedAt);
+    if (!a) throw nf('agent');
+    a.archivedAt = nowIso();
+    for (const r of w.routines.filter((x) => x.agentId === id)) r.active = false; // archiving stops its routines (the API does the same)
+    audit(w, s.workspaceId, m.userId, 'archive', 'agent', id);
+  }),
+  messages: (s, agentId) => read((w) => {
+    tenant(w, s, 'reports_view');
+    if (!w.agents.some((a) => a.id === agentId && a.ws === s.workspaceId)) throw nf('agent');
+    return w.chat.filter((m) => m.agentId === agentId).map(chatOut);
+  }),
+  sendMessage: async (s, agentId, body, modelTier) => {
+    const w = load();
+    const { m } = tenant(w, s, 'build');
+    const agent = w.agents.find((a) => a.id === agentId && a.ws === s.workspaceId && !a.archivedAt);
+    if (!agent) throw nf('agent');
+    const text = body.trim();
+    if (!text || text.length > 4000) throw new ApiError(400, 'bad_request', 'body: 1 to 4000 characters');
+    const user = { id: newId(), ws: s.workspaceId, agentId, sender: 'user' as const, authorId: m.userId, body: text, meta: {}, createdAt: nowIso() };
+    w.chat.push(user); save(); invalidate();
+    const started = Date.now();
+    await latency(650, 700);
+    const reply = { id: newId(), ws: s.workspaceId, agentId, sender: 'agent' as const, authorId: null, body: answer(w, s.workspaceId, agent, text, new Date()),
+      meta: { model: 'demo', tier: modelTier ?? agent.modelTier, ms: Date.now() - started }, createdAt: nowIso() };
+    w.chat.push(reply); save(); invalidate();
+    return { userMessage: chatOut(user), reply: chatOut(reply) };
+  },
+
+  routines: (s) => read((w) => { tenant(w, s, 'reports_view'); return w.routines.filter((r) => r.ws === s.workspaceId).map((r) => routineOut(w, r)); }),
+  createRoutine: (s, body) => write((w) => {
+    const { m } = tenant(w, s, 'build');
+    if (!body.name.trim()) throw new ApiError(400, 'bad_request', 'name: required');
+    const r = { id: newId(), ws: s.workspaceId, agentId: body.agentId ?? null, name: body.name.trim(), category: body.category, schedule: body.schedule, active: body.active ?? true,
+      pausedReason: null, lastRunAt: null, nextRunAt: null, createdAt: nowIso() };
+    w.routines.push(r);
+    audit(w, s.workspaceId, m.userId, 'create', 'routine', r.id);
+    return routineOut(w, r);
+  }),
+  patchRoutine: (s, id, patch) => write((w) => {
+    const { m } = tenant(w, s, 'build');
+    const r = w.routines.find((x) => x.id === id && x.ws === s.workspaceId);
+    if (!r) throw nf('routine');
+    if (patch.active && r.pausedReason?.startsWith('ops:')) throw conflict('paused by operations; it resumes when ops clears it');
+    Object.assign(r, patch);
+    audit(w, s.workspaceId, m.userId, 'update', 'routine', id);
+    return routineOut(w, r);
+  }),
+
+  capacity: (s) => read((w) => {
+    tenant(w, s, 'reports_view');
+    const today = new Date().toISOString().slice(0, 10);
+    const mailboxes = w.mailboxes.filter((x) => x.ws === s.workspaceId).map((x) => ({ id: x.id, provider: x.provider, address: x.address, dailyCap: x.dailyCap,
+      pausedReason: x.pausedReason, sentToday: w.sent.filter((y) => y.mailboxId === x.id && y.sentAt.slice(0, 10) === today).length }));
+    const campIds = new Set(w.campaigns.filter((c) => c.ws === s.workspaceId).map((c) => c.id));
+    const mbIds = new Set(mailboxes.map((x) => x.id));
+    const holds = w.holds.filter((h) => (h.scopeType === 'org' && h.scopeId === w.org.id) || (h.scopeType === 'workspace' && h.scopeId === s.workspaceId)
+      || (h.scopeType === 'campaign' && campIds.has(h.scopeId)) || (h.scopeType === 'mailbox' && mbIds.has(h.scopeId)))
+      .map(({ scopeType, scopeId, reason, setBy, setAt }) => ({ scopeType, scopeId, reason, setBy, setAt }));
+    const drafts = w.drafts.filter((d) => d.ws === s.workspaceId);
+    const cap = mailboxes.filter((x) => !x.pausedReason).reduce((t, x) => t + x.dailyCap, 0);
+    const used = mailboxes.reduce((t, x) => t + x.sentToday, 0);
+    return { mailboxes, holds, queue: { approvedUnsent: drafts.filter((d) => d.status === 'approved' && !w.sent.some((x) => x.draftId === d.id)).length,
+      awaitingReview: drafts.filter((d) => d.status === 'review').length }, today: { cap, used, remaining: Math.max(0, cap - used) },
+      workspaceOnHold: holds.some((h) => h.scopeType === 'workspace' || h.scopeType === 'org') };
+  }),
+  setHold: (s, body) => write((w) => {
+    const { m } = tenant(w, s, 'approve');
+    const scopeId = body.scopeType === 'workspace' ? s.workspaceId : body.scopeId;
+    if (!scopeId) throw new ApiError(400, 'bad_request', 'scopeId: is required');
+    if (!body.reason.trim()) throw new ApiError(400, 'bad_request', 'reason: is required');
+    if (!w.holds.some((h) => h.scopeType === body.scopeType && h.scopeId === scopeId))
+      w.holds.push({ ws: s.workspaceId, scopeType: body.scopeType, scopeId, reason: body.reason.trim(), setBy: `user:${m.userId}`, setAt: nowIso() });
+    audit(w, s.workspaceId, m.userId, 'hold', body.scopeType, scopeId);
+  }),
+  clearHold: (s, scopeType, id) => write((w) => {
+    const { m } = tenant(w, s, 'clear_hold');
+    const i = w.holds.findIndex((h) => h.scopeType === scopeType && h.scopeId === id && h.ws === s.workspaceId);
+    if (i < 0) throw nf('hold');
+    w.holds.splice(i, 1);
+    audit(w, s.workspaceId, m.userId, 'clear_hold', scopeType, id);
+  }),
+  suppress: (s, email) => write((w) => {
+    const { m } = tenant(w, s, 'approve');
+    const e = email.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) throw new ApiError(400, 'bad_request', 'email: not an email address');
+    if (!w.suppression.includes(e)) w.suppression.push(e);
+    audit(w, s.workspaceId, m.userId, 'suppress', 'email', 'hash');
+  }),
+  credits: (s) => read((w) => { tenant(w, s, 'reports_view'); return { balances: { ...w.credits } }; }),
+  analytics: (s, days) => read((w): Analytics => {
+    const { ws } = tenant(w, s, 'reports_view');
+    const tz = ws.timezone;
+    const now = new Date();
+    const keys: string[] = [];
+    for (let i = days - 1; i >= 0; i--) keys.push(dayKey(new Date(now.getTime() - i * 86400e3), tz));
+    const inWs = <T extends { ws: string | null }>(xs: T[]) => xs.filter((x) => x.ws === s.workspaceId);
+    const sent = inWs(w.sent); const inbound = inWs(w.inbound); const meetings = inWs(w.meetings);
+    const POS = ['meeting_request', 'positive_inquiry', 'referral'];
+    const daily = keys.map((day) => ({ day,
+      sent: sent.filter((x) => dayKey(new Date(x.sentAt), tz) === day).length,
+      replies: inbound.filter((x) => !['bounce', 'out_of_office'].includes(x.intent) && dayKey(new Date(x.receivedAt), tz) === day).length,
+      positive: inbound.filter((x) => POS.includes(x.intent) && dayKey(new Date(x.receivedAt), tz) === day).length,
+      meetings: meetings.filter((x) => x.status !== 'canceled' && dayKey(new Date(x.createdAt), tz) === day).length }));
+    const totals = daily.reduce((t, x) => ({ sent: t.sent + x.sent, replies: t.replies + x.replies, positive: t.positive + x.positive, meetings: t.meetings + x.meetings }),
+      { sent: 0, replies: 0, positive: 0, meetings: 0 });
+    const since = now.getTime() - days * 86400e3;
+    const rate = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 1000) / 10 : null);
+    const steps = new Map<number, { sent: number; replied: number }>();
+    for (const x of sent.filter((y) => new Date(y.claimedAt).getTime() >= since)) {
+      const step = w.drafts.find((d) => d.id === x.draftId)!.step;
+      const b = steps.get(step) ?? { sent: 0, replied: 0 };
+      b.sent++;
+      if (inbound.some((r) => r.messageId === x.id && !['bounce', 'out_of_office'].includes(r.intent))) b.replied++;
+      steps.set(step, b);
+    }
+    const decisions = w.audit.filter((a) => a.ws === s.workspaceId && a.entityType === 'draft' && new Date(a.at).getTime() >= since);
+    const approved = decisions.filter((a) => a.action === 'approve').length; const rejected = decisions.filter((a) => a.action === 'reject').length;
+    return { days, timezone: tz, totals, rates: { replyRate: rate(totals.replies, totals.sent), positiveRate: rate(totals.positive, totals.sent),
+      approvalRate: rate(approved, approved + rejected) }, approvals: { approved, rejected }, daily,
+      byStep: [...steps.entries()].sort((a, b) => a[0] - b[0]).map(([step, b]) => ({ step, sent: b.sent, replied: b.replied, replyRate: rate(b.replied, b.sent) })) };
+  }),
+  connectors: (s) => read((w) => {
+    tenant(w, s, 'reports_view');
+    const providers = new Set(w.mailboxes.filter((x) => x.ws === s.workspaceId && !x.pausedReason).map((x) => x.provider));
+    const connected: Record<string, boolean> = { gmail: providers.has('gmail'), smtp_imap: providers.has('smtp_imap'), email_routing: providers.size > 0 };
+    return CONNECTORS.map((c) => ({ ...c, scopes: [...c.scopes], status: c.activation === 'later' ? 'activates_later' as const : connected[c.id] ? 'connected' as const : 'not_connected' as const }));
+  }),
+
+  contacts: (s, q) => read((w) => {
+    tenant(w, s, 'build');
+    const needle = q?.trim().toLowerCase();
+    return w.contacts.filter((c) => c.ws === s.workspaceId && (!needle || [c.name, c.email, c.company, c.title].some((f) => f?.toLowerCase().includes(needle))))
+      .sort((a, b) => (b.fitScore ?? -1) - (a.fitScore ?? -1)).map(contactOut);
+  }),
+  contact: (s, id) => read((w) => {
+    tenant(w, s, 'build');
+    const c = w.contacts.find((x) => x.id === id && x.ws === s.workspaceId);
+    if (!c) throw nf('contact');
+    return { ...contactOut(c), evidence: w.evidence.filter((e) => e.contactId === id).map((e) => ({ id: e.id, type: e.type, sourceUri: e.sourceUri, fetchedAt: e.fetchedAt, facts: e.facts, expiresAt: e.expiresAt })),
+      enrollments: w.enrollments.filter((e) => e.contactId === id).map((e) => ({ id: e.id, state: e.state, step: e.step, heat: e.heat, stopReason: e.stopReason,
+        campaignId: e.campaignId, campaignName: w.campaigns.find((x) => x.id === e.campaignId)?.name ?? '' })) };
+  }),
+  importContacts: (s, rows) => write((w) => {
+    const { m } = tenant(w, s, 'build');
+    if (rows.length > 500) throw new ApiError(400, 'bad_request', 'at most 500 rows per import');
+    const created: { index: number; id: string; emailStatus: string; role: boolean; reason: string | null }[] = [];
+    const skipped: { index: number; reason: string }[] = [];
+    const seen = new Set(w.contacts.filter((c) => c.ws === s.workspaceId).map((c) => c.email?.toLowerCase()));
+    rows.forEach((r, index) => {
+      if (!r.email && !r.name) { skipped.push({ index, reason: 'needs a name or an email' }); return; }
+      const chk = r.email ? freeEmailChecks(r.email) : null;
+      if (chk && seen.has(chk.email)) { skipped.push({ index, reason: 'duplicate email' }); return; }
+      if (chk && w.suppression.includes(chk.email)) { skipped.push({ index, reason: 'on the do-not-contact list' }); return; }
+      const id = newId();
+      w.contacts.push({ id, ws: s.workspaceId, name: r.name?.trim() || null, email: chk?.email ?? null, emailStatus: chk?.status ?? 'unknown', phone: r.phone?.trim() || null,
+        company: r.company?.trim() || null, title: r.title?.trim() || null, fitScore: null, createdAt: nowIso() });
+      if (chk) seen.add(chk.email);
+      created.push({ index, id, emailStatus: chk?.status ?? 'unknown', role: chk?.role ?? false, reason: chk?.reason ?? null });
+    });
+    audit(w, s.workspaceId, m.userId, 'import', 'contacts', String(created.length));
+    return { created, skipped };
+  }),
+  icps: (s) => read((w) => {
+    tenant(w, s, 'build');
+    const latest = new Map<string, World['icps'][number]>();
+    for (const i of w.icps.filter((x) => x.ws === s.workspaceId && !x.archivedAt)) if (!latest.has(i.lineageId) || latest.get(i.lineageId)!.version < i.version) latest.set(i.lineageId, i);
+    return [...latest.values()].map(icpOut);
+  }),
+  createIcp: (s, body) => write((w) => {
+    const { m } = tenant(w, s, 'build');
+    if (!body.name.trim()) throw new ApiError(400, 'bad_request', 'name: required');
+    const prev = body.lineageId ? w.icps.filter((i) => i.lineageId === body.lineageId && i.ws === s.workspaceId) : [];
+    if (body.lineageId && !prev.length) throw nf('icp');
+    const i = { id: newId(), ws: s.workspaceId, lineageId: body.lineageId ?? newId(), name: body.name.trim(), version: prev.length ? Math.max(...prev.map((p) => p.version)) + 1 : 1,
+      data: body.data, createdAt: nowIso(), archivedAt: null };
+    w.icps.push(i);
+    audit(w, s.workspaceId, m.userId, 'create', 'icp', i.id);
+    return icpOut(i);
+  }),
+  campaigns: (s) => read((w) => { tenant(w, s, 'build'); return w.campaigns.filter((c) => c.ws === s.workspaceId).map((c) => campaignOut(w, c)); }),
+  createCampaign: (s, body) => write((w) => {
+    const { m } = tenant(w, s, 'build');
+    if (!body.name.trim()) throw new ApiError(400, 'bad_request', 'name: required');
+    const c = { id: newId(), ws: s.workspaceId, name: body.name.trim(), status: 'draft' as const, icpId: body.icpId ?? null, autoAuditEnabled: false };
+    w.campaigns.push(c);
+    audit(w, s.workspaceId, m.userId, 'create', 'campaign', c.id);
+    return campaignOut(w, c);
+  }),
+  patchCampaign: (s, id, patch) => write((w) => {
+    const { m } = tenant(w, s, 'build');
+    const c = w.campaigns.find((x) => x.id === id && x.ws === s.workspaceId);
+    if (!c) throw nf('campaign');
+    Object.assign(c, patch);
+    audit(w, s.workspaceId, m.userId, 'update', 'campaign', id);
+    return campaignOut(w, c);
+  }),
+  enroll: (s, campaignId, contactIds) => write((w) => {
+    const { m } = tenant(w, s, 'build');
+    const c = w.campaigns.find((x) => x.id === campaignId && x.ws === s.workspaceId);
+    if (!c) throw nf('campaign');
+    let enrolled = 0; let skipped = 0;
+    for (const id of contactIds) {
+      const contact = w.contacts.find((x) => x.id === id && x.ws === s.workspaceId);
+      if (!contact || w.enrollments.some((e) => e.campaignId === campaignId && e.contactId === id) || (contact.email && w.suppression.includes(contact.email))) { skipped++; continue; }
+      w.enrollments.push({ id: newId(), ws: s.workspaceId, campaignId, contactId: id, state: 'waiting', step: 0, heat: 1, stopReason: null });
+      enrolled++;
+    }
+    audit(w, s.workspaceId, m.userId, 'enroll', 'campaign', campaignId);
+    return { enrolled, skipped };
+  }),
+};
+
+export const ROLE_LABEL: Record<Role, string> = { admin: 'Admin', operator: 'Operator', reviewer: 'Reviewer', client_viewer: 'Client' };
