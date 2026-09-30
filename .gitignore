@@ -54,3 +54,15 @@ node_modules/
 /dist-pages/
 /_worker.bundle
 /.wrangler/
+
+# Google Drive stubs. This checkout can sit inside a Drive-synced folder, where Drive writes a
+# .gdoc/.gsheet/.gslides file for every native Google file. The stub holds the doc id and
+# the owner's email, and it is not the document. Never git rm a tracked one: when a checkout
+# inside Drive pulls that deletion, Drive can trash the real document.
+*.gdoc
+*.gsheet
+*.gslides
+*.gdraw
+*.gform
+*.gmap
+*.gsite
