@@ -59,6 +59,25 @@ New:
 | Tab walk | Every interactive element is reachable and has a visible focus ring |
 | Visual regression | `pixelmatch` against committed baselines at 1440 and 390 per route. Threshold 0.1%. Baseline updates are explicit (`--update-baselines`), never automatic. |
 
+**Phase 0 outcome (2026-09-30, branch `claude/ui-revision`).** Built as planned, with these changes, each measured:
+
+| Change from plan | Why |
+|---|---|
+| Font budget **120KB**, not 60 | The fonts already shipping were 69KB (Inter 48 + JetBrains Mono 21) before the serif. Measured tour: 88.3KB. |
+| INP gate is the **worst interaction**, not the median | For fewer than 50 interactions, INP is the maximum. The median is reported too (40-56ms). |
+| INP ignores a keyup that does no work (< 1ms handler, < 16ms wait) | In headless Chrome such a keyup waits for the caret-blink frame (~570ms). A bare `<textarea>` doesn't show it; removing every blur doesn't change it. Documented in `gates/quality.mjs`. Any keyup that does work still counts. |
+| Density shortcut not `d` | `d` already rejects a draft. The toggle lives in the account menu and in Ctrl K. |
+| Serif titles keep the nav label | The italic accent word is supported (`PageHeader accent`) and reserved for hero lines. A tool's page title should match its nav item. |
+| Glass blur fixed | The minifier had dropped the unprefixed `backdrop-filter`, so nothing ever blurred in Chrome. There's now a build gate for it. |
+
+Found and fixed by the new gates:
+- Analytics had a 535ms long task, caused by an `Intl.DateTimeFormat` built per day × record.
+- Ctrl K re-rendered the whole page. Its state now lives in an overlay store, and it opens with a CSS animation.
+- The Radix header menus were modal: 128-160 → 80ms after switching them off.
+- Four width, path and height tweens ignored reduced motion.
+
+Every new gate was proven to fail against a deliberately broken build. That run also found a hole in the first tab-walk check.
+
 ### Phase 1: Instant + forgiving, the interaction model (M)
 
 | Change | Detail |

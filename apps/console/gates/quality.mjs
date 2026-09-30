@@ -214,7 +214,16 @@ export async function runQuality({ browser, BASE, ROOT, OUT, gate, want, open, s
       await page.goto(`${BASE}/w/${ws}/${route}`, { waitUntil: 'domcontentloaded' });
       await settle(page);
       await page.evaluate(() => {
-        window.__twSig = (start) => { const out = []; let n = start; for (let d = 0; n && d < 4; d++, n = n.parentElement) { const c = getComputedStyle(n); out.push(`${c.outlineStyle} ${c.outlineWidth} ${c.outlineColor}|${c.boxShadow}|${c.borderColor}`); } return out.join('~'); };
+        // Only what can be seen: an outline counts when its style isn't none and it has width and a non-transparent
+        // color; a border color counts only where there is a border. (An outline-color change under outline-style:none
+        // passed the first version of this gate: found by the sabotage run, 2026-09-30.)
+        const clear = (col) => /rgba\([^)]*,\s*0\)$|transparent/.test(col);
+        window.__twSig = (start) => { const out = []; let n = start; for (let d = 0; n && d < 4; d++, n = n.parentElement) {
+          const c = getComputedStyle(n);
+          const outline = c.outlineStyle !== 'none' && parseFloat(c.outlineWidth) > 0 && !clear(c.outlineColor) ? `${c.outlineStyle} ${c.outlineWidth} ${c.outlineColor} ${c.outlineOffset}` : 'none';
+          const border = parseFloat(c.borderTopWidth) + parseFloat(c.borderBottomWidth) > 0 ? c.borderColor : '';
+          out.push(`${outline}|${c.boxShadow}|${border}`);
+        } return out.join('~'); };
       });
       const expected = await page.evaluate(() => {
         const vis = (el) => { const r = el.getBoundingClientRect(); const cs = getComputedStyle(el); return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden'; };
