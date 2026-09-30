@@ -1,0 +1,18 @@
+{
+  "name": "@omni/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Omni-SDR backend: the HTTP API behind the Fleet Console. Every tenant request runs inside withTenant(); nothing here can send without the gate, an approval and send_guard().",
+  "scripts": {
+    "dev": "node src/dev.mjs",
+    "start": "node src/server.mjs",
+    "test": "node --test --test-concurrency=2 test/*.test.mjs"
+  },
+  "dependencies": {
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8"
+  }
+}

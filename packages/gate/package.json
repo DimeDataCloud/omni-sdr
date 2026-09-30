@@ -1,0 +1,13 @@
+{
+  "name": "@omni/gate",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Claims gate (INFRA 12.1): deterministic, fails closed. The only writer of drafts.gate_* via gate_svc.",
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8"
+  }
+}

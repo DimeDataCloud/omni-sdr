@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="96 88 320 344" role="img" aria-labelledby="t">
+  <title id="t">Omni-SDR</title>
+  <!-- Vector recreation of Christian's funnel mark (logo-source-christian.jpg). Replace with the original vector when available. -->
+  <defs>
+    <linearGradient id="cone" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.55" stop-color="#E4FFEA"/>
+      <stop offset="1" stop-color="#A3FFB4"/>
+    </linearGradient>
+    <radialGradient id="mouth" cx="0.5" cy="0.6" r="0.6">
+      <stop offset="0" stop-color="#A3FFB4"/>
+      <stop offset="1" stop-color="#FFFFFF"/>
+    </radialGradient>
+  </defs>
+  <path d="M123 142 L232 300 L232 408 L290 362 L290 300 L389 142 Z" fill="url(#cone)" stroke="#1A1A1A" stroke-width="12" stroke-linejoin="round"/>
+  <ellipse cx="256" cy="138" rx="133" ry="36" fill="url(#mouth)" stroke="#1A1A1A" stroke-width="12"/>
+</svg>
