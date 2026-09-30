@@ -1,17 +1,17 @@
 # Omni-SDR — Agent Rails (shared by Claude and Gemini)
 
-**Rails v1.0 · 2026-09-28 · Changes only with Christian's approval (§11).**
+**Rails v1.2 · 2026-09-30 · Changes only with Christian's approval (§11).**
 This file is identical for both agents. It lives at `projects/omni-sdr/AGENT-RAILS.md` and nowhere else.
 `CLAUDE.md`, `GEMINI.md` and `AGENTS.md` point here; never copy these rules into another file.
 
 ## 0. Load check
-Start every task report with **`Rails v1.0 loaded`**. If you can't say it truthfully, read this file first.
+Start every task report with **`Rails v1.2 loaded`**. If you can't say it truthfully, read this file first.
 
 ## 1. Who does what
 - **Christian:** the only decision-maker. The only one who approves deploys, spend, cloud changes and changes to decisions or to this file.
-- **Claude** (Claude Code panel, Opus 5.5): schema, safety spine, auth/tenant isolation, CI, deploy preparation, reconciling specs, auditing Gemini.
-- **Gemini** (Antigravity agent portal, Gemini 3.1 Pro): UI, API routes and server actions, station drafts, connector drafts, prompts/evals, visual QA in the browser, GCP console reads, `[VERIFY]` research, auditing Claude.
-- The two agents can't see each other. **All coordination goes through files:** `docs/WORKBOARD.md`, git, and the task reports. Christian relays when needed.
+- **Claude** (Claude Code panel, Opus 5.5): **the main worker.** Builds the product end to end by default: schema, safety spine, auth/tenant isolation, backend, the web app, CI, deploy preparation, reconciling specs, auditing Gemini.
+- **Gemini** (Antigravity agent portal, Gemini 3.1 Pro): **exacting tasks.** Christian hands Gemini narrow, precisely specified tasks (an audit or review, a mechanical edit, visual QA in the browser, GCP console reads, `[VERIFY]` research). Gemini does exactly the task, only on the paths the task names, and claims those paths first.
+- The two agents can't see each other. **All coordination goes through files:** the workboard (§5), git, and the task reports. Christian relays when needed.
 
 ## 2. Authority (highest first)
 1. `docs/claude/DECISIONS.md`: Christian's decisions. Only Claude writes it, and only to record what Christian said.
@@ -41,19 +41,15 @@ Approval for one action never extends to the next one.
 | Safety modules: gate, sender, sequencer, guard, RLS-context helper, credits, auth/session | Claude | Gemini audits |
 | `infra/**`, `.github/workflows/**`, deploy scripts | Claude prepares; **Christian runs or approves** | Christian |
 | `docs/claude/**`, `AGENT-RAILS.md` | Claude (the rails only with Christian's approval) | Christian |
-| `apps/web/**` (today `src/**`): screens, components, styling | Gemini | Claude reviews against SPEC + tests |
-| API routes and server actions | Gemini, **using Claude's RLS-context helper**, never raw SQL outside it | Claude reviews |
-| `packages/connectors/**`, `packages/ai/prompts/**`, eval cases | Gemini | Claude reviews |
-| `docs/mvp/**` station drafts | Gemini | Claude reconciles with DECISIONS; Christian decides |
-| `functions/**`, `cloud-functions/**`, `dist-pages/**` (waitlist/landing) | Gemini | Claude audits every public endpoint |
-| `docs/WORKBOARD.md` | Both, **append-only** | — |
-| Anything not listed | Claim it on the workboard first; if both want it, Christian decides | — |
+| Everything else: `apps/**`, `src/**`, API routes and server actions (**through the RLS-context helper**, never raw SQL outside it), `packages/connectors/**`, `packages/ai/prompts/**`, eval cases, `docs/mvp/**`, `functions/**`, `cloud-functions/**`, `dist-pages/**` | Claude by default. Gemini writes the paths of a task Christian assigns it, once it has claimed them | The other agent (§5.6). Every public endpoint gets an audit |
+| The workboard (§5) | Both, **append-only** | — |
 
-Writing outside your lane: propose the change in your report instead. The owner makes it.
+Gemini writing outside the paths its task names: propose the change in the report instead. Claude makes it.
 
 ## 5. One writer per file at a time
-1. Before editing, read `docs/WORKBOARD.md`. If an open `CLAIM` overlaps your path, don't edit it; report instead.
-2. Append your claim: `YYYY-MM-DD HH:MM · <claude|gemini> · CLAIM · <paths/globs> · <task>`.
+The workboard is `WORKBOARD.md` on `main` of the journal repo (`DimeDataCloud/omni-sdr-journal`, locally `projects/omni-sdr-journal`). It is one copy on one branch, so every claim is visible whatever branch you have checked out. `docs/WORKBOARD.md` in this repo is retired; its last line points there.
+1. Before editing, pull the journal and read the workboard. If an open `CLAIM` overlaps your path, don't edit it; report instead.
+2. Append your claim: `YYYY-MM-DD HH:MM · <claude|gemini> · CLAIM · <paths/globs> · <task>`, then commit and push the journal's `main` straight away.
 3. Before overwriting any file you didn't write last, re-read it from disk. If it changed since you read it, merge; never clobber.
 4. When finished, append `DONE` (or `REVIEW-REQUEST`) with the same paths and a one-line result. A `DONE` releases the claim.
 5. A claim older than 4 hours without a `DONE` is stale: ask Christian before taking it over.
@@ -74,7 +70,7 @@ Never claim a thing exists, runs, passes or is deployed without the command and 
 Never invent platform facts (limits, scopes, prices, model IDs); mark them `[VERIFY] <doc URL>`.
 Every task ends with this report:
 ```
-Rails v1.0 loaded
+Rails v1.2 loaded
 Task: <what was asked>
 Read: <files read>
 Changed: <files written, with one line each>
@@ -100,7 +96,7 @@ Next: <the next step, and who owns it>
 ## 9. Stop and ask Christian when
 - a hard rail (§3) is in the way
 - sources conflict (§2), or a decision is missing
-- the task needs the other agent's lane
+- the task needs paths outside your lane (Gemini: outside the paths the task names)
 - a fix would change a SPEC §5 invariant
 - you've failed twice at the same step
 

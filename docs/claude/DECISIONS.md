@@ -268,3 +268,9 @@ Station: 03 (frontend) · 23 (security) · Decided by: Christian
 Christian: "using all of the information available to you create the Omni sdr web app interface and design … Run a multi stage design development review revise system until you all gates are passed … When done put this on and omnisdr.com subdomain so I can test it on my phone. Verify the domains security before completing and create the login for me to securely access the suite"
 - Claude builds the interface (apps/console) to docs/design/DESIGN.md, and deploys it to one omnisdr.com subdomain behind a login for Christian. This is Christian's explicit approval for that one deploy (Rails §3.1).
 - It runs on demo data in the browser (fictional, the same story as the dev seed), since there is no production database yet (Station 04 decisions pending). The real API adapter is built alongside and switched on later.
+
+## 2026-09-30 — Claude is the main worker; Gemini does exacting tasks
+Station: all · Decided by: Christian
+Christian: "you are the main worker, i am using gemini agent to do exacting tasks"
+- Claude builds the product end to end by default, the web app included. Gemini takes narrow, precisely specified tasks that Christian hands it, on the paths each task names. Rails v1.2 §1 and §4 carry this, and they finish the lane edit the 2026-09-29 backend entry asked for.
+- Unchanged: the review rules. Merges still need the other agent's review and Christian's approval (§5.6). A change to the safety spine still needs Gemini's audit and Christian's OK (§6).
