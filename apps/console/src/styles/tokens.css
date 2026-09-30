@@ -1,0 +1,129 @@
+/* Omni-SDR design tokens. Source of truth for color, type, space, radius, shadow and motion.
+ * Palette: Christian's brand palette (docs/claude/brand-palette.md), binding per SPEC §12.
+ * Every text/surface pair below was measured (WCAG 2.2 relative luminance) on 2026-09-29. Ratios are in the comments.
+ * Rule that never bends: green (--accent / --accent-hover) is a FILL with --text on it. Never green text on sand or white.
+ */
+
+:root {
+  /* ── Surfaces ─────────────────────────────────────────────── */
+  --bg:               #F7F5F0;                   /* Translucent Sand: app base */
+  --bg-glass:         rgba(247, 245, 240, 0.85); /* sand over content, with --blur */
+  --surface:          #FFFFFF;                   /* solid card */
+  --surface-glass:    rgba(255, 255, 255, 0.65); /* Frosted White: cards, panels, inputs */
+  --surface-sunken:   #EFECE4;                   /* wells, table headers, code, skeletons */
+  --surface-inverse:  #1A1A1A;                   /* tooltips, toasts */
+
+  /* ── Text ─────────────────────────────────────────────────── */
+  --text:             #1A1A1A;  /* Satin Black. 15.97:1 sand · 17.40 white · 14.74 sunken · 14.52 on green */
+  --text-muted:       #5C6459;  /* 5.63:1 sand · 6.14 white · 5.20 sunken (the mock's #6F7A6E fails at 4.11 on sand) */
+  --text-inverse:     #F7F5F0;  /* on --surface-inverse */
+  --text-on-accent:   #1A1A1A;  /* ALWAYS this on green fills */
+
+  /* ── Accent (brand green): fills only ─────────────────────── */
+  --accent:           #A3FFB4;  /* Pastel Neon Green: primary buttons, active toggles, success fills */
+  --accent-hover:     #7BFF93;  /* Electric Mint: hover/pressed, focus glow (glow is decoration, never the only focus cue) */
+  --accent-ink:       #166534;  /* the ONLY green for text/icons/links/focus rings. 6.54:1 sand · 7.13 white · 5.95 on --accent */
+  --accent-soft:      #DCFCE7;  /* success chip fill; --accent-ink on it = 6.49:1 */
+
+  /* ── Lines ────────────────────────────────────────────────── */
+  --border:           #E8E4D9;  /* Pale Sand: decorative dividers, card edges (not a control boundary) */
+  --border-control:   #8F8878;  /* input/checkbox/select outlines: 3.23:1 sand · 3.52 white (WCAG 1.4.11 needs 3:1) */
+  --focus-ring:       #166534;  /* 2px ring + 2px offset */
+
+  /* ── Status (text color, soft fill) ───────────────────────── */
+  --success:          #166534;  --success-soft: #DCFCE7;  /* 6.49:1 on soft */
+  --warning:          #854D0E;  --warning-soft: #FEF3C7;  /* 6.15:1 on soft · 6.29 sand */
+  --danger:           #B42318;  --danger-soft:  #FDE8E6;  /* 5.59:1 on soft · 6.03 sand */
+  --info:             #1D4ED8;  --info-soft:    #E0EBFF;  /* 5.58:1 on soft · 6.15 sand */
+
+  /* ── Charts (categorical, in order; always label series, never color alone) ── */
+  --chart-1: #166534; --chart-2: #22C55E; --chart-3: #1D4ED8; --chart-4: #93C5FD; --chart-5: #854D0E; --chart-6: #A3FFB4;
+
+  /* ── Type ─────────────────────────────────────────────────── */
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  /* size / line-height. Minimum 12px anywhere (the mock's 9-11px labels are too small). */
+  --text-xs:   12px; --lh-xs:   16px;   /* meta, badges, timestamps */
+  --text-sm:   13px; --lh-sm:   20px;   /* dense lists, table cells */
+  --text-base: 14px; --lh-base: 22px;   /* body, inputs, buttons */
+  --text-md:   16px; --lh-md:   24px;   /* reading text: draft bodies, replies, chat */
+  --text-lg:   18px; --lh-lg:   26px;   /* card titles */
+  --text-xl:   22px; --lh-xl:   30px;   /* page titles */
+  --text-2xl:  28px; --lh-2xl:  36px;   /* stat numbers, empty-state headlines */
+  --weight-regular: 400; --weight-medium: 500; --weight-semibold: 600;   /* headers semibold ("satin"); no 700+ */
+
+  /* ── Space (4px base) ─────────────────────────────────────── */
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px;
+  --space-6: 24px; --space-8: 32px; --space-10: 40px; --space-12: 48px; --space-16: 64px;
+
+  /* ── Radius ───────────────────────────────────────────────── */
+  --radius-sm: 6px;    /* badges, chips */
+  --radius-md: 8px;    /* buttons, inputs */
+  --radius-lg: 12px;   /* cards, list rows */
+  --radius-xl: 16px;   /* panels, modals, drawers */
+  --radius-full: 9999px;
+
+  /* ── Elevation ────────────────────────────────────────────── */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 8px 32px rgba(0, 0, 0, 0.04);    /* the brand shadow: cards, panels */
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.08);   /* modals, drawers, popovers */
+  --glow-accent: 0 0 0 4px rgba(123, 255, 147, 0.35);
+  --blur: 14px;
+
+  /* ── Motion ───────────────────────────────────────────────── */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-fast: 120ms;   /* hover, press */
+  --dur-base: 180ms;   /* toggles, row expand */
+  --dur-slow: 240ms;   /* drawers, modals */
+
+  /* ── Layout ───────────────────────────────────────────────── */
+  --topbar-h: 56px;
+  --rail-w: 280px;         /* agent sidebar */
+  --panel-w: 360px;        /* right context panel */
+  --content-max: 1200px;   /* single-column pages (settings, analytics) */
+  --reading-max: 68ch;     /* draft and reply bodies */
+  --tap-min: 44px;         /* minimum touch target */
+
+  /* ── White-label hooks (agency overrides set these three only) ── */
+  --brand-fill: var(--accent);
+  --brand-fill-hover: var(--accent-hover);
+  --brand-on-fill: var(--text-on-accent);   /* computed per agency color to keep ≥4.5:1 (see DESIGN.md §9) */
+
+  color-scheme: light;
+}
+
+/* ── Dark theme: PROPOSED, needs Christian's approval (SPEC Station 03). Ratios measured on #0F100E / #1A1B19. ── */
+:root[data-theme='dark'] {
+  --bg:              #0F100E;
+  --bg-glass:        rgba(15, 16, 14, 0.85);
+  --surface:         #1A1B19;
+  --surface-glass:   rgba(26, 27, 25, 0.72);
+  --surface-sunken:  #151613;
+  --surface-inverse: #F2F0EA;
+  --text:            #F2F0EA;  /* 16.74:1 bg · 15.17 surface */
+  --text-muted:      #A8AFA4;  /* 8.48:1 bg · 7.68 surface */
+  --text-inverse:    #1A1A1A;
+  --text-on-accent:  #1A1A1A;
+  --accent:          #7BFF93;  /* mint leads in dark; still a fill with dark text on it */
+  --accent-hover:    #A3FFB4;
+  --accent-ink:      #7BFF93;  /* in dark, mint IS legible as text: 15.05:1 */
+  --accent-soft:     #133A20;
+  --border:          #2A2C28;
+  --border-control:  #6B7568;  /* 3.97:1 bg · 3.60 surface */
+  --focus-ring:      #7BFF93;
+  --success: #7BFF93; --success-soft: #133A20;
+  --warning: #FBBF24; --warning-soft: #3A2A06;
+  --danger:  #F87171; --danger-soft:  #3B1414;
+  --info:    #93C5FD; --info-soft:    #0F213F;
+  --shadow-md: 0 8px 32px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+}
+
+/* Accessibility preferences are part of the tokens, not an afterthought. */
+@media (prefers-reduced-transparency: reduce) {
+  :root { --surface-glass: var(--surface); --bg-glass: var(--bg); --blur: 0px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-fast: 0ms; --dur-base: 0ms; --dur-slow: 0ms; }
+}
