@@ -229,6 +229,25 @@ if ((wantRoutes || wantFlows) && BASE) {
     for (const e of errors) flow.push(`console: ${e.slice(0, 200)}`);
     await ctx.close();
   }
+  // The real front door: a browser with no cookie types into the sign-in form (the cookie-injected runs above skip it).
+  if (REMOTE && process.env.OMNI_EMAIL && process.env.OMNI_PASSWORD) {
+    for (const vp of Object.keys(VIEWPORTS)) {
+      const ctx = await browser.createBrowserContext();
+      const page = await ctx.newPage();
+      await page.setViewport(VIEWPORTS[vp]);
+      await step(`sign in through the form (${vp})`, async () => {
+        await page.goto(`${REMOTE}/`, { waitUntil: 'domcontentloaded' });
+        if (!/\/auth\/login/.test(page.url())) throw new Error(`not sent to sign-in: ${page.url()}`);
+        await page.type('#email', process.env.OMNI_EMAIL);
+        await page.type('#password', process.env.OMNI_PASSWORD);
+        await Promise.all([page.waitForNavigation({ waitUntil: 'domcontentloaded' }), page.click('button[type=submit]')]);
+        await page.waitForFunction(() => /\/w\/[^/]+\/\w+/.test(location.pathname), { timeout: 15000 });
+        const text = await page.evaluate(() => document.body.innerText);
+        if (/refused|Forbidden/i.test(text)) throw new Error('sign-in refused');
+      });
+      await ctx.close();
+    }
+  }
   {
     const { ctx, page } = await open('reviewer', 'light', 'desktop');
     await page.goto(`${BASE}/`); await page.waitForFunction(() => /\/w\/[^/]+\/home/.test(location.pathname)); await settle(page);

@@ -154,3 +154,24 @@ test('the password page needs a session', async () => {
   assert.equal(p.status, 200);
   assert.match(await p.text(), /autocomplete="new-password"/);
 });
+
+// The request a real browser sends from the form: Origin is "null" under some referrer policies; Sec-Fetch-Site is not.
+const browserLogin = (headers) => worker.fetch(new Request(`${O}/auth/login`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', ...headers },
+  body: new URLSearchParams({ email: 'owner@example.com', password: PASSWORD }) }), env);
+
+test('a same-site form post signs in even when the browser sends Origin: null', async () => {
+  for (const h of [{ origin: 'null', 'sec-fetch-site': 'same-origin' }, { 'sec-fetch-site': 'same-origin' }, { origin: O, 'sec-fetch-site': 'same-origin' }]) {
+    const r = await browserLogin(h);
+    assert.equal(r.headers.get('location'), '/', JSON.stringify(h));
+  }
+});
+
+test('cross-site posts are refused however the origin is hidden', async () => {
+  for (const h of [{ origin: 'null', 'sec-fetch-site': 'cross-site' }, { origin: 'null' }, {}, { 'sec-fetch-site': 'same-site' }, { origin: 'https://evil.example', 'sec-fetch-site': 'same-origin' }]) {
+    assert.equal((await browserLogin(h)).status, 403, JSON.stringify(h));
+  }
+});
+
+test('pages keep the origin on same-site posts (never no-referrer)', async () => {
+  assert.equal((await get('/auth/login')).headers.get('referrer-policy'), 'same-origin');
+});

@@ -84,7 +84,8 @@ function headers(h: Headers, { html, nonce }: { html: boolean; nonce?: string })
   h.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains');
   h.set('X-Content-Type-Options', 'nosniff');
   h.set('X-Frame-Options', 'DENY');
-  h.set('Referrer-Policy', 'no-referrer');
+  // same-origin, not no-referrer: under no-referrer browsers send `Origin: null` on form posts, which the CSRF check must refuse.
+  h.set('Referrer-Policy', 'same-origin');
   h.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()');
   h.set('Cross-Origin-Opener-Policy', 'same-origin');
   h.set('Cross-Origin-Resource-Policy', 'same-origin');
@@ -186,8 +187,11 @@ export default {
     }
 
     if (path.startsWith('/auth/') && req.method === 'POST') {
-      // CSRF: SameSite=Strict plus an exact Origin match.
-      if (req.headers.get('origin') !== url.origin) return respond('Forbidden', { status: 403 });
+      // CSRF: SameSite=Strict plus the request's origin. Browsers that withhold the origin ("null") still say where the
+      // request came from in Sec-Fetch-Site, which a page can't forge.
+      const origin = req.headers.get('origin');
+      const sameSite = origin === url.origin || ((origin === null || origin === 'null') && req.headers.get('sec-fetch-site') === 'same-origin');
+      if (!sameSite) return respond('This request came from another site, so it was refused.', { status: 403, headers: { 'content-type': 'text/plain; charset=utf-8' } });
       if (path === '/auth/logout') return redirect('/auth/login', { 'set-cookie': `${COOKIE}=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0` });
       if (path !== '/auth/login' && path !== '/auth/password') return respond('Not found', { status: 404 });
       const hash = await storedHash(env);
