@@ -3,11 +3,11 @@ import { NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-rout
 import { motion, AnimatePresence } from 'motion/react';
 import * as Menu from '@radix-ui/react-dropdown-menu';
 import { toast } from 'sonner';
-import { ChevronsUpDown, Check, Plus, Search, Moon, Sun, LogOut, RotateCcw, UserRound, MoreHorizontal, ShieldCheck, LayoutGrid, Keyboard, PauseCircle, KeyRound } from 'lucide-react';
+import { ChevronsUpDown, Check, Plus, Search, Moon, Sun, LogOut, RotateCcw, UserRound, MoreHorizontal, ShieldCheck, LayoutGrid, Keyboard, PauseCircle, KeyRound, Rows3 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useQuery, useHotkeys } from '@/lib/hooks';
 import { useSession, useWorkspace } from '@/lib/session';
-import { useTheme, setTheme } from '@/lib/theme';
+import { useTheme, setTheme, useDensity, setDensity } from '@/lib/theme';
 import { ROLE, initials } from '@/lib/format';
 import { PERSONAS } from '@/lib/api/demo/seed';
 import { NAV, MOBILE_PRIMARY, SECONDARY, labelFor, type PageKey } from './nav';
@@ -251,6 +251,7 @@ function UserMenu({ onHelp }: { onHelp: () => void }) {
   const { me, org, persona, switchPersona, resetDemo } = useSession();
   const nav = useNavigate();
   const theme = useTheme();
+  const density = useDensity();
   return (
     <Menu.Root>
       <Menu.Trigger className="rounded-full p-0.5 transition-shadow hover:ring-2 hover:ring-line" aria-label="Account menu">
@@ -274,6 +275,7 @@ function UserMenu({ onHelp }: { onHelp: () => void }) {
           </Menu.RadioGroup>
           <Menu.Separator className="my-1 h-px bg-line" />
           <Menu.Item className={menuItem} onSelect={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun className="size-4" aria-hidden /> : <Moon className="size-4" aria-hidden />}{theme === 'dark' ? 'Light theme' : 'Dark theme (proposal)'}</Menu.Item>
+          <Menu.Item className={cx(menuItem, 'max-md:hidden')} onSelect={() => setDensity(density === 'compact' ? 'comfortable' : 'compact')}><Rows3 className="size-4" aria-hidden />{density === 'compact' ? 'Comfortable rows' : 'Compact rows'}</Menu.Item>
           <Menu.Item className={cx(menuItem, 'max-lg:hidden')} onSelect={onHelp}><Keyboard className="size-4" aria-hidden />Keyboard shortcuts<span className="kbd ml-auto">?</span></Menu.Item>
           <Menu.Item className={menuItem} onSelect={() => { resetDemo(); nav('/'); toast.success('Demo data reset.'); }}><RotateCcw className="size-4" aria-hidden />Reset demo data</Menu.Item>
           <Menu.Separator className="my-1 h-px bg-line" />

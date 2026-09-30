@@ -70,11 +70,24 @@
   --glow-accent: 0 0 0 4px rgba(123, 255, 147, 0.35);
   --blur: 14px;
 
-  /* ── Motion ───────────────────────────────────────────────── */
+  /* ── Motion: three speeds, used everywhere (UI-REVISION-PLAN Phase 0) ── */
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-expo: cubic-bezier(0.22, 1, 0.36, 1);   /* layout and position changes */
+  /* A damped spring (zeta 0.646, 7.0% overshoot) sampled into CSS, so presses and hovers spring with no JS. */
+  --ease-spring: linear(0, 0.0699, 0.2306, 0.4241, 0.612, 0.7726, 0.8964, 0.9826, 1.0357, 1.0623, 1.07, 1.0656, 1.0545, 1.041, 1.0278, 1.0164, 1.0076, 1.0015, 0.9976, 0.9957, 0.9951, 0.9954, 0.9961, 0.9971, 1);
+  --dur-press: 160ms;   /* hover, press, color */
+  --dur-move: 400ms;    /* transforms, layout, springs */
+  --dur-reveal: 650ms;  /* content entering, the one-time draws */
   --dur-fast: 120ms;   /* hover, press */
   --dur-base: 180ms;   /* toggles, row expand */
   --dur-slow: 240ms;   /* drawers, modals */
+
+  /* ── Agent-acting gradient: only on things an agent is doing right now (paused otherwise) ── */
+  --ai-1: #A3FFB4; --ai-2: #7BFF93; --ai-3: #166534;
+
+  /* ── Density (compact is desktop-only; phones stay comfortable) ── */
+  --row-h: 44px;
+  --row-py: 10px;
 
   /* ── Layout ───────────────────────────────────────────────── */
   --topbar-h: 56px;
@@ -92,29 +105,31 @@
   color-scheme: light;
 }
 
-/* ── Dark theme: PROPOSED, needs Christian's approval (SPEC Station 03). Ratios measured on #0F100E / #1A1B19. ── */
+/* ── Dark theme: PROPOSED, needs Christian's approval (SPEC Station 03). Warm charcoal, not blue-black
+   (UI-REVISION-PLAN Phase 0, after animejs.com). Ratios measured 2026-09-29 on #1F1E1C bg / #292826 surface / #191816 sunken. ── */
 :root[data-theme='dark'] {
-  --bg:              #0F100E;
-  --bg-glass:        rgba(15, 16, 14, 0.85);
-  --surface:         #1A1B19;
-  --surface-glass:   rgba(26, 27, 25, 0.72);
-  --surface-sunken:  #151613;
+  --bg:              #1F1E1C;
+  --bg-glass:        rgba(31, 30, 28, 0.85);
+  --surface:         #292826;
+  --surface-glass:   rgba(41, 40, 38, 0.72);
+  --surface-sunken:  #191816;
   --surface-inverse: #F2F0EA;
-  --text:            #F2F0EA;  /* 16.74:1 bg · 15.17 surface */
-  --text-muted:      #A8AFA4;  /* 8.48:1 bg · 7.68 surface */
+  --text:            #F2F0EA;  /* 14.62:1 bg · 12.92 surface · 15.57 sunken */
+  --text-muted:      #ADA89D;  /* 7.03:1 bg · 6.22 surface · 7.49 sunken */
   --text-inverse:    #1A1A1A;
-  --text-on-accent:  #1A1A1A;
+  --text-on-accent:  #1A1A1A;  /* 13.73:1 on mint */
   --accent:          #7BFF93;  /* mint leads in dark; still a fill with dark text on it */
   --accent-hover:    #A3FFB4;
-  --accent-ink:      #7BFF93;  /* in dark, mint IS legible as text: 15.05:1 */
-  --accent-soft:     #133A20;
-  --border:          #2A2C28;
-  --border-control:  #6B7568;  /* 3.97:1 bg · 3.60 surface */
+  --accent-ink:      #7BFF93;  /* in dark, mint IS legible as text: 13.14:1 bg · 11.62 surface */
+  --accent-soft:     #183A22;  /* mint on it 9.94:1 */
+  --border:          #35332F;
+  --border-control:  #7F7A71;  /* 3.91:1 bg · 3.45 surface · 4.16 sunken */
   --focus-ring:      #7BFF93;
-  --success: #7BFF93; --success-soft: #133A20;
-  --warning: #FBBF24; --warning-soft: #3A2A06;
-  --danger:  #F87171; --danger-soft:  #3B1414;
-  --info:    #93C5FD; --info-soft:    #0F213F;
+  --success: #7BFF93; --success-soft: #183A22;  /* 9.94:1 on soft */
+  --warning: #FBBF24; --warning-soft: #3A2C0C;  /* 8.14:1 on soft · 9.98 bg */
+  --danger:  #F87171; --danger-soft:  #3E1A17;  /* 5.56:1 on soft · 6.02 bg */
+  --info:    #93C5FD; --info-soft:    #15243C;  /* 8.63:1 on soft · 9.24 bg */
+  --ai-3: #1F6B3A;
   --shadow-md: 0 8px 32px rgba(0, 0, 0, 0.35);
   --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.5);
   color-scheme: dark;
@@ -125,5 +140,9 @@
   :root { --surface-glass: var(--surface); --bg-glass: var(--bg); --blur: 0px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  :root { --dur-fast: 0ms; --dur-base: 0ms; --dur-slow: 0ms; }
+  :root { --dur-fast: 0ms; --dur-base: 0ms; --dur-slow: 0ms; --dur-press: 0ms; --dur-move: 0ms; --dur-reveal: 0ms; }
+}
+/* Compact density: desktop only. Phones keep 44px rows because that is the touch target. */
+@media (min-width: 768px) {
+  :root[data-density='compact'] { --row-h: 36px; --row-py: 6px; }
 }

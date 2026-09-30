@@ -26,7 +26,7 @@ const sizes: Record<Size, string> = { sm: 'h-8 px-2.5 text-sm gap-1.5', md: 'h-9
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button({ variant = 'secondary', size = 'md', loading, icon, kbd, className, children, disabled, ...rest }, ref) {
   return (
     <button ref={ref} {...rest} disabled={disabled || loading} aria-busy={loading || undefined}
-      className={cx('inline-flex shrink-0 select-none items-center justify-center rounded-md font-medium whitespace-nowrap transition-[background-color,transform,opacity] duration-[var(--dur-fast)] ease-out active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-55 max-md:min-h-11',
+      className={cx('press inline-flex shrink-0 select-none items-center justify-center rounded-md font-medium whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-55 max-md:min-h-11',
         variants[variant], sizes[size], className)}>
       {loading ? <Loader2 className="size-4 animate-spin" aria-hidden /> : icon}
       {children}
@@ -39,7 +39,7 @@ export const IconButton = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTM
   function IconButton({ label, size = 'md', className, children, ...rest }, ref) {
     return (
       <button ref={ref} aria-label={label} title={label} {...rest}
-        className={cx('inline-grid shrink-0 place-items-center rounded-md text-muted transition-colors duration-[var(--dur-fast)] hover:bg-sunken hover:text-fg disabled:opacity-50',
+        className={cx('press inline-grid shrink-0 place-items-center rounded-md text-muted hover:bg-sunken hover:text-fg disabled:opacity-50',
           size === 'sm' ? 'size-8' : 'size-9', 'max-md:size-11', className)}>
         {children}
       </button>
@@ -275,11 +275,13 @@ export function CountUp({ value, format = (n) => Math.round(n).toLocaleString('e
 }
 
 // ── Page scaffolding ──────────────────────────────────────────────────────────────────────────
-export function PageHeader({ title, subtitle, actions, children }: { title: string; subtitle?: ReactNode; actions?: ReactNode; children?: ReactNode }) {
+/** Page title in the display serif. `accent` italicises one word of it (must appear in `title`); titles otherwise match the nav label. */
+export function PageHeader({ title, accent, subtitle, actions, children }: { title: string; accent?: string; subtitle?: ReactNode; actions?: ReactNode; children?: ReactNode }) {
+  const at = accent ? title.lastIndexOf(accent) : -1;
   return (
     <header className="mb-5 flex flex-wrap items-end gap-3">
       <div className="min-w-0 flex-1 basis-64">
-        <h1 className="text-xl">{title}</h1>
+        <h1 className="display">{at < 0 ? title : <>{title.slice(0, at)}<em>{accent}</em>{title.slice(at + accent!.length)}</>}</h1>
         {subtitle && <p className="mt-0.5 text-sm text-muted">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2 max-sm:w-full">{actions}</div>}
