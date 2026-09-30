@@ -111,9 +111,10 @@ export function Banner({ tone = 'info', title, children, action, role }: { tone?
 export function Meter({ value, max, label, className }: { value: number; max: number; label: string; className?: string }) {
   const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
   const tone = pct >= 100 ? 'bg-danger' : pct >= 80 ? 'bg-warning' : 'bg-ink';
+  const reduce = useReducedMotion();
   return (
     <div role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={max} aria-valuenow={value} className={cx('h-2 overflow-hidden rounded-full bg-sunken', className)}>
-      <motion.div className={cx('h-full rounded-full', tone)} initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.6, ease: [0.2, 0.8, 0.2, 1] }} />
+      <motion.div className={cx('h-full rounded-full', tone)} initial={reduce ? false : { width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.6, ease: [0.2, 0.8, 0.2, 1] }} />
     </div>
   );
 }

@@ -142,13 +142,13 @@ function ListRows({ items, groups, selectedId, onSelect, checked, setChecked }: 
             <motion.li key={d.id} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0, transition: { delay: Math.min(i, 10) * 0.025 } }} exit={{ opacity: 0, x: -24, height: 0, marginTop: 0 }}
               className={cx('relative flex items-stretch rounded-xl border transition-colors', on ? 'border-ink/40 bg-surface shadow-md' : 'border-line bg-surface/70 hover:bg-surface')}>
               {d.status === 'review' && (
-                <label className="flex w-10 shrink-0 cursor-pointer items-start justify-center pt-4" title={seen ? 'Select for bulk approve' : 'Open it first to include it in bulk approve'}>
+                <label className="flex w-10 shrink-0 cursor-pointer items-start justify-center pt-[calc(var(--row-py)+4px)]" title={seen ? 'Select for bulk approve' : 'Open it first to include it in bulk approve'}>
                   <span className="sr-only">Select {d.recipient.name}</span>
                   <input type="checkbox" disabled={!seen} checked={checked.has(groupKey(d))} className="size-4 accent-[var(--accent-ink)] disabled:opacity-40"
                     onChange={(e) => { const s = new Set(checked); if (e.target.checked) s.add(groupKey(d)); else s.delete(groupKey(d)); setChecked(s); }} />
                 </label>
               )}
-              <button onClick={() => onSelect(d.id)} aria-current={on || undefined} className={cx('min-w-0 flex-1 py-3 pr-3 text-left', d.status !== 'review' && 'pl-3.5')}>
+              <button onClick={() => onSelect(d.id)} aria-current={on || undefined} className={cx('row-d min-w-0 flex-1 pr-3 text-left', d.status !== 'review' && 'pl-3.5')}>
                 <span className="flex items-center gap-2">
                   <span className="truncate font-medium">{d.recipient.name}</span>
                   <span className="ml-auto flex shrink-0 items-center gap-1.5 text-muted"><ChannelIcon c={d.channel} /><span className="tabular text-sm font-semibold text-fg">{d.fitScore ?? '—'}</span></span>

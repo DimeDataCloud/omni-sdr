@@ -97,7 +97,13 @@ const campaignOut = (w: World, c: World['campaigns'][number]): Campaign => {
 };
 const icpOut = (i: World['icps'][number]): Icp => ({ id: i.id, lineageId: i.lineageId, name: i.name, version: i.version, data: i.data, createdAt: i.createdAt });
 
-function dayKey(d: Date, tz: string) { return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d); }
+// One formatter per timezone: constructing Intl.DateTimeFormat per call made Analytics a 535 ms long task on a 4x CPU.
+const dayFmt = new Map<string, Intl.DateTimeFormat>();
+function dayKey(d: Date, tz: string) {
+  let f = dayFmt.get(tz);
+  if (!f) { f = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }); dayFmt.set(tz, f); }
+  return f.format(d);
+}
 
 export const demoClient: Client = {
   mode: 'demo',
@@ -396,11 +402,16 @@ export const demoClient: Client = {
     const inWs = <T extends { ws: string | null }>(xs: T[]) => xs.filter((x) => x.ws === s.workspaceId);
     const sent = inWs(w.sent); const inbound = inWs(w.inbound); const meetings = inWs(w.meetings);
     const POS = ['meeting_request', 'positive_inquiry', 'referral'];
-    const daily = keys.map((day) => ({ day,
-      sent: sent.filter((x) => dayKey(new Date(x.sentAt), tz) === day).length,
-      replies: inbound.filter((x) => !['bounce', 'out_of_office'].includes(x.intent) && dayKey(new Date(x.receivedAt), tz) === day).length,
-      positive: inbound.filter((x) => POS.includes(x.intent) && dayKey(new Date(x.receivedAt), tz) === day).length,
-      meetings: meetings.filter((x) => x.status !== 'canceled' && dayKey(new Date(x.createdAt), tz) === day).length }));
+    // One pass per collection, bucketed by day key (was days × records formatter calls).
+    const buckets = new Map(keys.map((day) => [day, { day, sent: 0, replies: 0, positive: 0, meetings: 0 }]));
+    for (const x of sent) { const b = buckets.get(dayKey(new Date(x.sentAt), tz)); if (b) b.sent++; }
+    for (const x of inbound) {
+      const b = buckets.get(dayKey(new Date(x.receivedAt), tz)); if (!b) continue;
+      if (!['bounce', 'out_of_office'].includes(x.intent)) b.replies++;
+      if (POS.includes(x.intent)) b.positive++;
+    }
+    for (const x of meetings) { if (x.status === 'canceled') continue; const b = buckets.get(dayKey(new Date(x.createdAt), tz)); if (b) b.meetings++; }
+    const daily = [...buckets.values()];
     const totals = daily.reduce((t, x) => ({ sent: t.sent + x.sent, replies: t.replies + x.replies, positive: t.positive + x.positive, meetings: t.meetings + x.meetings }),
       { sent: 0, replies: 0, positive: 0, meetings: 0 });
     const since = now.getTime() - days * 86400e3;

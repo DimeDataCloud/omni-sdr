@@ -2,7 +2,7 @@
 // A rate with no denominator shows "—" and says why; every number comes from rows.
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { motion } from 'motion/react';
+import { motion, useReducedMotion } from 'motion/react';
 import { Send, MessageSquareReply, Sparkles, CalendarCheck2, CheckCheck, Coins, Info } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { Analytics } from '@/lib/api/types';
@@ -18,6 +18,7 @@ export default function AnalyticsPage() {
   const a = useQuery(() => api.analytics(scope, days), [scope.workspaceId, days]);
   const credits = useQuery(() => api.credits(scope), [scope.workspaceId], { enabled: role !== 'client_viewer' });
   const nav = useNavigate();
+  const reduce = useReducedMotion();
   const d = a.data;
   const client = role === 'client_viewer';
 
@@ -53,7 +54,7 @@ export default function AnalyticsPage() {
                         <tr key={s.step} className="border-t border-line">
                           <td className="px-5 py-2.5">{s.step === 0 ? '1 · first touch' : `${s.step + 1} · follow-up`}</td>
                           <td className="tabular px-3 text-right">{s.sent}</td><td className="tabular px-3 text-right">{s.replied}</td>
-                          <td className="px-5"><div className="flex items-center justify-end gap-2"><div className="h-2 flex-1 overflow-hidden rounded-full bg-sunken max-sm:hidden"><motion.div className="h-full rounded-full bg-chart-1" initial={{ width: 0 }} animate={{ width: `${Math.min(100, s.replyRate ?? 0)}%` }} transition={{ duration: 0.7 }} /></div>
+                          <td className="px-5"><div className="flex items-center justify-end gap-2"><div className="h-2 flex-1 overflow-hidden rounded-full bg-sunken max-sm:hidden"><motion.div className="h-full rounded-full bg-chart-1" initial={reduce ? false : { width: 0 }} animate={{ width: `${Math.min(100, s.replyRate ?? 0)}%` }} transition={{ duration: 0.7 }} /></div>
                             <span className="tabular w-12 text-right">{s.replyRate === null ? '—' : `${s.replyRate}%`}</span></div></td>
                         </tr>
                       ))}
@@ -88,7 +89,7 @@ export default function AnalyticsPage() {
 function Tile({ icon: Icon, label, value, rate, rateLabel, pct, sub, onClick }: { icon: typeof Send; label: string; value: number | null; rate?: number | null; rateLabel?: string; pct?: boolean; sub?: string; onClick?: () => void }) {
   const Tag = onClick ? motion.button : motion.div;
   return (
-    <Tag variants={listItem} onClick={onClick} className={cx('card flex flex-col p-4 text-left', onClick && 'transition-transform hover:-translate-y-0.5')}>
+    <Tag variants={listItem} onClick={onClick} className={cx('card flex flex-col p-4 text-left', onClick && 'lift')}>
       <span className="flex items-center gap-2 text-sm text-muted"><Icon className="size-4" aria-hidden />{label}</span>
       <span className="mt-2 text-2xl font-semibold">{value === null ? '—' : <CountUp value={value} format={(n) => (pct ? `${n.toFixed(1)}%` : Math.round(n).toLocaleString('en-US'))} />}</span>
       <span className="mt-0.5 text-xs text-muted">
@@ -106,6 +107,7 @@ const SERIES = [
 
 function Chart({ data }: { data: Analytics }) {
   const [hover, setHover] = useState<number | null>(null);
+  const reduce = useReducedMotion();
   const narrow = useMedia('(max-width: 639px)');
   const W = narrow ? 440 : 1000; const H = narrow ? 260 : 240; const P = { l: 30, r: 10, t: 12, b: 28 };
   const max = Math.max(4, ...data.daily.map((d) => Math.max(d.sent, d.replies, d.meetings)));
@@ -147,7 +149,7 @@ function Chart({ data }: { data: Analytics }) {
             <text key={d.day} x={xs(i)} y={H - 8} textAnchor="middle" fontSize="12" fill="var(--text-muted)">{new Date(`${d.day}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}</text>))}
           {paths.map((p) => <motion.path key={`a${p.key}`} d={p.area} fill={`url(#g-${p.key})`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.8, delay: 0.2 }} />)}
           {paths.map((p, i) => <motion.path key={p.key} d={p.line} fill="none" stroke={p.color} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round"
-            initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 1.1, delay: i * 0.12, ease: [0.2, 0.8, 0.2, 1] }} />)}
+            initial={reduce ? false : { pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 1.1, delay: i * 0.12, ease: [0.2, 0.8, 0.2, 1] }} />)}
           {hover !== null && (<g>
             <line x1={xs(hover)} x2={xs(hover)} y1={P.t} y2={H - P.b} stroke="var(--border-control)" strokeDasharray="3 3" />
             {SERIES.map((s) => <circle key={s.key} cx={xs(hover)} cy={ys(data.daily[hover][s.key])} r={4.5} fill="var(--surface)" stroke={s.color} strokeWidth={2.5} />)}

@@ -1,6 +1,7 @@
 // The suite's quality gates. Every gate prints its denominator, so a pass over nothing can't look green.
 //   node gates/run-gates.mjs            all gates against a fresh production build (vite preview)
 //   node gates/run-gates.mjs --url=https://…   browser gates against a deployed copy (needs a session cookie via OMNI_SESSION)
+//   --only=quality (or idle,motion,fonts,inp,tabwalk,visual) runs the Phase 0 quality gates; --update-baselines rewrites the visual baselines
 // Exit code 1 if any gate fails. Screenshots land in gates/out/ for the visual review pass.
 import { spawn } from 'node:child_process';
 import { readFileSync, readdirSync, statSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -8,6 +9,7 @@ import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import puppeteer from 'puppeteer-core';
+import { runQuality } from './quality.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'gates', 'out');
@@ -26,6 +28,9 @@ function gate(name, failures, denominator, notes = []) {
   for (const n of notes) console.log(`        note: ${n}`);
 }
 const want = (g) => !ONLY || ONLY.split(',').includes(g);
+const QUALITY = ['idle', 'motion', 'fonts', 'inp', 'tabwalk', 'visual'];
+const wantQ = (g) => !ONLY || ONLY.split(',').some((x) => x === g || x === 'quality');
+const wantQuality = QUALITY.some(wantQ);
 const walk = (d) => readdirSync(d).flatMap((f) => { const p = join(d, f); return statSync(p).isDirectory() ? walk(p) : [p]; });
 
 // ── Static gates ──────────────────────────────────────────────────────────────────────────────
@@ -52,7 +57,7 @@ if (want('static') && !REMOTE) {
 // ── Build + bundle budget ─────────────────────────────────────────────────────────────────────
 let server;
 let BASE = REMOTE;
-if (!REMOTE && (want('bundle') || want('browser'))) {
+if (!REMOTE && (want('bundle') || want('browser') || wantQuality)) {
   await new Promise((res, rej) => { const p = spawn('npx', ['vite', 'build'], { cwd: ROOT, shell: true, stdio: 'ignore' }); p.on('exit', (c) => (c ? rej(new Error('build failed')) : res())); });
   const html = readFileSync(join(ROOT, 'dist', 'index.html'), 'utf8');
   const initial = [...html.matchAll(/(?:src|href)="\/(assets\/[^"]+\.js)"/g)].map((m) => m[1]);
@@ -60,7 +65,12 @@ if (!REMOTE && (want('bundle') || want('browser'))) {
   const secretish = walk(join(ROOT, 'dist')).filter((f) => /\.(js|html|css)$/.test(f)).filter((f) => /PASSWORD_HASH|SESSION_SECRET|BEGIN PRIVATE KEY|sk_live_|AIza[0-9A-Za-z_-]{20}/.test(readFileSync(f, 'utf8'))).map((f) => relative(ROOT, f));
   gate(`initial JS ≤ 260 KB gzip (is ${(gz / 1024).toFixed(1)} KB)`, gz > 260 * 1024 ? [`${(gz / 1024).toFixed(1)} KB`] : [], initial.length);
   gate('no secrets in the bundle', secretish, walk(join(ROOT, 'dist')).length);
-  if (want('browser')) {
+  // The minifier once merged backdrop-filter into -webkit-backdrop-filter only, so no glass surface ever blurred in
+  // Chrome (found 2026-09-30). Every rule that asks for a backdrop blur must keep the unprefixed property.
+  const css = walk(join(ROOT, 'dist')).filter((f) => f.endsWith('.css')).map((f) => readFileSync(f, 'utf8')).join('\n');
+  const blurRules = [...css.matchAll(/([^{}]+)\{([^{}]*-webkit-backdrop-filter:[^{}]*)\}/g)];
+  gate('backdrop blur keeps the unprefixed property after minify', blurRules.filter((m) => !/(^|;)backdrop-filter:/.test(m[2])).map((m) => m[1].trim().slice(0, 60)), blurRules.length);
+  if (want('browser') || wantQuality) {
     server = spawn('npx', ['vite', 'preview', '--host', '127.0.0.1', '--port', '4173', '--strictPort'], { cwd: ROOT, shell: true, stdio: 'ignore' });
     BASE = 'http://127.0.0.1:4173';
     let up = false;
@@ -82,7 +92,7 @@ const FORBIDDEN = [/open rate/i, /\bopened\b/i, /SOC ?2/i, /send now/i, /auto-?s
 
 const wantRoutes = !ONLY || want('browser') || want('routes');
 const wantFlows = !ONLY || want('browser') || want('flows');
-if ((wantRoutes || wantFlows) && BASE) {
+if ((wantRoutes || wantFlows || wantQuality) && BASE) {
   if (!CHROME) throw new Error('No Chrome or Edge found for the browser gates');
   rmSync(OUT, { recursive: true, force: true }); mkdirSync(OUT, { recursive: true });
   const browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox', '--force-color-profile=srgb', '--hide-scrollbars'] });
@@ -156,6 +166,7 @@ if ((wantRoutes || wantFlows) && BASE) {
   }
 
   // ── Flows ──
+  if (wantFlows) {
   const flow = [];
   let flowSteps = 0;
   const step = async (name, fn) => { flowSteps++; try { await fn(); } catch (e) { flow.push(`${name}: ${e.message.split('\n')[0]}`); } };
@@ -255,6 +266,8 @@ if ((wantRoutes || wantFlows) && BASE) {
     await ctx.close();
   }
   gate('flows: keyboard approvals, gate on edit, chat, booking, palette, hold', flow, flowSteps);
+  }
+  if (wantQuality) await runQuality({ browser, BASE, ROOT, OUT, gate, want: wantQ, open, settle, REMOTE, ALL });
   await browser.close();
 }
 if (server) { server.kill(); spawn('taskkill', ['/pid', String(server.pid), '/t', '/f'], { shell: true, stdio: 'ignore' }); }

@@ -69,9 +69,9 @@ function Contacts() {
             </thead>
             <tbody>
               {items.map((c) => (
-                <tr key={c.id} className={cx('border-t border-line transition-colors hover:bg-sunken/50', sel.has(c.id) && 'bg-accent-soft/50')}>
+                <tr key={c.id} className={cx('row-d border-t border-line transition-colors hover:bg-sunken/50', sel.has(c.id) && 'bg-accent-soft/50')}>
                   <td className="px-3"><input type="checkbox" aria-label={`Select ${c.name}`} checked={sel.has(c.id)} onChange={() => toggle(c.id)} className="size-4 accent-[var(--accent-ink)]" /></td>
-                  <td className="px-3 py-2.5"><button className="text-left font-medium hover:text-ink hover:underline" onClick={() => setParams({ c: c.id })}>{c.name ?? '—'}</button>
+                  <td className="px-3"><button className="text-left font-medium hover:text-ink hover:underline" onClick={() => setParams({ c: c.id })}>{c.name ?? '—'}</button>
                     <span className="block text-xs text-muted">{c.title}</span></td>
                   <td className="px-3">{c.company}</td>
                   <td className="px-3"><span className="flex items-center gap-2"><span className="max-w-56 truncate">{c.email}</span><Badge tone={EMAIL_STATUS[c.emailStatus].tone}>{EMAIL_STATUS[c.emailStatus].label}</Badge></span></td>

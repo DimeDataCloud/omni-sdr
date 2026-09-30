@@ -96,7 +96,7 @@ function ReplyList({ items, selectedId, onSelect }: { items: InboxItem[]; select
           return (
             <motion.li key={r.id} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0, transition: { delay: Math.min(i, 10) * 0.03 } }} exit={{ opacity: 0, x: -24 }}>
               <button onClick={() => onSelect(r.id)} aria-current={on || undefined}
-                className={cx('w-full rounded-xl border p-3 text-left transition-colors', on ? 'border-ink/40 bg-surface shadow-md' : 'border-line bg-surface/70 hover:bg-surface',
+                className={cx('row-d w-full rounded-xl border px-3 text-left transition-colors', on ? 'border-ink/40 bg-surface shadow-md' : 'border-line bg-surface/70 hover:bg-surface',
                   r.slaMinutesRemaining !== null && r.slaMinutesRemaining < 30 && !on && 'border-danger/40')}>
                 <span className="flex items-center gap-2">
                   <span className="truncate font-medium">{r.contactName ?? r.fromAddress}</span>

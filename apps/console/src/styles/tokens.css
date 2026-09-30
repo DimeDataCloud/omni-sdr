@@ -87,7 +87,7 @@
 
   /* ── Density (compact is desktop-only; phones stay comfortable) ── */
   --row-h: 44px;
-  --row-py: 10px;
+  --row-py: 12px;
 
   /* ── Layout ───────────────────────────────────────────────── */
   --topbar-h: 56px;
@@ -144,5 +144,5 @@
 }
 /* Compact density: desktop only. Phones keep 44px rows because that is the touch target. */
 @media (min-width: 768px) {
-  :root[data-density='compact'] { --row-h: 36px; --row-py: 6px; }
+  :root[data-density='compact'] { --row-h: 36px; --row-py: 5px; }
 }

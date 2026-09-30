@@ -1,15 +1,15 @@
 // Ctrl/Cmd K: jump to any page, agent, contact or draft; run the few safe global actions (DESIGN 5.4).
 import { Command } from 'cmdk';
 import * as RDialog from '@radix-ui/react-dialog';
-import { AnimatePresence, motion } from 'motion/react';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
-import { Search, Bot, UserRound, FileText, PauseCircle, UserPlus, Moon, Sun } from 'lucide-react';
+import { Search, Bot, UserRound, FileText, PauseCircle, UserPlus, Moon, Sun, Rows3 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useQuery } from '@/lib/hooks';
 import { useWorkspace } from '@/lib/session';
-import { useTheme, setTheme } from '@/lib/theme';
+import { useTheme, setTheme, useDensity, setDensity } from '@/lib/theme';
 import { NAV, labelFor } from './nav';
+import { cx } from '../ui';
 
 const item = 'flex min-h-11 cursor-pointer items-center gap-3 rounded-lg px-3 text-sm aria-selected:bg-sunken data-[selected=true]:bg-sunken';
 const group = '[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-muted';
@@ -18,6 +18,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
   const { scope, role, can } = useWorkspace();
   const nav = useNavigate();
   const theme = useTheme();
+  const density = useDensity();
   const base = `/w/${scope.workspaceId}`;
   const agents = useQuery(() => api.agents(scope), [scope.workspaceId], { enabled: open && role !== 'client_viewer' });
   const contacts = useQuery(() => api.contacts(scope), [scope.workspaceId], { enabled: open && can('build') });
@@ -30,13 +31,10 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
   };
   return (
     <RDialog.Root open={open} onOpenChange={onOpenChange}>
-      <AnimatePresence>
-        {open && (
-          <RDialog.Portal forceMount>
-            <RDialog.Overlay asChild forceMount><motion.div className="fixed inset-0 z-50 bg-inverse/30 backdrop-blur-[2px]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} /></RDialog.Overlay>
-            <RDialog.Content asChild forceMount>
-              <motion.div initial={{ opacity: 0, y: -8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: 0.98 }} transition={{ type: 'spring', bounce: 0, duration: 0.25 }}
-                className="fixed top-[12vh] left-1/2 z-50 w-[calc(100vw-24px)] max-w-xl overflow-hidden rounded-xl border border-line bg-surface shadow-lg" style={{ translateX: '-50%' }}>
+          <RDialog.Portal>
+            <RDialog.Overlay className="ov-fade fixed inset-0 z-50 bg-inverse/30" />
+            <RDialog.Content
+                className="ov-pop fixed top-[12vh] left-1/2 z-50 w-[calc(100vw-24px)] max-w-xl -translate-x-1/2 overflow-hidden rounded-xl border border-line bg-surface shadow-lg">
                 <RDialog.Title className="sr-only">Search or jump to</RDialog.Title>
                 <RDialog.Description className="sr-only">Type to find a page, agent, contact or draft.</RDialog.Description>
                 <Command label="Search or jump to" loop>
@@ -89,14 +87,14 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
                       <Command.Item value="theme dark light" onSelect={() => { setTheme(theme === 'dark' ? 'light' : 'dark'); onOpenChange(false); }} className={item}>
                         {theme === 'dark' ? <Sun className="size-4 text-muted" aria-hidden /> : <Moon className="size-4 text-muted" aria-hidden />}{theme === 'dark' ? 'Light theme' : 'Dark theme (proposal)'}
                       </Command.Item>
+                      <Command.Item value="density compact comfortable rows" onSelect={() => { setDensity(density === 'compact' ? 'comfortable' : 'compact'); onOpenChange(false); }} className={cx(item, 'max-md:hidden')}>
+                        <Rows3 className="size-4 text-muted" aria-hidden />{density === 'compact' ? 'Comfortable rows' : 'Compact rows'}
+                      </Command.Item>
                     </Command.Group>
                   </Command.List>
                 </Command>
-              </motion.div>
             </RDialog.Content>
           </RDialog.Portal>
-        )}
-      </AnimatePresence>
     </RDialog.Root>
   );
 }

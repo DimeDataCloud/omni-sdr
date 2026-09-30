@@ -19,7 +19,12 @@ export const absTime = (iso: string, tz: string) =>
   new Date(iso).toLocaleString('en-US', { timeZone: tz, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
 export const clock = (iso: string, tz: string) => new Date(iso).toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' });
 export const dayLabel = (iso: string, tz: string) => new Date(iso).toLocaleDateString('en-US', { timeZone: tz, weekday: 'long', month: 'short', day: 'numeric' });
-export const dayKey = (iso: string, tz: string) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso));
+const dayFmt = new Map<string, Intl.DateTimeFormat>();
+export const dayKey = (iso: string, tz: string) => {
+  let f = dayFmt.get(tz);
+  if (!f) { f = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }); dayFmt.set(tz, f); }
+  return f.format(new Date(iso));
+};
 
 export function fmtDur(min: number) {
   const t = Math.round(min); const h = Math.floor(t / 60); const m = t % 60;
