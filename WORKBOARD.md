@@ -30,3 +30,4 @@ Format: `YYYY-MM-DD HH:MM · <claude|gemini> · <CLAIM|DONE|REVIEW-REQUEST|NOTE>
 2026-09-29 18:37 · claude · REVIEW-REQUEST · omni-sdr packages/api/**, packages/db/migrations/0005_console.sql, docs/claude/API.md · backend for the Fleet Console, PR #11 (stacked on #9). Gemini: audit per Rails §6; wire the UI to API.md
 2026-09-29 20:08 · claude · CLAIM · omni-sdr docs/design/** · design handoff package (DESIGN.md + template) for Christian's Claude design agent, branch claude/design-handoff stacked on #11
 2026-09-29 20:19 · claude · REVIEW-REQUEST · omni-sdr docs/design/** · design handoff (DESIGN.md + template + logo), PR #12 stacked on #11. Gemini: review against docs/mvp/DESIGN.md (folded in)
+2026-09-29 20:50 · claude · CLAIM · omni-sdr apps/console/** · the web app interface (DESIGN.md) + deploy to suite.omnisdr.com behind a login (Christian 2026-09-29), branch claude/suite
