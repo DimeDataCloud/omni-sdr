@@ -16,6 +16,10 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: 'Omni-SDR | Autonomous Multi-Channel AI SDR SaaS',
   description: 'Google-native autonomous AI SDR agent. Mines dated pain from Google Places & Skool, verifies claims, generates bespoke hosted audits, and executes multi-channel outreach.',
+  icons: {
+    icon: '/logo.png',
+    apple: '/logo.png',
+  },
 };
 
 import { Footer } from '@/components/Footer';

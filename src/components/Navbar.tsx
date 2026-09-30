@@ -46,8 +46,8 @@ export function Navbar() {
         {/* Brand Logo */}
         <div className="flex items-center gap-3">
           <Link href="/" className="group flex items-center gap-2.5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 via-indigo-600 to-blue-700 shadow-lg shadow-indigo-500/25 ring-1 ring-white/20 transition-all duration-300 group-hover:scale-105 group-hover:shadow-indigo-500/40">
-              <Sparkles className="h-5 w-5 text-white" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-lg shadow-indigo-500/25 ring-1 ring-white/20 transition-all duration-300 group-hover:scale-105 group-hover:shadow-indigo-500/40 overflow-hidden">
+              <img src="/logo.png" alt="Omni SDR Logo" className="h-full w-full object-cover" />
             </div>
             <div>
               <div className="flex items-center gap-2">

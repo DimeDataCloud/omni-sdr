@@ -107,7 +107,8 @@ export default function OmniSdrLandingPage() {
 
       <main className="w-full max-w-4xl px-6 py-10 md:py-16 flex flex-col items-center z-10 relative">
         {/* Header */}
-        <header ref={headerRef} className="text-center mb-10 md:mb-12 w-full">
+        <header ref={headerRef} className="text-center mb-10 md:mb-12 w-full flex flex-col items-center">
+          <img src="/logo.png" alt="Omni SDR Logo" className="w-32 h-auto mb-4 drop-shadow-md" />
           <h1 
             className="text-5xl md:text-6xl font-extrabold tracking-tight mb-5 text-[#111111]"
             style={{ textShadow: '0 1px 1px rgba(255,255,255,0.8)' }}
@@ -130,7 +131,8 @@ export default function OmniSdrLandingPage() {
             boxShadow: '0 20px 40px rgba(0, 0, 0, 0.04), inset 0 0 0 1px rgba(255, 255, 255, 0.4)'
           }}
         >
-          <div className="text-center mb-8">
+          <div className="text-center mb-8 flex flex-col items-center">
+            <img src="/logo.png" alt="Omni SDR Form Logo" className="w-12 h-12 mb-4 rounded-xl object-cover shadow-sm ring-1 ring-black/5" />
             <h2 
               className="text-3xl font-semibold mb-2 text-[#111111]"
               style={{ textShadow: '0 1px 1px rgba(255,255,255,0.8)' }}
