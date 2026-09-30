@@ -5,12 +5,17 @@ import { AnimatePresence, motion } from 'motion/react';
 import { toast } from 'sonner';
 import { Upload, Search, ExternalLink, Plus, Target, Megaphone, Users, History, ChevronRight } from 'lucide-react';
 import { api, type Campaign, type Icp } from '@/lib/api';
-import { useQuery } from '@/lib/hooks';
+import { useHotkeys, useQuery, useSelection, prefetchQuery } from '@/lib/hooks';
+import type { Scope } from '@/lib/api/client';
 import { useWorkspace } from '@/lib/session';
+import { useCommands } from '@/lib/commands';
 import { EMAIL_STATUS, domainOf, enrollmentState, factSummary, plural, relTime } from '@/lib/format';
-import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, Page, PageHeader, Segmented, Select, Sheet, SkeletonList, Textarea, cx, listItem, listStagger } from '@/components/ui';
+import { Badge, BulkBar, Button, Card, EmptyState, ErrorState, Field, Input, Page, PageHeader, Segmented, Select, Sheet, SkeletonList, Textarea, cx, listItem, listStagger } from '@/components/ui';
 
 type Tab = 'contacts' | 'campaigns' | 'icps';
+
+/** Warmed on hover of the Leads nav link. */
+export const prefetch = (s: Scope) => prefetchQuery(`contacts:${s.workspaceId}:`, () => api.contacts(s, ''));
 
 export default function LeadsPage() {
   const [params, setParams] = useSearchParams();
@@ -35,13 +40,22 @@ function Contacts() {
   const { scope, tz } = useWorkspace();
   const [params, setParams] = useSearchParams();
   const [q, setQ] = useState('');
-  const list = useQuery(() => api.contacts(scope, q), [scope.workspaceId, q]);
-  const [sel, setSel] = useState<Set<string>>(new Set());
+  const list = useQuery(() => api.contacts(scope, q), [scope.workspaceId, q], { key: `contacts:${scope.workspaceId}:${q}` });
   const [importing, setImporting] = useState(false);
   const [enrolling, setEnrolling] = useState(false);
   const open = params.get('c');
-  const items = list.data ?? [];
-  const toggle = (id: string) => { const s = new Set(sel); if (s.has(id)) s.delete(id); else s.add(id); setSel(s); };
+  const items = useMemo(() => list.data ?? [], [list.data]);
+  const order = useMemo(() => items.map((c) => c.id), [items]);
+  const sel = useSelection(order, !open && !importing && !enrolling);
+  // X toggles the row that has focus (the name button or the checkbox inside it).
+  useHotkeys({ x: () => { const id = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>('[data-row-id]')?.dataset.rowId; if (id) sel.toggle(id); } }, [sel.toggle]);
+  useCommands([
+    { id: 'import', label: 'Import contacts', icon: Upload, run: () => setImporting(true) },
+    ...(sel.size ? [{ id: 'enroll', label: `Add ${sel.size} selected to a campaign`, icon: Megaphone, run: () => setEnrolling(true) },
+      { id: 'clear', label: 'Clear selection', keys: 'Esc', run: sel.clear }] : []),
+    ...(order.length ? [{ id: 'all', label: 'Select every contact shown', keys: 'Ctrl A', run: sel.selectAll },
+      { id: 'x', label: 'Select the focused row', keys: 'X', run: () => { const id = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>('[data-row-id]')?.dataset.rowId; if (id) sel.toggle(id); } }] : []),
+  ]);
   return (
     <>
       <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -50,10 +64,6 @@ function Contacts() {
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" aria-hidden />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, company, email" className="pl-9" />
         </label>
-        <AnimatePresence>{sel.size > 0 && (
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}>
-            <Button variant="primary" icon={<Megaphone className="size-4" aria-hidden />} onClick={() => setEnrolling(true)}>Add {sel.size} to a campaign</Button>
-          </motion.div>)}</AnimatePresence>
         <Button icon={<Upload className="size-4" aria-hidden />} onClick={() => setImporting(true)}>Import</Button>
       </div>
       <ErrorState error={list.error} onRetry={list.reload} />
@@ -69,9 +79,9 @@ function Contacts() {
             </thead>
             <tbody>
               {items.map((c) => (
-                <tr key={c.id} className={cx('border-t border-line transition-colors hover:bg-sunken/50', sel.has(c.id) && 'bg-accent-soft/50')}>
-                  <td className="px-3"><input type="checkbox" aria-label={`Select ${c.name}`} checked={sel.has(c.id)} onChange={() => toggle(c.id)} className="size-4 accent-[var(--accent-ink)]" /></td>
-                  <td className="px-3 py-2.5"><button className="text-left font-medium hover:text-ink hover:underline" onClick={() => setParams({ c: c.id })}>{c.name ?? '—'}</button>
+                <tr key={c.id} data-row-id={c.id} className={cx('row-d border-t border-line transition-colors hover:bg-sunken/50', sel.has(c.id) && 'bg-accent-soft/50')}>
+                  <td className="px-3"><input type="checkbox" aria-label={`Select ${c.name}`} checked={sel.has(c.id)} onChange={(e) => sel.toggle(c.id, e.nativeEvent as MouseEvent)} className="size-4 accent-[var(--accent-ink)]" /></td>
+                  <td className="px-3"><button className="text-left font-medium hover:text-ink hover:underline" onClick={() => setParams({ c: c.id })}>{c.name ?? '—'}</button>
                     <span className="block text-xs text-muted">{c.title}</span></td>
                   <td className="px-3">{c.company}</td>
                   <td className="px-3"><span className="flex items-center gap-2"><span className="max-w-56 truncate">{c.email}</span><Badge tone={EMAIL_STATUS[c.emailStatus].tone}>{EMAIL_STATUS[c.emailStatus].label}</Badge></span></td>
@@ -83,8 +93,8 @@ function Contacts() {
           </table>
           <ul className="divide-y divide-line md:hidden">
             {items.map((c) => (
-              <li key={c.id} className="flex items-center gap-3 px-3">
-                <label className="-ml-3 grid size-11 shrink-0 cursor-pointer place-items-center"><input type="checkbox" aria-label={`Select ${c.name}`} checked={sel.has(c.id)} onChange={() => toggle(c.id)} className="size-5 accent-[var(--accent-ink)]" /></label>
+              <li key={c.id} data-row-id={c.id} className={cx('flex items-center gap-3 px-3', sel.has(c.id) && 'bg-accent-soft/50')}>
+                <label className="-ml-3 grid size-11 shrink-0 cursor-pointer place-items-center"><input type="checkbox" aria-label={`Select ${c.name}`} checked={sel.has(c.id)} onChange={(e) => sel.toggle(c.id, e.nativeEvent as MouseEvent)} className="size-5 accent-[var(--accent-ink)]" /></label>
                 <button onClick={() => setParams({ c: c.id })} className="flex min-h-16 min-w-0 flex-1 items-center gap-3 py-2 text-left">
                   <span className="min-w-0 flex-1"><span className="block truncate font-medium">{c.name}</span><span className="block truncate text-sm text-muted">{c.company}</span></span>
                   <span className="tabular font-semibold">{c.fitScore ?? '—'}</span><ChevronRight className="size-4 text-muted" aria-hidden />
@@ -97,7 +107,10 @@ function Contacts() {
       <p className="mt-3 text-xs text-muted">Free checks can only mark an address invalid. Only verified addresses (paid check) can be emailed.</p>
       <ContactSheet id={open} onClose={() => setParams({})} />
       <ImportSheet open={importing} onOpenChange={setImporting} />
-      <EnrollSheet open={enrolling} onOpenChange={setEnrolling} ids={[...sel]} onDone={() => setSel(new Set())} />
+      <EnrollSheet open={enrolling} onOpenChange={setEnrolling} ids={sel.ids} onDone={sel.clear} />
+      <BulkBar count={sel.size} onClear={sel.clear} note={<span className="max-md:hidden">Shift-click selects a range · X toggles</span>}>
+        <Button variant="primary" size="sm" icon={<Megaphone className="size-4" aria-hidden />} onClick={() => setEnrolling(true)}>Add to a campaign</Button>
+      </BulkBar>
     </>
   );
 }

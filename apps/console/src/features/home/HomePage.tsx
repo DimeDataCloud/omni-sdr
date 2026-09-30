@@ -1,7 +1,7 @@
 // Home (DESIGN 6.3): agents on the left, the conversation in the middle, Today on the right.
 // Phones: Today and Agents are two tabs; an agent opens full screen.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router';
+import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { AnimatePresence, motion } from 'motion/react';
 import { toast } from 'sonner';
 import { ArrowUp, ArrowLeft, Search, Plus, PanelRightOpen, CalendarClock, ShieldCheck, Sparkles, Bot, AlertTriangle, PauseCircle, Clock3, CheckCheck, Inbox as InboxIcon } from 'lucide-react';
@@ -9,6 +9,7 @@ import { api } from '@/lib/api';
 import type { Agent, ChatMessage, ModelTier } from '@/lib/api/types';
 import { useMedia, useNow, useQuery } from '@/lib/hooks';
 import { useWorkspace } from '@/lib/session';
+import { usePending } from '@/lib/undo';
 import { TIER, clock, dayLabel, relTime, slaText, plural, fmtDur } from '@/lib/format';
 import { SUGGESTIONS } from '@/lib/api/demo/brain';
 import { Avatar, Badge, Banner, Button, Card, EmptyState, ErrorState, IconButton, Meter, Segmented, Select, Sheet, Skeleton, SkeletonList, Switch, Textarea, cx, listItem, listStagger } from '@/components/ui';
@@ -21,7 +22,8 @@ export default function HomePage() {
   const desktop = useMedia('(min-width: 960px)');
   const [todayOpen, setTodayOpen] = useState(false);
   const [mobileTab, setMobileTab] = useState<'today' | 'agents'>('today');
-  const list = useMemo(() => [...(agents.data ?? [])].sort((a, b) => (b.lastMessage?.at ?? b.createdAt).localeCompare(a.lastMessage?.at ?? a.createdAt)), [agents.data]);
+  const pending = usePending();
+  const list = useMemo(() => [...(agents.data ?? [])].filter((a) => !pending.isHidden(a.id)).sort((a, b) => (b.lastMessage?.at ?? b.createdAt).localeCompare(a.lastMessage?.at ?? a.createdAt)), [agents.data, pending]);
   const selectedId = params.get('agent') ?? (desktop ? list[0]?.id : null);
   const selected = list.find((a) => a.id === selectedId) ?? null;
   const select = (id: string | null) => setParams(id ? { agent: id } : {}, { replace: !desktop ? false : true });
@@ -203,6 +205,16 @@ function Composer({ agent, busy, onAsk, showSuggestions }: { agent: Agent; busy:
   const [tier, setTier] = useState<ModelTier>(agent.modelTier);
   const ref = useRef<HTMLTextAreaElement>(null);
   useEffect(() => setTier(agent.modelTier), [agent.id, agent.modelTier]);
+  // Ctrl K "Ask <agent>" hands its text over in history state. It fills the box; the person still presses Ask.
+  const loc = useLocation();
+  const nav = useNavigate();
+  useEffect(() => {
+    const ask = (loc.state as { ask?: unknown } | null)?.ask;
+    if (typeof ask !== 'string' || !ask) return;
+    setText(ask.slice(0, 4000));
+    ref.current?.focus();
+    nav({ pathname: loc.pathname, search: loc.search }, { replace: true, state: null });
+  }, [loc.key]); // eslint-disable-line react-hooks/exhaustive-deps
   useLayoutEffect(() => { const el = ref.current; if (el) { el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight, 200)}px`; } }, [text]);
   const submit = () => { const t = text.trim(); if (!t || busy) return; onAsk(t, tier); setText(''); };
   return (

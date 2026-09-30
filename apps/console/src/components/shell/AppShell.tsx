@@ -1,17 +1,21 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import * as Menu from '@radix-ui/react-dropdown-menu';
 import { toast } from 'sonner';
-import { ChevronsUpDown, Check, Plus, Search, Moon, Sun, LogOut, RotateCcw, UserRound, MoreHorizontal, ShieldCheck, LayoutGrid, Keyboard, PauseCircle, KeyRound } from 'lucide-react';
+import { ChevronsUpDown, Check, Plus, Search, Moon, Sun, LogOut, RotateCcw, UserRound, MoreHorizontal, ShieldCheck, LayoutGrid, Keyboard, PauseCircle, KeyRound, Rows3 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useQuery, useHotkeys } from '@/lib/hooks';
 import { useSession, useWorkspace } from '@/lib/session';
-import { useTheme, setTheme } from '@/lib/theme';
+import { useTheme, setTheme, useDensity, setDensity } from '@/lib/theme';
 import { ROLE, initials } from '@/lib/format';
 import { PERSONAS } from '@/lib/api/demo/seed';
 import { NAV, MOBILE_PRIMARY, SECONDARY, labelFor, type PageKey } from './nav';
 import { CommandPalette } from './CommandPalette';
+import { prefetchProps } from './prefetch';
+import { useOverlay, openOverlay, toggleOverlay } from '@/lib/overlays';
+import { usePending, undoLatest } from '@/lib/undo';
+import { usePageCommands } from '@/lib/commands';
 import { Avatar, Badge, Banner, Button, Count, Field, IconButton, Input, Sheet, cx } from '../ui';
 
 function useNavCounts() {
@@ -19,8 +23,10 @@ function useNavCounts() {
   const approvals = useQuery(() => api.approvals(scope, { status: 'review' }), [scope.workspaceId], { enabled: can('approve'), pollMs: 60000 });
   const inbox = useQuery(() => api.inbox(scope), [scope.workspaceId], { enabled: can('inbox_read'), pollMs: 60000 });
   const capacity = useQuery(() => api.capacity(scope), [scope.workspaceId], { pollMs: 60000 });
-  const urgent = (inbox.data ?? []).filter((r) => r.slaMinutesRemaining !== null && r.slaMinutesRemaining < 60).length;
-  return { review: approvals.data?.counts.review ?? 0, urgent, capacity: capacity.data };
+  const pending = usePending();
+  const urgent = (inbox.data ?? []).filter((r) => !pending.isHidden(r.id) && r.slaMinutesRemaining !== null && r.slaMinutesRemaining < 60).length;
+  const decided = (approvals.data?.items ?? []).filter((d) => pending.isHidden(d.id)).length;
+  return { review: Math.max(0, (approvals.data?.counts.review ?? 0) - decided), urgent, capacity: capacity.data };
 }
 
 function Logo({ small }: { small?: boolean }) {
@@ -31,12 +37,11 @@ function Logo({ small }: { small?: boolean }) {
 export function AppShell() {
   const { role, can, name, scope } = useWorkspace();
   const { org } = useSession();
+  const reduce = useReducedMotion();
   const nav = useNavigate();
   const loc = useLocation();
   const { page } = useParams();
   const { review, urgent, capacity } = useNavCounts();
-  const [palette, setPalette] = useState(false);
-  const [help, setHelp] = useState(false);
   const [more, setMore] = useState(false);
   const items = NAV.filter((n) => n.visible(role, can));
   const client = role === 'client_viewer';
@@ -47,17 +52,25 @@ export function AppShell() {
   const pending = useRef<number | null>(null);
   useHotkeys({
     g: () => { pending.current = window.setTimeout(() => { pending.current = null; }, 900); },
-    '?': () => setHelp(true),
+    '?': () => openOverlay('help'),
+    z: () => { if (!undoLatest()) toast('Nothing to undo.', { duration: 1500 }); },
     ...Object.fromEntries(items.filter((i) => i.shortcut).map((i) => [i.shortcut!.split(' ')[1], () => {
-      if (pending.current) { clearTimeout(pending.current); pending.current = null; nav(`${base}/${i.key}`); }
+      if (pending.current) { clearTimeout(pending.current); pending.current = null; nav(`${base}/${i.key}`, { viewTransition: true }); }
     }])),
   }, [items.length, base]);
   useEffect(() => {
-    const on = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette((v) => !v); } };
+    const on = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); toggleOverlay('palette'); } };
     window.addEventListener('keydown', on);
     return () => window.removeEventListener('keydown', on);
   }, []);
-  useEffect(() => { setMore(false); document.getElementById('main')?.focus({ preventScroll: true }); window.scrollTo({ top: 0 }); }, [loc.pathname]);
+  // Route change: land on the page title (announced by screen readers), else on <main>.
+  useEffect(() => {
+    setMore(false);
+    // Unless the new screen already placed focus inside itself (the composer after "Ask an agent").
+    const main = document.getElementById('main'); const a = document.activeElement;
+    if (!(main && a && a !== main && main.contains(a))) (document.querySelector<HTMLElement>('#main h1[tabindex="-1"]') ?? main)?.focus({ preventScroll: true });
+    window.scrollTo({ top: 0 });
+  }, [loc.pathname]);
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
@@ -70,7 +83,7 @@ export function AppShell() {
   return (
     <div className="ambient flex min-h-dvh flex-col">
       <a href="#main" className="sr-only z-[70] rounded-md bg-surface px-3 py-2 shadow-lg focus:not-sr-only focus:fixed focus:top-2 focus:left-2">Skip to content</a>
-      <header className="glass sticky top-0 z-40 border-x-0 border-t-0">
+      <header className="glass sticky top-0 z-40 border-x-0 border-t-0 [view-transition-name:app-header]">
         <div className="mx-auto flex h-14 max-w-[1600px] items-center gap-2 px-3 md:px-4">
           <NavLink to={`${base}/${client ? 'analytics' : 'home'}`} className="flex items-center gap-2 rounded-md pr-1" aria-label={client ? `${org?.name} home` : 'Omni-SDR home'}>
             {client ? <Avatar text={initials(org?.name)} size={28} className="rounded-lg" /> : <Logo />}
@@ -79,7 +92,7 @@ export function AppShell() {
           <WorkspaceSwitcher current={name} />
           <nav aria-label="Main" className="ml-2 hidden min-w-0 flex-1 items-center gap-0.5 lg:flex">
             {items.filter((i) => !SECONDARY.includes(i.key)).map((i) => (
-              <NavLink key={i.key} to={`${base}/${i.key}`} className={({ isActive }) => cx('relative isolate flex h-9 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium transition-colors',
+              <NavLink key={i.key} to={`${base}/${i.key}`} viewTransition {...prefetchProps(i.key, scope)} className={({ isActive }) => cx('relative isolate flex h-9 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium transition-colors',
                 isActive ? 'text-fg' : 'text-muted hover:text-fg')}>
                 {({ isActive }) => (<>
                   {isActive && <motion.span layoutId="nav-pill" className="absolute inset-0 -z-10 rounded-md bg-surface shadow-sm ring-1 ring-line" transition={{ type: 'spring', bounce: 0.1, duration: 0.35 }} />}
@@ -88,7 +101,7 @@ export function AppShell() {
               </NavLink>
             ))}
             {items.some((i) => SECONDARY.includes(i.key)) && (
-              <Menu.Root>
+              <Menu.Root modal={false}>
                 <Menu.Trigger className={cx('relative isolate flex h-9 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium transition-colors',
                   SECONDARY.includes(page as PageKey) ? 'bg-surface text-fg shadow-sm ring-1 ring-line' : 'text-muted hover:text-fg')}>
                   <MoreHorizontal className="size-4" aria-hidden />{SECONDARY.includes(page as PageKey) ? labelFor(items.find((i) => i.key === page)!, role) : 'More'}
@@ -96,7 +109,7 @@ export function AppShell() {
                 <Menu.Portal>
                   <Menu.Content align="start" sideOffset={6} className={cx(menuPanel, 'min-w-52')}>
                     {items.filter((i) => SECONDARY.includes(i.key)).map((i) => (
-                      <Menu.Item key={i.key} className={menuItem} onSelect={() => nav(`${base}/${i.key}`)}><i.icon className="size-4" aria-hidden />{labelFor(i, role)}
+                      <Menu.Item key={i.key} className={menuItem} onSelect={() => nav(`${base}/${i.key}`, { viewTransition: true })}><i.icon className="size-4" aria-hidden />{labelFor(i, role)}
                         {i.shortcut && <span className="ml-auto flex gap-1">{i.shortcut.split(' ').map((k) => <span key={k} className="kbd">{k}</span>)}</span>}</Menu.Item>
                     ))}
                   </Menu.Content>
@@ -105,20 +118,20 @@ export function AppShell() {
             )}
           </nav>
           <div className="ml-auto flex shrink-0 items-center gap-1">
-            <button onClick={() => setPalette(true)} className="hidden h-9 items-center gap-2 rounded-md border border-line bg-surface/70 px-2.5 text-sm text-muted transition-colors hover:text-fg md:flex">
+            <button onClick={() => openOverlay('palette')} className="hidden h-9 items-center gap-2 rounded-md border border-line bg-surface/70 px-2.5 text-sm text-muted transition-colors hover:text-fg md:flex">
               <Search className="size-4" aria-hidden /><span className="hidden 2xl:inline">Search or jump to…</span><span className="kbd">Ctrl K</span>
             </button>
-            <IconButton label="Search" className="md:hidden" onClick={() => setPalette(true)}><Search className="size-5" aria-hidden /></IconButton>
+            <IconButton label="Search" className="md:hidden" onClick={() => openOverlay('palette')}><Search className="size-5" aria-hidden /></IconButton>
             {!client && <span className="hidden 2xl:block"><Badge tone="neutral" icon={<ShieldCheck className="size-3.5" aria-hidden />}>Level 1 · you approve every message</Badge></span>}
             <span className="hidden sm:block"><ThemeButton /></span>
-            <UserMenu onHelp={() => setHelp(true)} />
+            <UserMenu onHelp={() => openOverlay('help')} />
           </div>
         </div>
       </header>
 
       <AnimatePresence>
         {hold && (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+          <motion.div initial={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }} className="overflow-hidden">
             <div className="mx-auto max-w-[1600px] px-3 pt-3 md:px-4">
               <Banner tone="warning" role="status" title="Sending is paused for this workspace."
                 action={can('clear_hold') ? <Button size="sm" onClick={() => api.clearHold(scope, hold.scopeType, hold.scopeId).then(() => toast.success('Resumed. Approved drafts send in the next window.'))}>Resume sending</Button> : undefined}>
@@ -134,10 +147,10 @@ export function AppShell() {
       </main>
 
       {/* Phone and tablet: bottom bar (DESIGN 5.2) */}
-      <nav aria-label="Main" className="glass fixed inset-x-0 bottom-0 z-40 border-x-0 border-b-0 pb-safe lg:hidden">
+      <nav aria-label="Main" className="glass fixed inset-x-0 bottom-0 z-40 border-x-0 border-b-0 pb-safe [view-transition-name:app-tabbar] lg:hidden">
         <div className="mx-auto grid max-w-lg grid-cols-5">
           {items.filter((i) => MOBILE_PRIMARY.includes(i.key) || (client && i.key === 'analytics')).slice(0, 4).map((i) => (
-            <NavLink key={i.key} to={`${base}/${i.key}`} className={({ isActive }) => cx('relative flex h-16 flex-col items-center justify-center gap-1 text-xs font-medium', isActive ? 'text-fg' : 'text-muted')}>
+            <NavLink key={i.key} to={`${base}/${i.key}`} viewTransition {...prefetchProps(i.key, scope)} className={({ isActive }) => cx('relative flex h-16 flex-col items-center justify-center gap-1 text-xs font-medium', isActive ? 'text-fg' : 'text-muted')}>
               {({ isActive }) => (<>
                 {isActive && <motion.span layoutId="tab-dot" className="absolute top-1.5 h-1 w-8 rounded-full bg-fill" transition={{ type: 'spring', bounce: 0.2, duration: 0.35 }} />}
                 <span className="relative"><i.icon className="size-5" aria-hidden />
@@ -154,7 +167,7 @@ export function AppShell() {
       <Sheet open={more} onOpenChange={setMore} title="More">
         <div className="grid grid-cols-3 gap-2 pb-2">
           {items.filter((i) => !MOBILE_PRIMARY.includes(i.key)).map((i) => (
-            <NavLink key={i.key} to={`${base}/${i.key}`} className={({ isActive }) => cx('flex flex-col items-center gap-2 rounded-lg border p-3 text-sm font-medium', isActive ? 'border-ink bg-accent-soft' : 'border-line bg-surface')}>
+            <NavLink key={i.key} to={`${base}/${i.key}`} viewTransition {...prefetchProps(i.key, scope)} className={({ isActive }) => cx('flex flex-col items-center gap-2 rounded-lg border p-3 text-sm font-medium', isActive ? 'border-ink bg-accent-soft' : 'border-line bg-surface')}>
               <i.icon className="size-5" aria-hidden />{labelFor(i, role)}
             </NavLink>
           ))}
@@ -162,8 +175,8 @@ export function AppShell() {
         </div>
       </Sheet>
 
-      <CommandPalette open={palette} onOpenChange={setPalette} />
-      <ShortcutSheet open={help} onOpenChange={setHelp} />
+      <PaletteHost />
+      <HelpHost />
     </div>
   );
 }
@@ -182,7 +195,7 @@ function ThemeButton() {
 }
 
 const menuItem = 'flex min-h-10 cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-sm outline-none data-[highlighted]:bg-sunken';
-const menuPanel = 'z-50 min-w-64 rounded-xl border border-line bg-surface p-1.5 shadow-lg data-[state=open]:animate-in';
+const menuPanel = 'menu-pop z-50 min-w-64 rounded-xl border border-line bg-surface p-1.5 shadow-lg';
 
 function WorkspaceSwitcher({ current }: { current: string }) {
   const { org } = useSession();
@@ -193,7 +206,7 @@ function WorkspaceSwitcher({ current }: { current: string }) {
   const canAdd = org?.role === 'admin' && org.accountType === 'agency';
   return (
     <>
-      <Menu.Root>
+      <Menu.Root modal={false}>
         <Menu.Trigger className="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left transition-colors hover:bg-sunken lg:h-10 lg:flex-none">
           <span className="min-w-0 leading-tight">
             {role !== 'client_viewer' && <span className="hidden text-xs text-muted sm:block">{org?.name}</span>}
@@ -251,8 +264,9 @@ function UserMenu({ onHelp }: { onHelp: () => void }) {
   const { me, org, persona, switchPersona, resetDemo } = useSession();
   const nav = useNavigate();
   const theme = useTheme();
+  const density = useDensity();
   return (
-    <Menu.Root>
+    <Menu.Root modal={false}>
       <Menu.Trigger className="rounded-full p-0.5 transition-shadow hover:ring-2 hover:ring-line" aria-label="Account menu">
         <Avatar text={initials(me?.user.email)} size={32} />
       </Menu.Trigger>
@@ -274,6 +288,7 @@ function UserMenu({ onHelp }: { onHelp: () => void }) {
           </Menu.RadioGroup>
           <Menu.Separator className="my-1 h-px bg-line" />
           <Menu.Item className={menuItem} onSelect={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun className="size-4" aria-hidden /> : <Moon className="size-4" aria-hidden />}{theme === 'dark' ? 'Light theme' : 'Dark theme (proposal)'}</Menu.Item>
+          <Menu.Item className={cx(menuItem, 'max-md:hidden')} onSelect={() => setDensity(density === 'compact' ? 'comfortable' : 'compact')}><Rows3 className="size-4" aria-hidden />{density === 'compact' ? 'Comfortable rows' : 'Compact rows'}</Menu.Item>
           <Menu.Item className={cx(menuItem, 'max-lg:hidden')} onSelect={onHelp}><Keyboard className="size-4" aria-hidden />Keyboard shortcuts<span className="kbd ml-auto">?</span></Menu.Item>
           <Menu.Item className={menuItem} onSelect={() => { resetDemo(); nav('/'); toast.success('Demo data reset.'); }}><RotateCcw className="size-4" aria-hidden />Reset demo data</Menu.Item>
           <Menu.Separator className="my-1 h-px bg-line" />
@@ -290,16 +305,28 @@ function UserMenu({ onHelp }: { onHelp: () => void }) {
   );
 }
 
+function PaletteHost() { const [open, set] = useOverlay('palette'); return <CommandPalette open={open} onOpenChange={set} />; }
+function HelpHost() { const [open, set] = useOverlay('help'); return <ShortcutSheet open={open} onOpenChange={set} />; }
+
+// Both lists are derived: page keys from the registry the palette reads, global keys from NAV. Nothing hand-listed.
 function ShortcutSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
-  const rows: [string, ReactNode][] = [
-    ['Ctrl K', 'Search or jump anywhere'], ['g h', 'Home'], ['g a', 'Approvals'], ['g i', 'Inbox'], ['g m', 'Meetings'], ['g l', 'Leads'], ['g r', 'Analytics'], ['g s', 'Studio'],
-    ['J / K', 'Next / previous draft or reply'], ['A', 'Approve'], ['E', 'Edit'], ['D', 'Reject'], ['S', 'Skip'], ['1–5', 'Sequence step'], ['H', 'Mark reply handled'], ['?', 'This sheet'],
+  const { role, can } = useWorkspace();
+  const here = usePageCommands().filter((c) => c.keys);
+  const everywhere: [string, ReactNode][] = [
+    ['Ctrl K', 'Search, jump, or ask an agent'],
+    ...NAV.filter((n) => n.visible(role, can) && n.shortcut).map((n): [string, ReactNode] => [n.shortcut!, labelFor(n, role)]),
+    ['Z', 'Undo the last approval or change'], ['?', 'This sheet'],
   ];
+  const list = (rows: [string, ReactNode][]) => (
+    <dl className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 pb-2">
+      {rows.map(([k, v]) => (<Fragment key={k}><dt className="justify-self-end">{k.split(' ').map((p) => <span key={p} className="kbd mx-0.5">{p}</span>)}</dt><dd className="text-sm">{v}</dd></Fragment>))}
+    </dl>
+  );
   return (
     <Sheet open={open} onOpenChange={onOpenChange} title="Keyboard shortcuts">
-      <dl className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 pb-2">
-        {rows.map(([k, v]) => (<Fragment key={k}><dt className="justify-self-end">{k.split(' ').map((p) => <span key={p} className="kbd mx-0.5">{p}</span>)}</dt><dd className="text-sm">{v}</dd></Fragment>))}
-      </dl>
+      {here.length > 0 && <><h3 className="label mb-2">On this page</h3>{list(here.map((c): [string, ReactNode] => [c.keys!, c.label]))}</>}
+      <h3 className={cx('label mb-2', here.length > 0 && 'mt-4')}>Everywhere</h3>
+      {list(everywhere)}
       <p className="mt-2 flex items-center gap-2 text-xs text-muted"><PauseCircle className="size-3.5" aria-hidden />Shortcuts pause while you type.</p>
     </Sheet>
   );
