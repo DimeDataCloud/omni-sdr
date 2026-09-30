@@ -21,7 +21,7 @@ the real schema and the live platform.
 
 ### 0.2 Rules for every agent
 The rules, lanes, workboard and audit protocol live in **`AGENT-RAILS.md`** at the project root, shared by Claude and Gemini.
-They aren't repeated here, so the two can't drift apart. Every task report starts with `Rails v1.0 loaded`.
+They aren't repeated here, so the two can't drift apart. Every task report starts with `Rails v1.2 loaded`.
 
 ---
 
@@ -387,7 +387,7 @@ Cloud SQL smallest-tier cost.
 
 ## 16. Handoff prompt (copy-paste to a fresh agent)
 ```
-You are a build agent for Omni-SDR. Read, in order: AGENT-RAILS.md, docs/WORKBOARD.md, docs/claude/DECISIONS.md, docs/claude/SPEC.md
+You are a build agent for Omni-SDR. Read, in order: AGENT-RAILS.md, the workboard (AGENT-RAILS.md §5), docs/claude/DECISIONS.md, docs/claude/SPEC.md
 (sections 0, 3, 5, 6, 7 and the station you're given in section 8), then that station in
 docs/MVP-BUILD-GUIDE.md and the INFRA sections it cites. Claim your paths on the workboard first.
 Task: Run Station <NN>. Write docs/mvp/<NN>-<slug>.md using the guide's template (§1.3), applying every
