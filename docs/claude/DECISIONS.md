@@ -262,3 +262,9 @@ Christian: "use this as your grand floor on what the product will look like. i w
 - The AI Studio app "Omni SDR - Autonomous Fleet Console" (export audited in AUDIT-2026-09-29-ai-studio-fleet-console.md) is the baseline for the product's screens: agents with chat threads, approvals, inbound replies with SLA, meetings, routines, capacity, analytics, connections, settings.
 - Lanes for this work: **Claude builds the backend** (API server, services, migrations, workers). **Christian and Gemini own the design** (UI). This moves "API routes and server actions" from Gemini's lane (Rails §4) to Claude's; the rails lane table needs the matching edit (proposed on the backend PR).
 - Not decided by this entry: the app's Firestore data layer and its browser-side Gmail sending stay out (audit P0s); every backend path runs on Postgres with RLS, the gate and send_guard.
+
+## 2026-09-29 — Build the web app interface and put it on an omnisdr.com subdomain for phone testing
+Station: 03 (frontend) · 23 (security) · Decided by: Christian
+Christian: "using all of the information available to you create the Omni sdr web app interface and design … Run a multi stage design development review revise system until you all gates are passed … When done put this on and omnisdr.com subdomain so I can test it on my phone. Verify the domains security before completing and create the login for me to securely access the suite"
+- Claude builds the interface (apps/console) to docs/design/DESIGN.md, and deploys it to one omnisdr.com subdomain behind a login for Christian. This is Christian's explicit approval for that one deploy (Rails §3.1).
+- It runs on demo data in the browser (fictional, the same story as the dev seed), since there is no production database yet (Station 04 decisions pending). The real API adapter is built alongside and switched on later.
