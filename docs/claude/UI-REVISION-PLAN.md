@@ -89,6 +89,22 @@ Every new gate was proven to fail against a deliberately broken build. That run 
 | **Skeletons only on cold load** | Never on revisit. Skeleton shapes match the real layout, so there is no shift (CLS gate stays 0). |
 | **Multi-select + bulk bar** | Leads, Inbox and Approvals rows are selectable.<br>**Keys:** `x` toggles, Shift-click selects a range, `Ctrl A` selects all visible.<br>**Bar:** a floating bulk bar with a count ("12 selected · Approve all passing · Reject · Assign").<br>**Safety:** blocked drafts are excluded from bulk approve by construction, and the bar says so ("3 blocked, skipped"). |
 
+**Phase 1 outcome (2026-09-30).** Built as planned, with these changes:
+
+| Change from plan | Why |
+|---|---|
+| No shared `useMutation`; a deferred-commit store instead (`lib/undo.ts`) | The undo window already has to hold the change back, so "optimistic" is simply "hidden now, sent when the window closes". Z undoes the latest; closing the tab cancels anything still pending. Failure unhides the item and toasts the reason (409 → "That draft changed before it was approved"). |
+| Studio archive lost its confirm dialog | The undo window replaces it, as planned. |
+| View Transitions through react-router's `viewTransition`, not a hand-rolled `startViewTransition` | Same native API; the router already sequences it with the render. The header and tab bar are excluded so they never cross-fade. |
+| Bulk approve keeps the opened-only rule | A draft nobody opened is never bulk-approved. The bar says how many were left out ("2 not opened yet, so not included"), instead of offering "Approve all passing". |
+| Reject/assign are not bulk actions | One decision per draft stays the rule for rejection; Leads' bulk action is "Add to a campaign", Inbox's is "Mark handled". |
+
+Phase 1 gate run: 18 of 20. The 2 failures:
+- **Visual regression, the 3 Inbox baselines:** the new selection checkboxes shift every row, which is intended.
+- **INP, one 504 ms `j`:** the keypress did 0 ms of work and then waited 500 ms for a frame. It did not reproduce in 13 replays (`gates/diag-inp.mjs`; worst `j`/`k` 64 ms). It was the `j` pressed on the last Inbox reply, which changed nothing, so headless Chrome had no frame to present until the next scripted input.
+  - The gate was not changed.
+  - The real defect underneath was a keypress with no visible answer. J/K past either end of a list now bumps the open row (a tint under reduced motion), and a flow check covers it.
+
 ### Phase 2: Keyboard-complete (S)
 
 | Change | Detail |
@@ -97,6 +113,28 @@ Every new gate was proven to fail against a deliberately broken build. That run 
 | **Contextual shortcut hints** | Every tooltip shows its key. `?` opens a sheet of the shortcuts *for the current screen* first, then the global ones. |
 | **Focus management** | After a route change, focus goes to the page `h1`. After an approve, focus goes to the next draft. Sheets return focus to their opener. |
 | **Tab-walk gate** | Proves every control is reachable (Phase 0). |
+
+**Phase 2 outcome (2026-09-30).** One command registry (`lib/commands.ts`): a screen or a component inside it registers its actions with `useCommands`. The same list feeds:
+- **Ctrl K's "This page" group.**
+- **The `?` sheet:** this page's keys first, then the global keys derived from `NAV`.
+- **The screen's own hotkeys.**
+
+So the three cannot drift apart. Registered on Approvals and the open draft, Inbox and the open reply, Leads, Meetings, Analytics and Studio.
+
+| Change from plan | Why |
+|---|---|
+| "Ask <agent>" fills that agent's composer and sends nothing | Sending on Enter from a search box would let a typo spend credits. The person still presses Ask. |
+| Meetings joins the palette as "Upcoming meetings"; leads stay under Contacts | The palette already searched contacts. Meetings was the missing object type. |
+| Focus handoff is explicit (`requestArrival`) rather than inferred | Landing spots, as planned: after a route change, the page `h1`; after J/K/approve, the next draft's name. The palette keeps focus wherever its command put it. |
+| Tooltips were not added | Every button with a key already shows its `kbd` chip. The chip now also sets `aria-keyshortcuts` for screen readers. |
+
+Found by the new flow checks: approving from a card that was not the first briefly rendered the first card before the URL moved on, so focus landed on a card that was then thrown away. This was also a visible flash of the wrong draft. The fix: a hidden selection now resolves to its neighbour in the same render, in Approvals and Inbox.
+
+Phase 1 + 2 gate run on the committed code: **20 of 20 pass.**
+- **Flows:** 17 of 17.
+- **INP:** 120 ms, median 40 ms, over 19 interactions.
+- **Tab walk:** 304 of 304 controls.
+- **Screenshots:** 27 of 27. Only the 3 Inbox baselines changed; the other 24 rewrote byte-for-byte identical.
 
 ### Phase 3: Home, the signature moment (L)
 

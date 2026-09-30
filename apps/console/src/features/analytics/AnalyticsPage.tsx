@@ -6,16 +6,22 @@ import { motion, useReducedMotion } from 'motion/react';
 import { Send, MessageSquareReply, Sparkles, CalendarCheck2, CheckCheck, Coins, Info } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { Analytics } from '@/lib/api/types';
-import { useMedia, useQuery } from '@/lib/hooks';
+import { useMedia, useQuery, prefetchQuery } from '@/lib/hooks';
+import type { Scope } from '@/lib/api/client';
 import { useWorkspace } from '@/lib/session';
+import { useCommands } from '@/lib/commands';
 import { Card, CountUp, ErrorState, Page, PageHeader, Segmented, Skeleton, cx, listItem, listStagger } from '@/components/ui';
 
 type Days = 7 | 30 | 90;
 
+/** Warmed on hover of the Analytics nav link (components/shell/prefetch.ts). */
+export const prefetch = (s: Scope) => prefetchQuery(`analytics:${s.workspaceId}:30`, () => api.analytics(s, 30));
+
 export default function AnalyticsPage() {
   const { scope, tz, role, can } = useWorkspace();
   const [days, setDays] = useState<Days>(30);
-  const a = useQuery(() => api.analytics(scope, days), [scope.workspaceId, days]);
+  useCommands(([7, 30, 90] as Days[]).filter((d) => d !== days).map((d) => ({ id: `d${d}`, label: `Show the last ${d} days`, run: () => setDays(d) })));
+  const a = useQuery(() => api.analytics(scope, days), [scope.workspaceId, days], { key: `analytics:${scope.workspaceId}:${days}` });
   const credits = useQuery(() => api.credits(scope), [scope.workspaceId], { enabled: role !== 'client_viewer' });
   const nav = useNavigate();
   const reduce = useReducedMotion();

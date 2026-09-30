@@ -7,17 +7,9 @@ import { AppShell } from '@/components/shell/AppShell';
 import { NAV, homeFor, type PageKey } from '@/components/shell/nav';
 import { NoAccess, Page, SkeletonList, TipProvider } from '@/components/ui';
 
-const screens: Record<PageKey, React.LazyExoticComponent<ComponentType>> = {
-  home: lazy(() => import('@/features/home/HomePage')),
-  approvals: lazy(() => import('@/features/approvals/ApprovalsPage')),
-  inbox: lazy(() => import('@/features/inbox/InboxPage')),
-  meetings: lazy(() => import('@/features/meetings/MeetingsPage')),
-  leads: lazy(() => import('@/features/leads/LeadsPage')),
-  analytics: lazy(() => import('@/features/analytics/AnalyticsPage')),
-  studio: lazy(() => import('@/features/studio/StudioPage')),
-  connections: lazy(() => import('@/features/connections/ConnectionsPage')),
-  settings: lazy(() => import('@/features/settings/SettingsPage')),
-};
+import { screenLoaders } from '@/components/shell/prefetch';
+
+const screens = Object.fromEntries(Object.entries(screenLoaders).map(([k, load]) => [k, lazy(load)])) as Record<PageKey, React.LazyExoticComponent<ComponentType>>;
 const WorkspacesPage = lazy(() => import('@/features/workspaces/WorkspacesPage'));
 
 const Loading = () => <Page><SkeletonList rows={5} className="mt-10" /></Page>;

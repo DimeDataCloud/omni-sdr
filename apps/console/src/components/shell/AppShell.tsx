@@ -12,7 +12,10 @@ import { ROLE, initials } from '@/lib/format';
 import { PERSONAS } from '@/lib/api/demo/seed';
 import { NAV, MOBILE_PRIMARY, SECONDARY, labelFor, type PageKey } from './nav';
 import { CommandPalette } from './CommandPalette';
+import { prefetchProps } from './prefetch';
 import { useOverlay, openOverlay, toggleOverlay } from '@/lib/overlays';
+import { usePending, undoLatest } from '@/lib/undo';
+import { usePageCommands } from '@/lib/commands';
 import { Avatar, Badge, Banner, Button, Count, Field, IconButton, Input, Sheet, cx } from '../ui';
 
 function useNavCounts() {
@@ -20,8 +23,10 @@ function useNavCounts() {
   const approvals = useQuery(() => api.approvals(scope, { status: 'review' }), [scope.workspaceId], { enabled: can('approve'), pollMs: 60000 });
   const inbox = useQuery(() => api.inbox(scope), [scope.workspaceId], { enabled: can('inbox_read'), pollMs: 60000 });
   const capacity = useQuery(() => api.capacity(scope), [scope.workspaceId], { pollMs: 60000 });
-  const urgent = (inbox.data ?? []).filter((r) => r.slaMinutesRemaining !== null && r.slaMinutesRemaining < 60).length;
-  return { review: approvals.data?.counts.review ?? 0, urgent, capacity: capacity.data };
+  const pending = usePending();
+  const urgent = (inbox.data ?? []).filter((r) => !pending.isHidden(r.id) && r.slaMinutesRemaining !== null && r.slaMinutesRemaining < 60).length;
+  const decided = (approvals.data?.items ?? []).filter((d) => pending.isHidden(d.id)).length;
+  return { review: Math.max(0, (approvals.data?.counts.review ?? 0) - decided), urgent, capacity: capacity.data };
 }
 
 function Logo({ small }: { small?: boolean }) {
@@ -48,8 +53,9 @@ export function AppShell() {
   useHotkeys({
     g: () => { pending.current = window.setTimeout(() => { pending.current = null; }, 900); },
     '?': () => openOverlay('help'),
+    z: () => { if (!undoLatest()) toast('Nothing to undo.', { duration: 1500 }); },
     ...Object.fromEntries(items.filter((i) => i.shortcut).map((i) => [i.shortcut!.split(' ')[1], () => {
-      if (pending.current) { clearTimeout(pending.current); pending.current = null; nav(`${base}/${i.key}`); }
+      if (pending.current) { clearTimeout(pending.current); pending.current = null; nav(`${base}/${i.key}`, { viewTransition: true }); }
     }])),
   }, [items.length, base]);
   useEffect(() => {
@@ -57,7 +63,14 @@ export function AppShell() {
     window.addEventListener('keydown', on);
     return () => window.removeEventListener('keydown', on);
   }, []);
-  useEffect(() => { setMore(false); document.getElementById('main')?.focus({ preventScroll: true }); window.scrollTo({ top: 0 }); }, [loc.pathname]);
+  // Route change: land on the page title (announced by screen readers), else on <main>.
+  useEffect(() => {
+    setMore(false);
+    // Unless the new screen already placed focus inside itself (the composer after "Ask an agent").
+    const main = document.getElementById('main'); const a = document.activeElement;
+    if (!(main && a && a !== main && main.contains(a))) (document.querySelector<HTMLElement>('#main h1[tabindex="-1"]') ?? main)?.focus({ preventScroll: true });
+    window.scrollTo({ top: 0 });
+  }, [loc.pathname]);
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
@@ -70,7 +83,7 @@ export function AppShell() {
   return (
     <div className="ambient flex min-h-dvh flex-col">
       <a href="#main" className="sr-only z-[70] rounded-md bg-surface px-3 py-2 shadow-lg focus:not-sr-only focus:fixed focus:top-2 focus:left-2">Skip to content</a>
-      <header className="glass sticky top-0 z-40 border-x-0 border-t-0">
+      <header className="glass sticky top-0 z-40 border-x-0 border-t-0 [view-transition-name:app-header]">
         <div className="mx-auto flex h-14 max-w-[1600px] items-center gap-2 px-3 md:px-4">
           <NavLink to={`${base}/${client ? 'analytics' : 'home'}`} className="flex items-center gap-2 rounded-md pr-1" aria-label={client ? `${org?.name} home` : 'Omni-SDR home'}>
             {client ? <Avatar text={initials(org?.name)} size={28} className="rounded-lg" /> : <Logo />}
@@ -79,7 +92,7 @@ export function AppShell() {
           <WorkspaceSwitcher current={name} />
           <nav aria-label="Main" className="ml-2 hidden min-w-0 flex-1 items-center gap-0.5 lg:flex">
             {items.filter((i) => !SECONDARY.includes(i.key)).map((i) => (
-              <NavLink key={i.key} to={`${base}/${i.key}`} className={({ isActive }) => cx('relative isolate flex h-9 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium transition-colors',
+              <NavLink key={i.key} to={`${base}/${i.key}`} viewTransition {...prefetchProps(i.key, scope)} className={({ isActive }) => cx('relative isolate flex h-9 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium transition-colors',
                 isActive ? 'text-fg' : 'text-muted hover:text-fg')}>
                 {({ isActive }) => (<>
                   {isActive && <motion.span layoutId="nav-pill" className="absolute inset-0 -z-10 rounded-md bg-surface shadow-sm ring-1 ring-line" transition={{ type: 'spring', bounce: 0.1, duration: 0.35 }} />}
@@ -96,7 +109,7 @@ export function AppShell() {
                 <Menu.Portal>
                   <Menu.Content align="start" sideOffset={6} className={cx(menuPanel, 'min-w-52')}>
                     {items.filter((i) => SECONDARY.includes(i.key)).map((i) => (
-                      <Menu.Item key={i.key} className={menuItem} onSelect={() => nav(`${base}/${i.key}`)}><i.icon className="size-4" aria-hidden />{labelFor(i, role)}
+                      <Menu.Item key={i.key} className={menuItem} onSelect={() => nav(`${base}/${i.key}`, { viewTransition: true })}><i.icon className="size-4" aria-hidden />{labelFor(i, role)}
                         {i.shortcut && <span className="ml-auto flex gap-1">{i.shortcut.split(' ').map((k) => <span key={k} className="kbd">{k}</span>)}</span>}</Menu.Item>
                     ))}
                   </Menu.Content>
@@ -134,10 +147,10 @@ export function AppShell() {
       </main>
 
       {/* Phone and tablet: bottom bar (DESIGN 5.2) */}
-      <nav aria-label="Main" className="glass fixed inset-x-0 bottom-0 z-40 border-x-0 border-b-0 pb-safe lg:hidden">
+      <nav aria-label="Main" className="glass fixed inset-x-0 bottom-0 z-40 border-x-0 border-b-0 pb-safe [view-transition-name:app-tabbar] lg:hidden">
         <div className="mx-auto grid max-w-lg grid-cols-5">
           {items.filter((i) => MOBILE_PRIMARY.includes(i.key) || (client && i.key === 'analytics')).slice(0, 4).map((i) => (
-            <NavLink key={i.key} to={`${base}/${i.key}`} className={({ isActive }) => cx('relative flex h-16 flex-col items-center justify-center gap-1 text-xs font-medium', isActive ? 'text-fg' : 'text-muted')}>
+            <NavLink key={i.key} to={`${base}/${i.key}`} viewTransition {...prefetchProps(i.key, scope)} className={({ isActive }) => cx('relative flex h-16 flex-col items-center justify-center gap-1 text-xs font-medium', isActive ? 'text-fg' : 'text-muted')}>
               {({ isActive }) => (<>
                 {isActive && <motion.span layoutId="tab-dot" className="absolute top-1.5 h-1 w-8 rounded-full bg-fill" transition={{ type: 'spring', bounce: 0.2, duration: 0.35 }} />}
                 <span className="relative"><i.icon className="size-5" aria-hidden />
@@ -154,7 +167,7 @@ export function AppShell() {
       <Sheet open={more} onOpenChange={setMore} title="More">
         <div className="grid grid-cols-3 gap-2 pb-2">
           {items.filter((i) => !MOBILE_PRIMARY.includes(i.key)).map((i) => (
-            <NavLink key={i.key} to={`${base}/${i.key}`} className={({ isActive }) => cx('flex flex-col items-center gap-2 rounded-lg border p-3 text-sm font-medium', isActive ? 'border-ink bg-accent-soft' : 'border-line bg-surface')}>
+            <NavLink key={i.key} to={`${base}/${i.key}`} viewTransition {...prefetchProps(i.key, scope)} className={({ isActive }) => cx('flex flex-col items-center gap-2 rounded-lg border p-3 text-sm font-medium', isActive ? 'border-ink bg-accent-soft' : 'border-line bg-surface')}>
               <i.icon className="size-5" aria-hidden />{labelFor(i, role)}
             </NavLink>
           ))}
@@ -295,16 +308,25 @@ function UserMenu({ onHelp }: { onHelp: () => void }) {
 function PaletteHost() { const [open, set] = useOverlay('palette'); return <CommandPalette open={open} onOpenChange={set} />; }
 function HelpHost() { const [open, set] = useOverlay('help'); return <ShortcutSheet open={open} onOpenChange={set} />; }
 
+// Both lists are derived: page keys from the registry the palette reads, global keys from NAV. Nothing hand-listed.
 function ShortcutSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
-  const rows: [string, ReactNode][] = [
-    ['Ctrl K', 'Search or jump anywhere'], ['g h', 'Home'], ['g a', 'Approvals'], ['g i', 'Inbox'], ['g m', 'Meetings'], ['g l', 'Leads'], ['g r', 'Analytics'], ['g s', 'Studio'],
-    ['J / K', 'Next / previous draft or reply'], ['A', 'Approve'], ['E', 'Edit'], ['D', 'Reject'], ['S', 'Skip'], ['1–5', 'Sequence step'], ['H', 'Mark reply handled'], ['?', 'This sheet'],
+  const { role, can } = useWorkspace();
+  const here = usePageCommands().filter((c) => c.keys);
+  const everywhere: [string, ReactNode][] = [
+    ['Ctrl K', 'Search, jump, or ask an agent'],
+    ...NAV.filter((n) => n.visible(role, can) && n.shortcut).map((n): [string, ReactNode] => [n.shortcut!, labelFor(n, role)]),
+    ['Z', 'Undo the last approval or change'], ['?', 'This sheet'],
   ];
+  const list = (rows: [string, ReactNode][]) => (
+    <dl className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 pb-2">
+      {rows.map(([k, v]) => (<Fragment key={k}><dt className="justify-self-end">{k.split(' ').map((p) => <span key={p} className="kbd mx-0.5">{p}</span>)}</dt><dd className="text-sm">{v}</dd></Fragment>))}
+    </dl>
+  );
   return (
     <Sheet open={open} onOpenChange={onOpenChange} title="Keyboard shortcuts">
-      <dl className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 pb-2">
-        {rows.map(([k, v]) => (<Fragment key={k}><dt className="justify-self-end">{k.split(' ').map((p) => <span key={p} className="kbd mx-0.5">{p}</span>)}</dt><dd className="text-sm">{v}</dd></Fragment>))}
-      </dl>
+      {here.length > 0 && <><h3 className="label mb-2">On this page</h3>{list(here.map((c): [string, ReactNode] => [c.keys!, c.label]))}</>}
+      <h3 className={cx('label mb-2', here.length > 0 && 'mt-4')}>Everywhere</h3>
+      {list(everywhere)}
       <p className="mt-2 flex items-center gap-2 text-xs text-muted"><PauseCircle className="size-3.5" aria-hidden />Shortcuts pause while you type.</p>
     </Sheet>
   );

@@ -25,7 +25,7 @@ const variants: Record<Variant, string> = {
 const sizes: Record<Size, string> = { sm: 'h-8 px-2.5 text-sm gap-1.5', md: 'h-9 px-3.5 text-base gap-2', lg: 'h-11 px-5 text-base gap-2' };
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button({ variant = 'secondary', size = 'md', loading, icon, kbd, className, children, disabled, ...rest }, ref) {
   return (
-    <button ref={ref} {...rest} disabled={disabled || loading} aria-busy={loading || undefined}
+    <button ref={ref} aria-keyshortcuts={kbd ? (kbd === 'Esc' ? 'Escape' : kbd) : undefined} {...rest} disabled={disabled || loading} aria-busy={loading || undefined}
       className={cx('press inline-flex shrink-0 select-none items-center justify-center rounded-md font-medium whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-55 max-md:min-h-11',
         variants[variant], sizes[size], className)}>
       {loading ? <Loader2 className="size-4 animate-spin" aria-hidden /> : icon}
@@ -248,6 +248,20 @@ export function Sheet({ open, onOpenChange, title, description, children, footer
   );
 }
 
+// ── Bulk action bar: floats above the phone tab bar / page bottom while anything is selected ─────────────────────
+export function BulkBar({ count, children, onClear, note }: { count: number; children: ReactNode; onClear: () => void; note?: ReactNode }) {
+  if (!count) return null;
+  return (
+    <div role="region" aria-label="Bulk actions" data-state="open"
+      className="glass ov-pop fixed inset-x-0 bottom-[calc(76px+env(safe-area-inset-bottom))] z-40 mx-auto flex w-fit max-w-[calc(100vw-24px)] flex-wrap items-center gap-2 rounded-xl px-3 py-2 shadow-lg lg:bottom-6">
+      <span className="tabular px-1 text-sm font-semibold" aria-live="polite">{count} selected</span>
+      {note && <span className="text-xs text-muted">{note}</span>}
+      {children}
+      <Button variant="ghost" size="sm" kbd="Esc" onClick={onClear}>Clear</Button>
+    </div>
+  );
+}
+
 // ── Tooltip (supplementary only) ──────────────────────────────────────────────────────────────
 export function Tip({ content, children }: { content: ReactNode; children: ReactNode }) {
   return (
@@ -279,10 +293,13 @@ export function CountUp({ value, format = (n) => Math.round(n).toLocaleString('e
 /** Page title in the display serif. `accent` italicises one word of it (must appear in `title`); titles otherwise match the nav label. */
 export function PageHeader({ title, accent, subtitle, actions, children }: { title: string; accent?: string; subtitle?: ReactNode; actions?: ReactNode; children?: ReactNode }) {
   const at = accent ? title.lastIndexOf(accent) : -1;
+  const h = useRef<HTMLHeadingElement>(null);
+  // A lazy screen can mount after the shell moved focus to <main>; take it from there so the title is announced.
+  useEffect(() => { const a = document.activeElement; if (!a || a === document.body || a.id === 'main') h.current?.focus({ preventScroll: true }); }, []);
   return (
     <header className="mb-5 flex flex-wrap items-end gap-3">
       <div className="min-w-0 flex-1 basis-64">
-        <h1 className="display">{at < 0 ? title : <>{title.slice(0, at)}<em>{accent}</em>{title.slice(at + accent!.length)}</>}</h1>
+        <h1 ref={h} tabIndex={-1} className="display outline-none">{at < 0 ? title : <>{title.slice(0, at)}<em>{accent}</em>{title.slice(at + accent!.length)}</>}</h1>
         {subtitle && <p className="mt-0.5 text-sm text-muted">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2 max-sm:w-full">{actions}</div>}
@@ -292,8 +309,8 @@ export function PageHeader({ title, accent, subtitle, actions, children }: { tit
 }
 export function Page({ children, className, wide }: { children: ReactNode; className?: string; wide?: boolean }) {
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.24, ease: [0.2, 0.8, 0.2, 1] }}
-      className={cx('mx-auto w-full px-4 py-5 md:px-6 md:py-6', wide ? 'max-w-[1440px]' : 'max-w-[1200px]', className)}>{children}</motion.div>
+    // Route changes animate through View Transitions (app.css), so the page itself doesn't animate in as well.
+    <div className={cx('mx-auto w-full px-4 py-5 md:px-6 md:py-6', wide ? 'max-w-[1440px]' : 'max-w-[1200px]', className)}>{children}</div>
   );
 }
 export const listStagger = { hidden: {}, show: { transition: { staggerChildren: 0.035 } } };

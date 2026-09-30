@@ -8,6 +8,8 @@ import { api } from '@/lib/api';
 import type { Agent, ModelTier, Routine, Badge as BadgeCode } from '@/lib/api/types';
 import { useQuery } from '@/lib/hooks';
 import { useWorkspace } from '@/lib/session';
+import { useCommands } from '@/lib/commands';
+import { deferAction, usePending } from '@/lib/undo';
 import { TIER, plural, relTime } from '@/lib/format';
 import { Avatar, Badge, Button, EmptyState, Field, Input, Page, PageHeader, Segmented, Select, Sheet, SkeletonList, Switch, Textarea, cx, listItem, listStagger } from '@/components/ui';
 
@@ -35,13 +37,15 @@ export default function StudioPage() {
 function Agents({ autoNew }: { autoNew: boolean }) {
   const { scope, tz, can } = useWorkspace();
   const agents = useQuery(() => api.agents(scope), [scope.workspaceId]);
+  const pending = usePending();
   const [edit, setEdit] = useState<Agent | 'new' | null>(autoNew ? 'new' : null);
+  useCommands(can('build') ? [{ id: 'new', label: 'New agent', icon: Plus, run: () => setEdit('new') }] : []);
   return (
     <>
       {can('build') && <div className="mb-4 flex justify-end"><Button variant="primary" icon={<Plus className="size-4" aria-hidden />} onClick={() => setEdit('new')}>New agent</Button></div>}
       {agents.loading ? <SkeletonList rows={4} /> : !agents.data?.length ? <EmptyState icon={<Bot className="size-5" aria-hidden />} title="No agents yet" /> : (
         <motion.ul variants={listStagger} initial="hidden" animate="show" className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {agents.data.map((a) => (
+          {agents.data.filter((a) => !pending.isHidden(a.id)).map((a) => (
             <motion.li key={a.id} variants={listItem}>
               <button onClick={() => setEdit(a)} className="card flex h-full w-full flex-col p-4 text-left transition-transform hover:-translate-y-0.5">
                 <div className="flex items-center gap-3">
@@ -67,11 +71,9 @@ function AgentSheet({ agent, onClose, readOnly }: { agent: Agent | 'new' | null;
   const base = agent && agent !== 'new' ? agent : null;
   const [f, setF] = useState({ name: '', badge: 'SDR' as BadgeCode, modelTier: 'flash' as ModelTier, systemPrompt: '', contextSources: '', autonomousMode: false });
   const [busy, setBusy] = useState(false);
-  const [confirmArchive, setConfirmArchive] = useState(false);
   useEffect(() => {
     if (agent) setF(base ? { name: base.name, badge: base.badge, modelTier: base.modelTier, systemPrompt: base.systemPrompt, contextSources: base.contextSources.join(', '), autonomousMode: base.autonomousMode }
       : { name: '', badge: 'SDR', modelTier: 'flash', systemPrompt: '', contextSources: '', autonomousMode: false });
-    setConfirmArchive(false);
   }, [agent]); // eslint-disable-line react-hooks/exhaustive-deps
   const body = { name: f.name.trim(), badge: f.badge, modelTier: f.modelTier, systemPrompt: f.systemPrompt, autonomousMode: f.autonomousMode,
     contextSources: f.contextSources.split(',').map((s) => s.trim()).filter(Boolean) };
@@ -80,14 +82,15 @@ function AgentSheet({ agent, onClose, readOnly }: { agent: Agent | 'new' | null;
     try { if (base) await api.patchAgent(scope, base.id, body); else await api.createAgent(scope, body); toast.success(base ? 'Saved.' : `${body.name} is ready. Find it on Home.`); onClose(); }
     catch (e) { toast.error((e as Error).message); } finally { setBusy(false); }
   };
-  const archive = async () => {
-    try { await api.archiveAgent(scope, base!.id); toast(`${base!.name} archived. Its routines stopped.`); onClose(); } catch (e) { toast.error((e as Error).message); }
+  const archive = () => {
+    const b = base!;
+    deferAction({ ids: [b.id], kind: 'archive', workspaceId: scope.workspaceId, message: `${b.name} archived. Its routines stopped.`, commit: () => api.archiveAgent(scope, b.id) });
+    onClose();
   };
   return (
     <Sheet open={Boolean(agent)} onOpenChange={(v) => !v && onClose()} title={base ? base.name : 'New agent'} description="Agents draft and answer. They never send." wide
       footer={readOnly ? undefined : <>
-        {base && (confirmArchive ? <Button variant="danger-solid" onClick={archive} className="mr-auto">Archive {base.name}</Button>
-          : <Button variant="ghost" icon={<Archive className="size-4" aria-hidden />} onClick={() => setConfirmArchive(true)} className="mr-auto">Archive</Button>)}
+        {base && <Button variant="ghost" icon={<Archive className="size-4" aria-hidden />} onClick={archive} className="mr-auto">Archive</Button>}
         <Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} disabled={!f.name.trim()} onClick={save}>{base ? 'Save' : 'Create agent'}</Button></>}>
       <fieldset disabled={readOnly} className="grid gap-4 sm:grid-cols-[1fr_140px]">
         <Field label="Name">{(p) => <Input id={p.id} value={f.name} maxLength={60} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Sales Outbound" />}</Field>

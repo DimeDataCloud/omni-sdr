@@ -152,5 +152,29 @@
   *, *::before, *::after { scroll-behavior: auto !important; }
 }
 
+/* Route changes: a View Transition (native, no JS). The header and tab bar are their own groups, so they hold still
+   while the page fades out fast and rises in. Reduced motion: an instant swap. */
+@keyframes vt-out { to { opacity: 0; } }
+@keyframes vt-in { from { opacity: 0; transform: translateY(6px); } }
+::view-transition-old(root) { animation: vt-out 120ms var(--ease-out) both; }
+::view-transition-new(root) { animation: vt-in var(--dur-move) var(--ease-expo) both; }
+::view-transition-group(app-header), ::view-transition-group(app-tabbar) { animation: none; }
+@media (prefers-reduced-motion: reduce) { ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; } }
+
+/* Undo toast: a ring that drains over the undo window (lib/undo.ts). 6s is UNDO_MS. */
+@keyframes undo-drain { from { stroke-dashoffset: 0; } to { stroke-dashoffset: 100; } }
+.undo-ring { flex-shrink: 0; transform: rotate(-90deg); }
+.undo-ring circle { fill: none; stroke: var(--accent-ink); stroke-width: 2.5; stroke-dasharray: 100; stroke-linecap: round; animation: undo-drain 6s linear forwards; }
+@media (prefers-reduced-motion: reduce) { .undo-ring circle { animation: none; } }
+
+/* J/K past either end of a list: the open row nudges toward the key's direction, so the key visibly answered
+   (lib/hooks.ts bumpEdge). Reduced motion gets a brief tint instead of movement. */
+@keyframes bump-down { 50% { translate: 0 3px; } }
+@keyframes bump-up { 50% { translate: 0 -3px; } }
+@keyframes bump-tint { 50% { background-color: var(--sunken); } }
+[data-bump='down'] { animation: bump-down 180ms var(--ease-out); }
+[data-bump='up'] { animation: bump-up 180ms var(--ease-out); }
+@media (prefers-reduced-motion: reduce) { [data-bump] { animation: bump-tint 240ms linear; } }
+
 /* Safe areas for the installed-to-home-screen phone view. */
 .pb-safe { padding-bottom: max(env(safe-area-inset-bottom), 0px); }

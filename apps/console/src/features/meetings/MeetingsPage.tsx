@@ -5,8 +5,10 @@ import { toast } from 'sonner';
 import { CalendarDays, Video, CheckCircle2, UserX, Ban, ExternalLink } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { Meeting } from '@/lib/api/types';
-import { useNow, useQuery } from '@/lib/hooks';
+import { useNow, useQuery, prefetchQuery } from '@/lib/hooks';
+import type { Scope } from '@/lib/api/client';
 import { useWorkspace } from '@/lib/session';
+import { useCommands } from '@/lib/commands';
 import { clock, dayKey, dayLabel, fmtDur } from '@/lib/format';
 import { Badge, Button, EmptyState, ErrorState, Page, PageHeader, Segmented, SkeletonList, cx, listItem, listStagger } from '@/components/ui';
 
@@ -15,10 +17,14 @@ const STATUS: Record<Meeting['status'], { label: string; tone: 'neutral' | 'succ
   booked: { label: 'Booked', tone: 'info' }, completed: { label: 'Completed', tone: 'success' }, no_show: { label: 'No-show', tone: 'warning' }, canceled: { label: 'Canceled', tone: 'neutral' },
 };
 
+/** Warmed on hover of the Meetings nav link. */
+export const prefetch = (s: Scope) => prefetchQuery(`meetings:${s.workspaceId}:upcoming`, () => api.meetings(s, 'upcoming'));
+
 export default function MeetingsPage() {
   const { scope, tz, can } = useWorkspace();
   const [range, setRange] = useState<'upcoming' | 'past'>('upcoming');
-  const q = useQuery(() => api.meetings(scope, range), [scope.workspaceId, range]);
+  useCommands([range === 'upcoming' ? { id: 'range', label: 'Show past meetings', run: () => setRange('past') } : { id: 'range', label: 'Show upcoming meetings', run: () => setRange('upcoming') }]);
+  const q = useQuery(() => api.meetings(scope, range), [scope.workspaceId, range], { key: `meetings:${scope.workspaceId}:${range}` });
   const now = useNow();
   const groups = useMemo(() => {
     const m = new Map<string, Meeting[]>();

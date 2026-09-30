@@ -1,31 +1,65 @@
 // Inbox (DESIGN 6.5). Sorted by SLA; a meeting request close to its deadline can't be missed.
 // Replies are prospect text: shown as plain text, links not activated.
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { AnimatePresence, motion } from 'motion/react';
 import { toast } from 'sonner';
 import { CalendarPlus, CheckCircle2, ArrowLeft, Inbox as InboxIcon, Info, Clock3, UserRound, ShieldOff, FileText } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { InboxItem } from '@/lib/api/types';
-import { useHotkeys, useMedia, useNow, useQuery } from '@/lib/hooks';
+import { bumpEdge, useArrivalFocus, useHotkeys, useMedia, useNow, useQuery, useSelection, prefetchQuery, requestArrival } from '@/lib/hooks';
+import { useCommands } from '@/lib/commands';
+import type { Scope } from '@/lib/api/client';
 import { useWorkspace } from '@/lib/session';
-import { INTENT, enrollmentState, absTime, relTime, slaText, slaTone, clock } from '@/lib/format';
-import { Badge, Button, Card, EmptyState, ErrorState, Field, IconButton, Input, Page, PageHeader, Segmented, Select, Sheet, SkeletonList, Skeleton, cx } from '@/components/ui';
+import { deferAction, usePending } from '@/lib/undo';
+import { INTENT, enrollmentState, absTime, relTime, slaText, slaTone, clock, plural } from '@/lib/format';
+import { BulkBar, Badge, Button, Card, EmptyState, ErrorState, Field, IconButton, Input, Page, PageHeader, Segmented, Select, Sheet, SkeletonList, Skeleton, cx } from '@/components/ui';
 
 type Status = 'open' | 'handled' | 'all';
+
+/** Warmed on hover of the Inbox nav link. */
+export const prefetch = (s: Scope) => prefetchQuery(`inbox:${s.workspaceId}:open`, () => api.inbox(s, { status: 'open' }));
 
 export default function InboxPage() {
   const { scope } = useWorkspace();
   const [params, setParams] = useSearchParams();
   const status = (params.get('s') as Status) ?? 'open';
-  const inbox = useQuery(() => api.inbox(scope, { status }), [scope.workspaceId, status], { pollMs: 60000 });
+  const inbox = useQuery(() => api.inbox(scope, { status }), [scope.workspaceId, status], { pollMs: 60000, key: `inbox:${scope.workspaceId}:${status}` });
   const wide = useMedia('(min-width: 1100px)');
-  const items = inbox.data ?? [];
+  const pending = usePending();
+  const items = (inbox.data ?? []).filter((r) => status !== 'open' || !pending.isHidden(r.id));
   const selId = params.get('r');
-  const selected = items.find((r) => r.id === selId) ?? (wide ? items[0] : undefined);
+  // A handled reply is hidden one render before the URL moves on; resolve to the reply after it (else before it)
+  // so that render already shows the right one. Same rule as Approvals.
+  const all = inbox.data ?? [];
+  const following = (id: string) => {
+    const i = all.findIndex((r) => r.id === id);
+    if (i < 0) return undefined;
+    return all.slice(i + 1).find((r) => items.includes(r)) ?? all.slice(0, i).reverse().find((r) => items.includes(r));
+  };
+  const selected = items.find((r) => r.id === selId) ?? (selId ? following(selId) : undefined) ?? (wide ? items[0] : undefined);
   const setParam = (k: string, v: string | null) => { const p = new URLSearchParams(params); if (v) p.set(k, v); else p.delete(k); setParams(p, { replace: true }); };
   const idx = selected ? items.indexOf(selected) : -1;
-  useHotkeys({ j: () => items[idx + 1] && setParam('r', items[idx + 1].id), k: () => items[idx - 1] && setParam('r', items[idx - 1].id) }, [idx, items.length], wide);
+  const order = useMemo(() => items.filter((r) => !r.handledAt).map((r) => r.id), [items]);
+  const sel = useSelection(order, status === 'open');
+  const markHandled = () => {
+    const ids = sel.ids; sel.clear();
+    deferAction({ ids, kind: 'handle', workspaceId: scope.workspaceId, message: `Marked ${plural(ids.length, 'reply', 'replies')} handled.`, commit: () => Promise.all(ids.map((id) => api.handle(scope, id))) });
+  };
+  const step = (d: 1 | -1) => { const n = items[idx + d]; if (n) { requestArrival(); setParam('r', n.id); } else if (selected) bumpEdge(d); };
+  useHotkeys({ j: () => step(1), k: () => step(-1),
+    x: () => { if (selected && !selected.handledAt) sel.toggle(selected.id); } }, [idx, items.length, selected?.id, sel.toggle], wide);
+  useCommands([
+    ...(wide && items.length > 1 ? [{ id: 'next', label: 'Next reply', keys: 'J', run: () => step(1) }, { id: 'prev', label: 'Previous reply', keys: 'K', run: () => step(-1) }] : []),
+    ...(wide && selected && !selected.handledAt ? [{ id: 'sel', label: sel.has(selected.id) ? 'Unselect this reply' : 'Select this reply', keys: 'X', run: () => sel.toggle(selected.id) }] : []),
+    ...(sel.size ? [{ id: 'bulk', label: `Mark ${plural(sel.size, 'selected reply', 'selected replies')} handled`, icon: CheckCircle2, run: markHandled },
+      { id: 'clear', label: 'Clear selection', keys: 'Esc', run: sel.clear }] : []),
+  ]);
+  const bulkBar = (
+    <BulkBar count={sel.size} onClear={sel.clear}>
+      <Button variant="primary" size="sm" icon={<CheckCircle2 className="size-4" aria-hidden />} onClick={markHandled}>Mark handled</Button>
+    </BulkBar>
+  );
 
   const header = (
     <PageHeader title="Inbox" subtitle="Replies to your outreach, meeting requests first. The SLA counts business hours only.">
@@ -47,7 +81,8 @@ export default function InboxPage() {
         </>) : (<>
           {header}
           <ErrorState error={inbox.error} onRetry={inbox.reload} />
-          {inbox.loading ? <SkeletonList rows={5} /> : items.length ? <ReplyList items={items} selectedId={null} onSelect={(id) => setParam('r', id)} /> : empty}
+          {inbox.loading ? <SkeletonList rows={5} /> : items.length ? <ReplyList items={items} selectedId={null} onSelect={(id) => setParam('r', id)} sel={sel} /> : empty}
+          {bulkBar}
         </>)}
       </Page>
     );
@@ -59,10 +94,11 @@ export default function InboxPage() {
       {inbox.loading ? <div className="grid grid-cols-[minmax(320px,400px)_1fr] gap-5"><SkeletonList rows={5} /><Skeleton className="h-96 rounded-xl" /></div>
         : !items.length ? empty : (
           <div className="grid grid-cols-[minmax(320px,400px)_1fr] items-start gap-5">
-            <div className="sticky top-[72px] max-h-[calc(100dvh-160px)] overflow-y-auto pr-1"><ReplyList items={items} selectedId={selected?.id ?? null} onSelect={(id) => setParam('r', id)} /></div>
-            <AnimatePresence mode="wait">{selected && <ReplyDetail key={selected.id} r={selected} onDone={() => { const n = items[idx + 1] ?? items[idx - 1]; setParam('r', n && n.id !== selected.id ? n.id : null); }} keyboard />}</AnimatePresence>
+            <div className="sticky top-[72px] max-h-[calc(100dvh-160px)] overflow-y-auto pr-1"><ReplyList items={items} selectedId={selected?.id ?? null} onSelect={(id) => setParam('r', id)} sel={sel} /></div>
+            <AnimatePresence mode="wait">{selected && <ReplyDetail key={selected.id} r={selected} onDone={() => { const n = items[idx + 1] ?? items[idx - 1]; if (n && n.id !== selected.id) { requestArrival(); setParam('r', n.id); } else setParam('r', null); }} keyboard />}</AnimatePresence>
           </div>
         )}
+      {bulkBar}
     </Page>
   );
 }
@@ -85,19 +121,26 @@ function outcomeNote(r: InboxItem): string | null {
   return null;
 }
 
-function ReplyList({ items, selectedId, onSelect }: { items: InboxItem[]; selectedId: string | null; onSelect: (id: string) => void }) {
+function ReplyList({ items, selectedId, onSelect, sel }: { items: InboxItem[]; selectedId: string | null; onSelect: (id: string) => void; sel: ReturnType<typeof useSelection> }) {
   const { tz } = useWorkspace();
   const now = useNow();
   return (
-    <ul className="space-y-1.5" aria-label="Replies">
+    <ul className="space-y-1.5" aria-label="Replies" data-kbd-list>
       <AnimatePresence initial={false}>
         {items.map((r, i) => {
           const on = r.id === selectedId; const intent = INTENT[r.intent];
           return (
-            <motion.li key={r.id} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0, transition: { delay: Math.min(i, 10) * 0.03 } }} exit={{ opacity: 0, x: -24 }}>
+            <motion.li key={r.id} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0, transition: { delay: Math.min(i, 10) * 0.03 } }} exit={{ opacity: 0, x: -24 }}
+              className={cx('flex items-stretch rounded-xl border transition-colors', on ? 'border-ink/40 bg-surface shadow-md' : 'border-line bg-surface/70 hover:bg-surface',
+                r.slaMinutesRemaining !== null && r.slaMinutesRemaining < 30 && !on && 'border-danger/40', sel.has(r.id) && 'ring-2 ring-ink/30')}>
+              {!r.handledAt && (
+                <label className="flex w-10 shrink-0 cursor-pointer items-start justify-center pt-[calc(var(--row-py)+4px)]">
+                  <span className="sr-only">Select reply from {r.contactName ?? r.fromAddress}</span>
+                  <input type="checkbox" checked={sel.has(r.id)} onChange={(e) => sel.toggle(r.id, e.nativeEvent as MouseEvent)} className="size-4 accent-[var(--accent-ink)]" />
+                </label>
+              )}
               <button onClick={() => onSelect(r.id)} aria-current={on || undefined}
-                className={cx('row-d w-full rounded-xl border px-3 text-left transition-colors', on ? 'border-ink/40 bg-surface shadow-md' : 'border-line bg-surface/70 hover:bg-surface',
-                  r.slaMinutesRemaining !== null && r.slaMinutesRemaining < 30 && !on && 'border-danger/40')}>
+                className={cx('row-d min-w-0 flex-1 pr-3 text-left', r.handledAt && 'pl-3')}>
                 <span className="flex items-center gap-2">
                   <span className="truncate font-medium">{r.contactName ?? r.fromAddress}</span>
                   <span className="ml-auto shrink-0 text-xs text-muted">{relTime(r.receivedAt, tz, now)}</span>
@@ -123,21 +166,26 @@ function ReplyList({ items, selectedId, onSelect }: { items: InboxItem[]; select
 function ReplyDetail({ r, onDone, keyboard }: { r: InboxItem; onDone: () => void; keyboard?: boolean }) {
   const { scope, tz, can } = useWorkspace();
   const [booking, setBooking] = useState(false);
-  const [busy, setBusy] = useState(false);
   const contact = useQuery(() => api.contact(scope, r.contactId!), [r.contactId], { enabled: Boolean(r.contactId) && can('build') });
   const intent = INTENT[r.intent];
   const act = can('inbox_draft') && !r.handledAt;
-  const handle = async () => {
-    setBusy(true);
-    try { await api.handle(scope, r.id); toast.success('Marked handled.'); onDone(); } catch (e) { toast.error((e as Error).message); } finally { setBusy(false); }
+  const handle = () => {
+    deferAction({ ids: [r.id], kind: 'handle', workspaceId: scope.workspaceId, message: 'Marked handled.', commit: () => api.handle(scope, r.id) });
+    onDone();
   };
   useHotkeys({ h: () => { if (act) handle(); }, b: () => { if (act) setBooking(true); } }, [r.id, act], keyboard);
+  const headRef = useRef<HTMLHeadingElement>(null);
+  useArrivalFocus(headRef, keyboard);
+  useCommands(keyboard && act ? [
+    { id: 'handle', label: `Mark the reply from ${r.contactName ?? r.fromAddress} handled`, keys: 'H', icon: CheckCircle2, run: handle },
+    { id: 'book', label: 'Book a meeting', keys: 'B', icon: CalendarPlus, run: () => setBooking(true) },
+  ] : []);
   return (
     <motion.article initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="space-y-4" aria-label={`Reply from ${r.contactName}`}>
       <Card className="overflow-hidden">
         <div className="border-b border-line p-5">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-lg">{r.contactName ?? r.fromAddress}</h2>
+            <h2 ref={headRef} tabIndex={-1} className="text-lg outline-none">{r.contactName ?? r.fromAddress}</h2>
             <Badge tone={intent.tone}>{intent.label}</Badge>
             {r.slaMinutesRemaining !== null && <SlaChip minutes={r.slaMinutesRemaining} dueAt={r.slaDueAt} />}
           </div>
@@ -154,7 +202,7 @@ function ReplyDetail({ r, onDone, keyboard }: { r: InboxItem; onDone: () => void
         {act && (
           <div className="flex flex-wrap gap-2 border-t border-line bg-sunken px-5 py-3">
             {['meeting_request', 'positive_inquiry', 'question', 'referral'].includes(r.intent) && <Button variant="primary" kbd="B" icon={<CalendarPlus className="size-4" aria-hidden />} onClick={() => setBooking(true)} className="max-sm:flex-1">Book</Button>}
-            <Button kbd="H" loading={busy} icon={<CheckCircle2 className="size-4" aria-hidden />} onClick={handle} className="max-sm:flex-1">Mark handled</Button>
+            <Button kbd="H" icon={<CheckCircle2 className="size-4" aria-hidden />} onClick={handle} className="max-sm:flex-1">Mark handled</Button>
           </div>
         )}
         {r.handledAt && <p className="border-t border-line bg-sunken px-5 py-3 text-sm text-muted">Handled {relTime(r.handledAt, tz)}{r.handledBy === 'system' ? ' automatically' : ''}.</p>}
