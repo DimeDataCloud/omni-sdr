@@ -57,6 +57,8 @@ export function CreateView({ caps, onOpen, projectId: initialProject }: { caps: 
   useEffect(() => { if (project?.productId) setProductId(project.productId); }, [project?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (initialProject) setProjectId(initialProject); }, [initialProject]);
   useEffect(() => { if (!modes.some((m) => m.value === mode) && modes[0]) setMode(modes[0].value); }, [modes.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Product shot needs a product: start on the first one, so the first Generate works and the scene tiles show it.
+  useEffect(() => { if (mode === 'product' && !productId && products.data?.[0]) setProductId(products.data[0].id); }, [products.data, mode]); // eslint-disable-line react-hooks/exhaustive-deps
   const product = products.data?.find((p) => p.id === productId) ?? null;
   const ingredients: Ingredient[] = (project?.ingredients ?? []).filter((i) => !off.has(i.id));
   const durationS = Number(length);

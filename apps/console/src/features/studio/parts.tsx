@@ -120,8 +120,9 @@ export function AssetCard({ asset, onOpen, tz, selected, extra }: { asset: Asset
   return (
     <div className={cx('card lift group flex h-full flex-col overflow-hidden', selected && 'ring-2 ring-ring')}>
       <button type="button" onClick={onOpen} aria-label={`Open ${asset.name}`} className="relative block w-full bg-sunken text-left">
-        <div className="grid aspect-[4/5] place-items-center p-3">
-          <AssetFrame asset={asset} fit="cover" className={cx('w-full max-h-full rounded-md shadow-sm', ratio(asset.versions[asset.current].edits.crop ?? asset.aspect) < 0.8 && 'w-auto h-full')} label={`${asset.name}, ${asset.kind}`} />
+        <div className="grid aspect-square place-items-center p-3">
+          {/* Wide media fills the width; square and tall media fill the height, so every card is the same size. */}
+          <AssetFrame asset={asset} fit="cover" className={cx('rounded-md shadow-sm', ratio(asset.versions[asset.current].edits.crop ?? asset.aspect) > 1 ? 'w-full' : 'h-full')} label={`${asset.name}, ${asset.kind}`} />
         </div>
       </button>
       <div className="flex min-w-0 flex-1 flex-col gap-1.5 p-3">
