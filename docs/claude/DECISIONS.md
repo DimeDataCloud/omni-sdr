@@ -274,3 +274,11 @@ Station: all · Decided by: Christian
 Christian: "you are the main worker, i am using gemini agent to do exacting tasks"
 - Claude builds the product end to end by default, the web app included. Gemini takes narrow, precisely specified tasks that Christian hands it, on the paths each task names. Rails v1.2 §1 and §4 carry this, and they finish the lane edit the 2026-09-29 backend entry asked for.
 - Unchanged: the review rules. Merges still need the other agent's review and Christian's approval (§5.6). A change to the safety spine still needs Gemini's audit and Christian's OK (§6).
+
+## 2026-10-01 — Studio is the image and video marketing suite
+Station: 02/03 (IA, frontend) · 18 (assets + pipelines) · Decided by: Christian
+Christian: "The studio is specifically for the video and image marketing suite. This is where you can go to create, add videos, social media content, create, generate and edit images and videos to make product photos and anything of the sort. Take reference from higgsfield AIS or video and image suites as well as Google flow"
+- Studio becomes the place to create, upload, generate and edit images and video: product photos, social content, ads. The references are Higgsfield and Google Flow.
+- This replaces DESIGN.md §6.9 (Studio = agents, routines, Auto-adjust).
+- Unchanged by this entry: the 2026-09-28 generation decision. Every generator sits behind its own per-org flag, OFF until Christian turns it on, with no dead buttons; generation runs server-side only (Rails §8).
+- Not decided by this entry: where agents, routines and the Auto-adjust log move to. The proposal is in docs/claude/STUDIO-PLAN.md.
