@@ -8,6 +8,8 @@ import { withoutTenant, withService } from '../../../db/src/context.mjs';
 const sha = (s) => createHash('sha256').update(s, 'utf8').digest('hex');
 
 import { classifyReply, addBusinessMinutes, SLA_MINUTES } from './reply-rules.mjs';
+import { offDecider } from '../../../ai/src/decide.mjs';
+import { REPLY_TRIAGE } from '../../../ai/src/registry.mjs';
 export { classifyReply, addBusinessMinutes, SLA_MINUTES };
 
 
@@ -57,4 +59,79 @@ export async function ingestReply(client, msg, { classify = classifyReply } = {}
       [hit.org_id, id, JSON.stringify({ inbound_id: id, intent: verdict.intent, sla_due_at: slaDueAt })]);
     return { outcome: 'recorded', id, intent: verdict.intent, slaDueAt: slaDueAt?.toISOString() ?? null };
   });
+}
+
+/**
+ * The model pass (DECISIONS 2026-10-01): ask the decider REPLY_TRIAGE's safety questions about one recorded
+ * reply and apply only what they add: a suppression, a stopped sequence, an SLA. The rules' result stands
+ * whatever the model says; `intent` is never rewritten. The decider call runs outside any transaction (a cold
+ * decider can take a minute), and a failure leaves the reply undecided for the next pass.
+ * @returns { outcome: 'decided'|'already_decided'|'not_found'|'decider_failed', effects?, reason? }
+ */
+export async function refineReply(client, { id, orgId, workspaceId }, { decider = offDecider(), shadowLabel = false } = {}) {
+  const scope = { orgId, workspaceId, role: 'inbox_svc' };
+  const row = await withService(client, scope, async (tx) => (await tx.query(
+    `SELECT id, contact_id, subject, body, intent, sla_due_at, received_at, decided_at FROM inbound_messages WHERE id = $1`, [id])).rows[0]);
+  if (!row) return { outcome: 'not_found' };
+  if (row.decided_at) return { outcome: 'already_decided' };
+
+  const questions = REPLY_TRIAGE.questions({ shadowLabel });
+  let out;
+  try {
+    out = await decider.decide({ state: REPLY_TRIAGE.state(row), questions });
+  } catch (e) {
+    return { outcome: 'decider_failed', reason: e.message };
+  }
+
+  return withService(client, scope, async (tx) => {
+    const fresh = (await tx.query(`SELECT decided_at, sla_due_at, intent FROM inbound_messages WHERE id = $1 FOR UPDATE`, [id])).rows[0];
+    if (fresh.decided_at) return { outcome: 'already_decided' };
+    const ruled = ['unsubscribe', 'bounce'].includes(fresh.intent);
+    const fx = REPLY_TRIAGE.effects(out.answers, {
+      intent: fresh.intent, suppressed: ruled, stopped: fresh.intent !== 'out_of_office', slaDueAt: fresh.sla_due_at });
+    const applied = [];
+    if (fx.suppress && row.contact_id) {
+      const email = (await tx.query(`SELECT email FROM contacts WHERE id = $1`, [row.contact_id])).rows[0]?.email;
+      if (email) {
+        await tx.query(`INSERT INTO suppression (scope_org_id, value_hash, kind, reason) VALUES ($1, value_hash($2), 'email', 'reply_unsubscribe_model')
+                        ON CONFLICT DO NOTHING`, [orgId, email]);
+        applied.push('suppress');
+      }
+    }
+    if (fx.stop && row.contact_id) {
+      const n = (await tx.query(`UPDATE enrollments SET state = 'stopped', stop_reason = 'reply:model_stop', next_run_at = NULL
+                                 WHERE contact_id = $1 AND state NOT IN ${TERMINAL}`, [row.contact_id])).rowCount;
+      if (n) applied.push('stop');
+    }
+    let slaDueAt = fresh.sla_due_at;
+    if (fx.startSla) {
+      const tz = (await tx.query(`SELECT timezone FROM workspaces WHERE id = $1`, [workspaceId])).rows[0]?.timezone ?? 'America/Chicago';
+      // From when the reply arrived, not from when the model got to it.
+      slaDueAt = addBusinessMinutes(row.received_at, SLA_MINUTES, tz);
+      applied.push('sla');
+    }
+    const decision = { engine: out.engine, model: out.model, revision: out.revision, registry: REPLY_TRIAGE.version,
+      answers: fx.record, applied, input_tokens: out.inputTokens, ms: out.ms };
+    await tx.query(`UPDATE inbound_messages SET decision = $2, decided_at = now(), sla_due_at = $3 WHERE id = $1`,
+      [id, JSON.stringify(decision), slaDueAt]);
+    if (applied.length) {
+      await tx.query(`INSERT INTO outbox (org_id, topic, key, payload) VALUES ($1, 'inbound.decided', $2, $3)`,
+        [orgId, id, JSON.stringify({ inbound_id: id, applied, sla_due_at: slaDueAt })]);
+    }
+    return { outcome: 'decided', effects: applied };
+  });
+}
+
+// One pass over undecided replies, oldest first, one at a time (the decider runs one request per instance).
+export async function refinePending(client, { decider = offDecider(), limit = 50, shadowLabel = false } = {}) {
+  const ids = await withoutTenant(client, { role: 'inbox_svc' }, async (tx) =>
+    (await tx.query(`SELECT * FROM inbox_undecided($1)`, [limit])).rows);
+  const tally = { decided: 0, failed: 0, skipped: 0 };
+  for (const r of ids) {
+    const res = await refineReply(client, { id: r.id, orgId: r.org_id, workspaceId: r.workspace_id }, { decider, shadowLabel });
+    if (res.outcome === 'decided') tally.decided++;
+    else if (res.outcome === 'decider_failed') { tally.failed++; break; } // a down decider fails every reply; stop and retry later
+    else tally.skipped++;
+  }
+  return tally;
 }

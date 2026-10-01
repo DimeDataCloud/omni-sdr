@@ -282,3 +282,17 @@ Christian: "The studio is specifically for the video and image marketing suite. 
 - This replaces DESIGN.md §6.9 (Studio = agents, routines, Auto-adjust).
 - Unchanged by this entry: the 2026-09-28 generation decision. Every generator sits behind its own per-org flag, OFF until Christian turns it on, with no dead buttons; generation runs server-side only (Rails §8).
 - Not decided by this entry: where agents, routines and the Auto-adjust log move to. The proposal is in docs/claude/STUDIO-PLAN.md.
+
+## 2026-10-01 — Laya is the decision engine; no Jev, ever
+Station: 24 (model registry) · 15 (inbound) · 12/13 (gate) · Decided by: Christian
+Christian: "laya now no jev ever. solve low latencey hosting."
+- Every classify / route / rank / check decision in JEV-PLAN.md runs on Laya (convaiinnovations/laya, Apache-2.0), self-hosted in our own GCP project as the internal `decider` service. JEV-PLAN.md's design (typed questions, safe-side-only rule, registry, golden sets, pinned version stored on the row) carries over unchanged; only the engine changes.
+- TypeSafe / Jev is out permanently, not deferred: no adapter, no fallback, no evaluation. J1–J4 in JEV-PLAN.md are closed by this entry (J2, a new data subprocessor, no longer arises: prospect text never leaves our project).
+- Low-latency hosting is Claude's to solve and measure; the hosting choice and its standing cost come back to Christian before anything runs always-on.
+
+## 2026-10-01 — The decider runs on Cloud Run (CPU) for the MVP
+Station: 24 · 23 (infra) · Decided by: Christian
+Christian: "the setup has to make sense it has to cost us less to host laya for our saas on multiple customers than to pay jev for usage" · then "approve cloud run for mvp"
+- `decider` is a Cloud Run service in project omni-sdr (us-central1): CPU only, scales to zero, IAM-only, internal ingress, max 2 instances. This is Christian's approval for that service and its image repo (`omni` in Artifact Registry).
+- The cost bar is Jev's usage price for the same decisions. Measured (LAYA-PLAN.md): per decision, Cloud Run CPU costs more than Jev would; the MVP still costs less in absolute terms because it runs inside the Cloud Run free tier and only wakes when replies are waiting. Beating Jev per decision needs a GPU kept busy, which needs volume (~1,000 customers, estimate).
+- Not approved by this entry: GPU quota, an always-on (min-instances) setting, or anything that bills while idle. Those come back to Christian with numbers.

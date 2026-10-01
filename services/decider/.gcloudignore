@@ -1,0 +1,4 @@
+*
+!Dockerfile
+!prune.py
+!smoke.py
