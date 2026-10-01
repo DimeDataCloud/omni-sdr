@@ -253,6 +253,51 @@ if ((wantRoutes || wantFlows || wantQuality) && BASE) {
       await page.type('#composer', 'What needs me today?'); await page.keyboard.press('Enter');
       await page.waitForFunction(() => /most urgent first/.test(document.querySelector('[role=log]')?.innerText ?? ''), { timeout: 8000 });
     });
+    // Phase 3: Home's agent core, briefing, composer and "Ask about this".
+    await step('home: the agent core has 6 stage arcs and one tick per send in the day\'s budget', async () => {
+      await page.goto(`${BASE}/w/${ws}/home`); await settle(page);
+      const r = await page.evaluate(() => ({ arcs: document.querySelectorAll('.ring-fill').length, ticks: document.querySelectorAll('.ring-tick').length,
+        label: document.querySelector('svg[role=img][aria-label^="Today:"]')?.getAttribute('aria-label') ?? '' }));
+      const cap = Number(r.label.match(/of (\d+) sends/)?.[1] ?? -1);
+      if (r.arcs !== 6) throw new Error(`${r.arcs} stage arcs`);
+      if (cap <= 0 || cap > 120 || r.ticks !== cap) throw new Error(`${r.ticks} ticks for a budget of ${cap}`);
+    });
+    await step('home: the briefing\'s lead count opens a list with exactly that many rows', async () => {
+      const text = await page.evaluate(() => [...document.querySelectorAll('section[aria-labelledby=brief-h] a')].find((a) => /new lead/.test(a.textContent))?.textContent ?? '');
+      const n = Number(text.match(/\d+/)?.[0] ?? 0);
+      if (!n) throw new Error('the briefing lists no new leads');
+      await page.evaluate(() => [...document.querySelectorAll('section[aria-labelledby=brief-h] a')].find((a) => /new lead/.test(a.textContent)).click());
+      await settle(page);
+      if (!/\/leads\?since=/.test(page.url())) throw new Error(`landed on ${page.url()}`);
+      const rows = await page.evaluate(() => document.querySelectorAll('tbody tr').length);
+      if (rows !== n) throw new Error(`the briefing says ${n}, the list shows ${rows}`);
+    });
+    await step('home: Tab takes the ghost suggestion, and Report mode answers with the numbers', async () => {
+      await page.goto(`${BASE}/w/${ws}/home`); await settle(page);
+      await page.focus('#composer'); await page.keyboard.press('Tab');
+      const s = await page.$eval('#composer', (t) => ({ v: t.value, p: t.placeholder }));
+      if (!s.p || s.v !== s.p) throw new Error(`composer holds "${s.v}", the suggestion was "${s.p}"`);
+      await page.click('[role=radio][title="Report"]');
+      await page.$eval('#composer', (t) => { t.focus(); t.select(); });
+      await page.keyboard.type('Anything new?'); await page.keyboard.press('Enter');
+      await page.waitForFunction(() => /Last 30 days: \d+ sent/.test(document.querySelector('[role=log]')?.innerText ?? ''), { timeout: 8000 });
+    });
+    await step('ask about this: Q on a draft attaches it on Home; the answer is about that draft', async () => {
+      await page.goto(`${BASE}/w/${ws}/approvals`); await settle(page);
+      const name = await page.$eval('article[aria-label^="Draft to"] h2', (h) => h.textContent);
+      await page.keyboard.press('q'); await settle(page);
+      if (!/\/home$/.test(new URL(page.url()).pathname)) throw new Error(`Q landed on ${page.url()}`);
+      if (!(await page.$eval('form', (f) => f.textContent)).includes(name)) throw new Error(`no chip for ${name} in the composer`);
+      if (await page.evaluate(() => document.activeElement?.id) !== 'composer') throw new Error('focus is not in the composer');
+      await page.keyboard.press('Tab'); await page.keyboard.press('Enter');
+      await page.waitForFunction((n) => (document.querySelector('[role=log]')?.innerText ?? '').includes(`draft to ${n}`), { timeout: 8000 }, name);
+    });
+    await step('home: dismissing the briefing holds after a reload', async () => {
+      await page.goto(`${BASE}/w/${ws}/home`); await settle(page);
+      await page.click('button[aria-label="Dismiss until tomorrow"]');
+      await page.reload({ waitUntil: 'domcontentloaded' }); await settle(page);
+      if (await page.$('#brief-h')) throw new Error('the briefing came back');
+    });
     await step('inbox: book from a meeting request ends up in Meetings', async () => {
       await page.goto(`${BASE}/w/${ws}/inbox`); await settle(page);
       await page.evaluate(() => [...document.querySelectorAll('article button')].find((b) => /^Book/.test(b.textContent.trim())).click());
@@ -338,12 +383,30 @@ if ((wantRoutes || wantFlows || wantQuality) && BASE) {
     }
   }
   {
+    const { ctx, page } = await open('admin', 'light', 'phone');
+    await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' }); await page.waitForFunction(() => /\/w\/[^/]+\/home/.test(location.pathname)); await settle(page);
+    const ws = new URL(page.url()).pathname.split('/')[2];
+    await step('phone: Ask on a reply opens the agent that knows it, with the reply attached', async () => {
+      await page.goto(`${BASE}/w/${ws}/inbox`); await settle(page);
+      await page.evaluate(() => document.querySelector('[data-kbd-list] li button').click()); await settle(page);
+      await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => /^Ask an agent about the reply/.test(b.getAttribute('aria-label') ?? '')).click());
+      await settle(page);
+      if (!/\/home\?agent=/.test(page.url())) throw new Error(`landed on ${page.url()}`);
+      if (!/the reply from/i.test(await page.$eval('form', (f) => f.textContent))) throw new Error('the reply is not attached');
+    });
+    await ctx.close();
+  }
+  {
     const { ctx, page } = await open('reviewer', 'light', 'desktop');
     await page.goto(`${BASE}/`); await page.waitForFunction(() => /\/w\/[^/]+\/home/.test(location.pathname)); await settle(page);
     await step('reviewer has no composer', async () => { if (await page.$('#composer')) throw new Error('composer shown to a reviewer'); });
+    await step('reviewer has no Ask buttons (asking an agent is operator work)', async () => {
+      await page.goto(page.url().replace(/\/home.*$/, '/approvals')); await settle(page);
+      if (await page.evaluate(() => [...document.querySelectorAll('button')].some((b) => /^Ask an agent/.test(b.getAttribute('aria-label') ?? '')))) throw new Error('Ask shown to a reviewer');
+    });
     await ctx.close();
   }
-  gate('flows: keyboard approvals, gate on edit, chat, booking, palette, hold', flow, flowSteps);
+  gate('flows: keyboard approvals, gate on edit, chat, booking, palette, hold, Home core and Ask about this', flow, flowSteps);
   }
   if (wantQuality) await runQuality({ browser, BASE, ROOT, OUT, gate, want: wantQ, open, settle, REMOTE, ALL });
   await browser.close();

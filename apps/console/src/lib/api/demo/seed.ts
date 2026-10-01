@@ -42,7 +42,7 @@ export interface World {
   audit: AuditRow[]; credits: { data: number; action: number; media: number };
 }
 
-export const WORLD_VERSION = 5;
+export const WORLD_VERSION = 6;
 
 // Deterministic randomness so the demo looks the same on every device.
 function rng(seed: number) {
@@ -234,8 +234,9 @@ export function buildWorld(now = new Date()): World {
   // Today's prospects (gated by the store when it loads; see store.ts).
   const todays: { p: typeof PROSPECTS[number]; contact: ContactRow; first: DraftRow }[] = [];
   PROSPECTS.forEach((p, i) => {
-    const contact = addContact(w0.id, p, ago(now, 60 * 24 * 3 + i * 40));
-    const ev = addEvidence(w0.id, contact.id, p.type, p.email.split('@')[1], p.facts, ago(now, 60 * 24 * 2));
+    // Found overnight by the hourly evidence harvester, and researched the same minute (the Home briefing counts them).
+    const contact = addContact(w0.id, p, ago(now, 300 + i * 10));
+    const ev = addEvidence(w0.id, contact.id, p.type, p.email.split('@')[1], p.facts, ago(now, 299 + i * 10));
     const enr: EnrollmentRow = { id: uid('enr'), ws: w0.id, campaignId: camp.id, contactId: contact.id, state: 'awaiting_approval', step: 0, heat: 2, stopReason: null };
     w.enrollments.push(enr);
     const first = addDraft({ ws: w0.id, enrollmentId: enr.id, step: 0, channel: 'email', subject: p.subject, body: p.body,
@@ -249,7 +250,7 @@ export function buildWorld(now = new Date()): World {
   const aisha = todays.find((t) => t.p.meetingSoon)!;
   const start = businessSlot(new Date(now.getTime() + 20 * 3600e3), 10, 30);
   w.meetings.push({ id: uid('meeting'), ws: w0.id, contactId: aisha.contact.id, inboundMessageId: null, provider: 'cal_com', externalId: 'cal-1', startsAt: iso(start),
-    endsAt: iso(new Date(start.getTime() + 1800e3)), meetUrl: 'https://cal.example/meet/northside', status: 'booked', createdBy: null, createdAt: iso(ago(now, 300)) });
+    endsAt: iso(new Date(start.getTime() + 1800e3)), meetUrl: 'https://cal.example/meet/northside', status: 'booked', createdBy: null, createdAt: iso(ago(now, 40)) });
 
   // Harbor Legal: a little data. Summit Roofing: empty on purpose (empty states).
   const lawIcp: IcpRow = { id: uid('icp'), ws: w1.id, lineageId: uid('lineage'), name: 'Small law firms', version: 1, archivedAt: null, createdAt: iso(ago(now, 60 * 24 * 5)),

@@ -9,6 +9,7 @@ import { api, ApiError } from '@/lib/api';
 import type { ApprovalCard, DraftStatus } from '@/lib/api/types';
 import { bumpEdge, useArrivalFocus, useHotkeys, useMedia, useQuery, useSelection, prefetchQuery, requestArrival } from '@/lib/hooks';
 import { useCommands } from '@/lib/commands';
+import { AskButton } from '@/lib/ask';
 import type { Scope } from '@/lib/api/client';
 import { useWorkspace } from '@/lib/session';
 import { deferAction, usePending } from '@/lib/undo';
@@ -307,6 +308,7 @@ function DecisionCard({ group, initialId, exitDir, onDecided, onSkip, onPrev, ke
         <div className="shrink-0 text-right">
           <p className="tabular text-2xl leading-none font-semibold">{item.fitScore ?? '—'}</p>
           <p className="mt-1 text-xs text-muted">ICP fit</p>
+          <AskButton about={{ kind: 'draft', id: item.id, label: `the draft to ${item.recipient.name ?? 'this contact'}` }} keys={Boolean(keyboard)} className="mt-2" />
         </div>
       </div>
 

@@ -10,6 +10,7 @@ import { useMedia, useQuery, prefetchQuery } from '@/lib/hooks';
 import type { Scope } from '@/lib/api/client';
 import { useWorkspace } from '@/lib/session';
 import { useCommands } from '@/lib/commands';
+import { AskButton } from '@/lib/ask';
 import { Card, CountUp, ErrorState, Page, PageHeader, Segmented, Skeleton, cx, listItem, listStagger } from '@/components/ui';
 
 type Days = 7 | 30 | 90;
@@ -31,8 +32,9 @@ export default function AnalyticsPage() {
   return (
     <Page>
       <PageHeader title={client ? 'Results' : 'Analytics'} subtitle={`Counted from sends, replies and meetings in this workspace. Days in ${tz.replace('_', ' ')}.`}
-        actions={<Segmented id="days" label="Period" value={String(days) as '7' | '30' | '90'} onChange={(v) => setDays(Number(v) as Days)}
-          options={[{ value: '7', label: '7 days' }, { value: '30', label: '30 days' }, { value: '90', label: '90 days' }]} />} />
+        actions={<><Segmented id="days" label="Period" value={String(days) as '7' | '30' | '90'} onChange={(v) => setDays(Number(v) as Days)}
+          options={[{ value: '7', label: '7 days' }, { value: '30', label: '30 days' }, { value: '90', label: '90 days' }]} />
+          <AskButton about={{ kind: 'analytics', id: String(days), label: `the last ${days} days of results` }} /></>} />
       <ErrorState error={a.error} onRetry={a.reload} />
       {a.loading || !d ? (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">{[0, 1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-28 rounded-xl" />)}<Skeleton className="h-72 rounded-xl sm:col-span-2 lg:col-span-5" /></div>

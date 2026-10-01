@@ -2,7 +2,7 @@
 // (the real backend, docs/claude/API.md). Screens only ever see this interface.
 import type {
   Me, Settings, Members, ApprovalsList, ApprovalCard, InboxItem, Meeting, Agent, ChatMessage, Routine, Capacity,
-  Analytics, Credits, Connector, Contact, ContactDetail, Role, ModelTier, DraftStatus, Id,
+  Analytics, Credits, Connector, Contact, ContactDetail, Role, ModelTier, DraftStatus, Id, About, AskMode, Pipeline,
 } from './types';
 
 export class ApiError extends Error {
@@ -49,7 +49,7 @@ export interface Client {
   patchAgent(s: Scope, id: Id, patch: Partial<Pick<Agent, 'name' | 'station' | 'badge' | 'modelTier' | 'systemPrompt' | 'contextSources' | 'autonomousMode'>>): Promise<Agent>;
   archiveAgent(s: Scope, id: Id): Promise<void>;
   messages(s: Scope, agentId: Id): Promise<ChatMessage[]>;
-  sendMessage(s: Scope, agentId: Id, body: string, modelTier?: ModelTier): Promise<{ userMessage: ChatMessage; reply: ChatMessage }>;
+  sendMessage(s: Scope, agentId: Id, body: string, modelTier?: ModelTier, opts?: { about?: About | null; mode?: AskMode }): Promise<{ userMessage: ChatMessage; reply: ChatMessage }>;
 
   routines(s: Scope): Promise<Routine[]>;
   createRoutine(s: Scope, body: { name: string; category: Routine['category']; schedule: string; agentId?: Id | null; active?: boolean }): Promise<Routine>;
@@ -61,6 +61,7 @@ export interface Client {
   suppress(s: Scope, email: string, reason?: string): Promise<void>;
   credits(s: Scope): Promise<Credits>;
   analytics(s: Scope, days: 7 | 30 | 90): Promise<Analytics>;
+  pipeline(s: Scope, since: string): Promise<Pipeline>;
   connectors(s: Scope): Promise<Connector[]>;
 
   contacts(s: Scope, q?: string): Promise<Contact[]>;

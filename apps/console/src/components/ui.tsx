@@ -262,6 +262,16 @@ export function BulkBar({ count, children, onClear, note }: { count: number; chi
   );
 }
 
+/** A filter that arrived with a link (Home's briefing): says what it narrows to, and clears in one tap. */
+export function FilterChip({ label, onClear, className }: { label: string; onClear: () => void; className?: string }) {
+  return (
+    <span className={cx('inline-flex items-center gap-1 rounded-full bg-accent-soft py-0.5 pr-1 pl-3 text-sm text-ink', className)}>
+      {label}
+      <button type="button" onClick={onClear} className="press ml-1 inline-flex h-7 items-center gap-1 rounded-full px-2 text-sm font-medium hover:bg-surface/70 max-md:h-9"><X className="size-3.5" aria-hidden />Show all</button>
+    </span>
+  );
+}
+
 // ── Tooltip (supplementary only) ──────────────────────────────────────────────────────────────
 export function Tip({ content, children }: { content: ReactNode; children: ReactNode }) {
   return (

@@ -76,12 +76,13 @@ function prime(w: World, now: Date) {
     const v = classifyReply({ subject: r.subject ?? '', body: r.body, from: r.fromAddress ?? '' });
     r.intent = v.intent; r.intentConfidence = v.confidence; r.classifiedBy = v.by;
   }
-  // Today: three first touches went out this morning and came back.
+  // Today: three first touches went out this morning and came back. Written, gated and approved before they were sent.
   todays.forEach((t, i) => {
     const d = w.drafts.find((x) => x.id === t.firstDraftId)!;
     if (!t.sendNow || d.status !== 'review') return;
-    const sentAt = new Date(now.getTime() - (5 * 60 + i * 25) * 60000);
-    Object.assign(d, { status: 'approved', approvedBy: maya, approvedAt: new Date(sentAt.getTime() - 20 * 60000).toISOString() });
+    const sentAt = new Date(now.getTime() - (180 + i * 20) * 60000);
+    const at = (min: number) => new Date(sentAt.getTime() - min * 60000).toISOString();
+    Object.assign(d, { status: 'approved', createdAt: at(60), gatedAt: at(59), approvedBy: maya, approvedAt: at(20) });
     const msg = { id: newId(), ws: d.ws, draftId: d.id, mailboxId: w.mailboxes[0].id, state: 'sent' as const, sentAt: sentAt.toISOString(), claimedAt: sentAt.toISOString() };
     w.sent.push(msg);
     w.audit.push({ id: newId(), ws: d.ws, actor: maya, action: 'approve', entityType: 'draft', entityId: d.id, at: d.approvedAt! });

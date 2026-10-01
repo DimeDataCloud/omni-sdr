@@ -47,7 +47,7 @@ function Agents({ autoNew }: { autoNew: boolean }) {
         <motion.ul variants={listStagger} initial="hidden" animate="show" className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {agents.data.filter((a) => !pending.isHidden(a.id)).map((a) => (
             <motion.li key={a.id} variants={listItem}>
-              <button onClick={() => setEdit(a)} className="card flex h-full w-full flex-col p-4 text-left transition-transform hover:-translate-y-0.5">
+              <button onClick={() => setEdit(a)} className="card lift flex h-full w-full flex-col p-4 text-left">
                 <div className="flex items-center gap-3">
                   <Avatar kind="agent" text={a.badge} size={40} />
                   <div className="min-w-0 flex-1"><p className="truncate font-semibold">{a.name}</p><p className="text-xs text-muted">{TIER[a.modelTier].label} · {plural(a.activeRoutines, 'routine')}</p></div>

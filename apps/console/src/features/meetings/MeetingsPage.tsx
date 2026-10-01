@@ -9,6 +9,7 @@ import { useNow, useQuery, prefetchQuery } from '@/lib/hooks';
 import type { Scope } from '@/lib/api/client';
 import { useWorkspace } from '@/lib/session';
 import { useCommands } from '@/lib/commands';
+import { AskButton } from '@/lib/ask';
 import { clock, dayKey, dayLabel, fmtDur } from '@/lib/format';
 import { Badge, Button, EmptyState, ErrorState, Page, PageHeader, Segmented, SkeletonList, cx, listItem, listStagger } from '@/components/ui';
 
@@ -67,6 +68,7 @@ export default function MeetingsPage() {
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge>{PROVIDER[m.provider]}</Badge>
                         <Badge tone={STATUS[m.status].tone}>{STATUS[m.status].label}</Badge>
+                        {range === 'upcoming' && <AskButton about={{ kind: 'meeting', id: m.id, label: `the meeting with ${m.contactName ?? 'this contact'}` }} keys={false} label="Prep" />}
                         {m.meetUrl && m.status === 'booked' && range === 'upcoming' && (
                           <a href={m.meetUrl} target="_blank" rel="noopener noreferrer" className="inline-flex h-9 items-center gap-1.5 rounded-md border border-control bg-surface px-3 text-sm font-medium hover:bg-sunken max-md:h-11">
                             <Video className="size-4" aria-hidden />Join<ExternalLink className="size-3 text-muted" aria-hidden /><span className="sr-only">(opens in a new tab)</span></a>
