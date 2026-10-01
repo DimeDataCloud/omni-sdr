@@ -4,9 +4,12 @@
 import { can } from '@db/permissions.mjs';
 import { CONNECTORS, freeEmailChecks } from '@rules/catalog.mjs';
 import { ApiError, invalidate, type Client, type Scope, type Campaign, type Icp } from '../client';
-import type { ApprovalCard, Agent, ChatMessage, Contact, InboxItem, Meeting, Routine, Role, Analytics, Me } from '../types';
+import type { ApprovalCard, Agent, ChatMessage, Contact, InboxItem, Meeting, Routine, Role, Analytics, Me, Pipeline, AboutKind, AskMode } from '../types';
 import { load, save, gate, newId, personaEmail, convertOnMeeting } from './store';
-import { answer } from './brain';
+import { think } from './brain';
+
+const ABOUT_KINDS: AboutKind[] = ['contact', 'draft', 'reply', 'meeting', 'analytics'];
+const MODES: AskMode[] = ['ask', 'find_leads', 'draft', 'book', 'report'];
 import type { World, DraftRow, MemberRow } from './seed';
 
 const latency = (min = 120, spread = 160) => new Promise((r) => setTimeout(r, min + Math.random() * spread));
@@ -315,19 +318,24 @@ export const demoClient: Client = {
     if (!w.agents.some((a) => a.id === agentId && a.ws === s.workspaceId)) throw nf('agent');
     return w.chat.filter((m) => m.agentId === agentId).map(chatOut);
   }),
-  sendMessage: async (s, agentId, body, modelTier) => {
+  sendMessage: async (s, agentId, body, modelTier, opts = {}) => {
     const w = load();
     const { m } = tenant(w, s, 'build');
     const agent = w.agents.find((a) => a.id === agentId && a.ws === s.workspaceId && !a.archivedAt);
     if (!agent) throw nf('agent');
     const text = body.trim();
     if (!text || text.length > 4000) throw new ApiError(400, 'bad_request', 'body: 1 to 4000 characters');
-    const user = { id: newId(), ws: s.workspaceId, agentId, sender: 'user' as const, authorId: m.userId, body: text, meta: {}, createdAt: nowIso() };
+    const about = opts.about ?? null;
+    if (about && (!ABOUT_KINDS.includes(about.kind) || typeof about.id !== 'string' || !about.id || typeof about.label !== 'string')) throw new ApiError(400, 'bad_request', 'about: { kind, id, label }');
+    if (opts.mode && !MODES.includes(opts.mode)) throw new ApiError(400, 'bad_request', `mode: one of ${MODES.join(', ')}`);
+    const meta = { ...(about ? { about: { kind: about.kind, id: about.id, label: about.label.slice(0, 120) } } : {}), ...(opts.mode && opts.mode !== 'ask' ? { mode: opts.mode } : {}) };
+    const user = { id: newId(), ws: s.workspaceId, agentId, sender: 'user' as const, authorId: m.userId, body: text, meta, createdAt: nowIso() };
     w.chat.push(user); save(); invalidate();
     const started = Date.now();
     await latency(650, 700);
-    const reply = { id: newId(), ws: s.workspaceId, agentId, sender: 'agent' as const, authorId: null, body: answer(w, s.workspaceId, agent, text, new Date()),
-      meta: { model: 'demo', tier: modelTier ?? agent.modelTier, ms: Date.now() - started }, createdAt: nowIso() };
+    const t = think(w, s.workspaceId, agent, text, new Date(), { about: meta.about, mode: opts.mode });
+    const reply = { id: newId(), ws: s.workspaceId, agentId, sender: 'agent' as const, authorId: null, body: t.body,
+      meta: { model: 'demo', tier: modelTier ?? agent.modelTier, ms: Date.now() - started, sources: t.sources }, createdAt: nowIso() };
     w.chat.push(reply); save(); invalidate();
     return { userMessage: chatOut(user), reply: chatOut(reply) };
   },
@@ -429,6 +437,30 @@ export const demoClient: Client = {
     return { days, timezone: tz, totals, rates: { replyRate: rate(totals.replies, totals.sent), positiveRate: rate(totals.positive, totals.sent),
       approvalRate: rate(approved, approved + rejected) }, approvals: { approved, rejected }, daily,
       byStep: [...steps.entries()].sort((a, b) => a[0] - b[0]).map(([step, b]) => ({ step, sent: b.sent, replied: b.replied, replyRate: rate(b.replied, b.sent) })) };
+  }),
+  pipeline: (s, since) => read((w): Pipeline => {
+    tenant(w, s, 'reports_view');
+    const from = Date.parse(since);
+    if (!Number.isFinite(from)) throw new ApiError(400, 'bad_request', 'since: an ISO timestamp');
+    const until = Date.now();
+    const inWindow = (iso: string | null) => { if (!iso) return false; const t = Date.parse(iso); return t >= from && t <= until; };
+    const ws = s.workspaceId;
+    const drafts = w.drafts.filter((d) => d.ws === ws && inWindow(d.createdAt));
+    const replies = w.inbound.filter((r) => r.ws === ws && inWindow(r.receivedAt) && !['bounce', 'out_of_office'].includes(r.intent));
+    const byAgent = new Map<string, number>();
+    for (const d of drafts) if (d.agentId) byAgent.set(d.agentId, (byAgent.get(d.agentId) ?? 0) + 1);
+    return {
+      since: new Date(from).toISOString(), until: new Date(until).toISOString(),
+      found: w.contacts.filter((c) => c.ws === ws && inWindow(c.createdAt)).length,
+      drafted: drafts.length, waiting: drafts.filter((d) => d.status === 'review').length, blocked: drafts.filter((d) => d.status === 'blocked').length,
+      approved: w.drafts.filter((d) => d.ws === ws && inWindow(d.approvedAt)).length,
+      sent: w.sent.filter((x) => x.ws === ws && inWindow(x.sentAt)).length,
+      replies: replies.length, meetingRequests: replies.filter((r) => r.intent === 'meeting_request').length, optOuts: replies.filter((r) => r.intent === 'unsubscribe').length,
+      booked: w.meetings.filter((m) => m.ws === ws && m.status !== 'canceled' && inWindow(m.createdAt)).length,
+      byAgent: [...byAgent].map(([agentId, n]) => ({ agentId, name: w.agents.find((a) => a.id === agentId)?.name ?? 'An agent', drafted: n })).sort((a, b) => b.drafted - a.drafted),
+      live: { drafting: w.drafts.filter((d) => d.ws === ws && ['generating', 'gating'].includes(d.status)).length,
+        classifying: w.inbound.filter((r) => r.ws === ws && !r.handledAt && r.intent === 'unclassified').length },
+    };
   }),
   connectors: (s) => read((w) => {
     tenant(w, s, 'reports_view');

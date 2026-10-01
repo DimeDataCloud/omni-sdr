@@ -10,7 +10,7 @@ import { useQuery } from '@/lib/hooks';
 import { useSession, useWorkspace } from '@/lib/session';
 import { AUTO_ADJUST, ROLE, relTime } from '@/lib/format';
 import { Badge, Button, Card, Checkbox, Field, Input, Meter, Page, PageHeader, Segmented, Select, Sheet, SkeletonList, Switch, Textarea } from '@/components/ui';
-import { PauseSheet } from '../home/HomePage';
+import { PauseSheet } from '../home/PauseSheet';
 
 type Tab = 'workspace' | 'members' | 'safety' | 'activity' | 'billing';
 const ZONES = ['America/New_York', 'America/Chicago', 'America/Denver', 'America/Phoenix', 'America/Los_Angeles', 'America/Anchorage', 'Pacific/Honolulu', 'Europe/London', 'Europe/Berlin', 'Australia/Sydney', 'UTC'];

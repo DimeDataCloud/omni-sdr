@@ -153,6 +153,33 @@ New:
 | **Ask about anything** | Every object (lead, draft, meeting, chart) has an "Ask" action (`a`) that opens the composer with the object attached as a chip. Answers come from `brain.ts` using that object's data. |
 | **Ghost suggestions** | An empty composer shows one rotating, context-aware suggestion in muted text ("Why was Daniel Kim blocked?"). Tab accepts it. They come from the SUGGESTIONS in `brain.ts`, ranked by what's on screen. |
 
+**Phase 3 outcome (2026-09-30).** Desktop Home's center is now the core view: greeting, briefing, agent core, composer, then wins. Picking an agent in the rail (or asking) opens its conversation, and "Overview" returns. Phone Home's Today tab is a bento of tiles. Built as planned, with these changes:
+
+| Change from plan | Why |
+|---|---|
+| No mic | In-browser speech recognition streams the audio to the browser vendor, and rails §8 allows no vendor call from the browser. A mic needs server-side transcription first. |
+| Ticks are the day's real budget, not a fixed 180 | The budget is the sum of unpaused mailbox caps (`capacity.today.cap`, 65 in the demo). One tick per send; they group above 120 so ticks never touch. |
+| A new read, `pipeline(since)` (proposed for the API in `types.ts`) | The list routes page at 50 rows, so summing them on the client undercounts: Approvals "all" holds about 105 drafts. Counts over a window are a server job. `packages/api` does not have this route yet. |
+| `about` and `mode` on `sendMessage` (proposed, same) | The demo adapter answers them. `packages/api`'s messages route does not take them yet. |
+| "Ask about this" is Q, not A | A approves on Approvals. |
+| Ask about this attaches the object and sends nothing | Same rule as Ctrl K's "Ask": the person presses Ask, so no credit is spent on its own. On a phone (no core composer) it opens the agent that knows that kind of object, with the chip attached. |
+| The ghost suggestion rotates per question asked, not on a timer | A timer would change text under the cursor and break the idle gate. Tab, or → at the end, takes it; a second Tab moves on. |
+| Wins are meetings booked today, not "when a campaign books" | A meeting row has no campaign. The ticket says how it was booked (Cal.com, from their reply, here) instead. |
+| Result split from a 672px conversation, not 768 | At 1440 with Today open the conversation is 736px wide; at 768 the most common desktop would never split. |
+| Answers say what they read ("Read 1 draft · 1 claim") | Each brain answer now returns its sources; zero-count sources are dropped. This is the first half of Phase 4's "from what". |
+| Seed: today's 8 prospects found overnight; the 3 sent drafts written before they were sent | The briefing would have counted 0 found, and 3 drafts had a `createdAt` after their `sentAt`. World version 6. |
+
+Found while building it:
+- Today's "Approve" had no undo window. Phase 1 converted Approvals only, so the Today panel still approved at once. It now uses the same undo window.
+- The ticket's perforation is a CSS mask, which also clipped its focus ring, so a keyboard user saw nothing on focus. The tab-walk gate reads computed styles, so it could not see this. The link now wraps the masked shape.
+- The reduced-motion gate caught Today's urgent-reply card. Its Tailwind `transition-transform` has a duration that isn't a motion token, so the entrance jump ran as a 150 ms transform under reduced motion whenever the card mounted after its list. It is `.press` now. The same pattern in Studio and Workspaces moved to `.lift` and `motion-reduce:transition-none`.
+
+Gate run on the final code: see the task report. **INP fails and stays failing:**
+- Typing one key into the composer reports 568-624 ms (keydown handler 1-3 ms, then the wait for the next presented frame). Pushing the next step back 1.2 s stretched it to 1,792 ms: no frame is presented after the keystroke until something else paints.
+- It depends on where the composer sits. Hiding the agent core (which moves the composer up the page) passes. Holding the composer at the same spot with a spacer fails again. Glass, the ambient glow, the ring, the Tab hint, the mode chips, the toaster and time of day each made no difference.
+- **The same gate fails the same way on master** (Phase 2 code, 576-608 ms), which passed at 120 ms at 15:57 the same day on the same Chrome (153.0.8010.53).
+- So this is not a Phase 3 regression, and its cause is not found. The gate was not changed.
+
 ### Phase 4: Legible AI, trust and control (M)
 
 v1 Phase 2 (AgentTrace, the writing caret, gradient-means-acting, the memory toast), plus:

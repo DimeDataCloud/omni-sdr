@@ -26,6 +26,17 @@ export const dayKey = (iso: string, tz: string) => {
   return f.format(new Date(iso));
 };
 
+/** The instant a wall-clock time happens in `tz`, e.g. midnight or 18:00 of a YYYY-MM-DD there. */
+export function zonedInstant(ymd: string, hour: number, tz: string, minute = 0): Date {
+  const guess = Date.UTC(Number(ymd.slice(0, 4)), Number(ymd.slice(5, 7)) - 1, Number(ymd.slice(8, 10)), hour, minute);
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(guess));
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value);
+  const shownAsUtc = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'));
+  return new Date(guess - (shownAsUtc - guess));
+}
+export const hourIn = (tz: string, at = Date.now()) => Number(new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', hourCycle: 'h23' }).format(at));
+export const shortWhen = (iso: string, tz: string) => new Date(iso).toLocaleString('en-US', { timeZone: tz, weekday: 'short', hour: 'numeric', minute: '2-digit' });
+
 export function fmtDur(min: number) {
   const t = Math.round(min); const h = Math.floor(t / 60); const m = t % 60;
   return h ? `${h}h ${m}m` : `${m}m`;

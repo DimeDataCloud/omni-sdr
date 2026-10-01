@@ -21,11 +21,11 @@ function WorkspaceCard({ orgId, id, name }: { orgId: string; id: string; name: s
   const s = stats.data;
   return (
     <motion.li variants={listItem}>
-      <Link to={`/w/${id}/${can ? 'home' : 'analytics'}`} className={cx('card group flex h-full flex-col p-5 transition-transform hover:-translate-y-0.5', s?.urgent && 'ring-2 ring-danger/40')}>
+      <Link to={`/w/${id}/${can ? 'home' : 'analytics'}`} className={cx('card lift group flex h-full flex-col p-5', s?.urgent && 'ring-2 ring-danger/40')}>
         <div className="flex items-center gap-3">
           <Avatar text={initials(name)} size={40} className="rounded-lg" />
           <h2 className="min-w-0 flex-1 truncate text-base font-semibold">{name}</h2>
-          <ArrowRight className="size-4 text-muted transition-transform group-hover:translate-x-0.5" aria-hidden />
+          <ArrowRight className="size-4 text-muted transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none" aria-hidden />
         </div>
         {!s ? <Skeleton className="mt-4 h-10" /> : (
           <dl className="mt-4 grid grid-cols-3 gap-2 text-center">

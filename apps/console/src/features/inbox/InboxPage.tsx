@@ -9,11 +9,12 @@ import { api } from '@/lib/api';
 import type { InboxItem } from '@/lib/api/types';
 import { bumpEdge, useArrivalFocus, useHotkeys, useMedia, useNow, useQuery, useSelection, prefetchQuery, requestArrival } from '@/lib/hooks';
 import { useCommands } from '@/lib/commands';
+import { AskButton } from '@/lib/ask';
 import type { Scope } from '@/lib/api/client';
 import { useWorkspace } from '@/lib/session';
 import { deferAction, usePending } from '@/lib/undo';
-import { INTENT, enrollmentState, absTime, relTime, slaText, slaTone, clock, plural } from '@/lib/format';
-import { BulkBar, Badge, Button, Card, EmptyState, ErrorState, Field, IconButton, Input, Page, PageHeader, Segmented, Select, Sheet, SkeletonList, Skeleton, cx } from '@/components/ui';
+import { INTENT, enrollmentState, absTime, relTime, slaText, slaTone, clock, plural, shortWhen } from '@/lib/format';
+import { BulkBar, FilterChip, Badge, Button, Card, EmptyState, ErrorState, Field, IconButton, Input, Page, PageHeader, Segmented, Select, Sheet, SkeletonList, Skeleton, cx } from '@/components/ui';
 
 type Status = 'open' | 'handled' | 'all';
 
@@ -21,13 +22,14 @@ type Status = 'open' | 'handled' | 'all';
 export const prefetch = (s: Scope) => prefetchQuery(`inbox:${s.workspaceId}:open`, () => api.inbox(s, { status: 'open' }));
 
 export default function InboxPage() {
-  const { scope } = useWorkspace();
+  const { scope, tz } = useWorkspace();
   const [params, setParams] = useSearchParams();
   const status = (params.get('s') as Status) ?? 'open';
+  const since = params.get('since'); // from Home: only replies that arrived after this instant
   const inbox = useQuery(() => api.inbox(scope, { status }), [scope.workspaceId, status], { pollMs: 60000, key: `inbox:${scope.workspaceId}:${status}` });
   const wide = useMedia('(min-width: 1100px)');
   const pending = usePending();
-  const items = (inbox.data ?? []).filter((r) => status !== 'open' || !pending.isHidden(r.id));
+  const items = (inbox.data ?? []).filter((r) => (status !== 'open' || !pending.isHidden(r.id)) && (!since || r.receivedAt >= since));
   const selId = params.get('r');
   // A handled reply is hidden one render before the URL moves on; resolve to the reply after it (else before it)
   // so that render already shows the right one. Same rule as Approvals.
@@ -66,6 +68,7 @@ export default function InboxPage() {
       <div className="w-full">
         <Segmented id="inbox-tabs" label="Reply status" value={status} onChange={(v) => { const p = new URLSearchParams(); if (v !== 'open') p.set('s', v); setParams(p); }}
           options={[{ value: 'open', label: 'Open', count: status === 'open' ? items.length : undefined }, { value: 'handled', label: 'Handled' }, { value: 'all', label: 'All' }]} />
+        {since && <FilterChip label={`Arrived since ${shortWhen(since, tz)}`} onClear={() => setParam('since', null)} className="mt-3" />}
       </div>
     </PageHeader>
   );
@@ -188,6 +191,7 @@ function ReplyDetail({ r, onDone, keyboard }: { r: InboxItem; onDone: () => void
             <h2 ref={headRef} tabIndex={-1} className="text-lg outline-none">{r.contactName ?? r.fromAddress}</h2>
             <Badge tone={intent.tone}>{intent.label}</Badge>
             {r.slaMinutesRemaining !== null && <SlaChip minutes={r.slaMinutesRemaining} dueAt={r.slaDueAt} />}
+            <AskButton about={{ kind: 'reply', id: r.id, label: `the reply from ${r.contactName ?? r.fromAddress ?? 'this contact'}` }} keys={Boolean(keyboard)} className="ml-auto" />
           </div>
           <p className="mt-0.5 text-sm text-muted">{[r.contactTitle, r.contactCompany].filter(Boolean).join(' · ')}</p>
           <p className="mt-1 text-xs text-muted">{r.fromAddress} · {absTime(r.receivedAt, tz)}</p>

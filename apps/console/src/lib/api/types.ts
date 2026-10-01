@@ -83,9 +83,29 @@ export interface Agent {
   lastMessage: { preview: string; sender: 'user' | 'agent'; at: Iso } | null; activeRoutines: number;
 }
 // GET …/agents/{id}/messages → { items: ChatMessage[] } (oldest first)
-// POST …/agents/{id}/messages { body, modelTier? } → 201 { userMessage, reply }; 502 { details: { userMessage } } if the model fails
+// POST …/agents/{id}/messages { body, modelTier?, about?, mode? } → 201 { userMessage, reply }; 502 { details: { userMessage } } if the model fails
+//   `about` and `mode` are PROPOSED (UI-REVISION-PLAN Phase 3): the demo adapter answers them; packages/api does not take them yet.
 export interface ChatMessage { id: Id; sender: 'user' | 'agent'; authorId: Id | null; body: string;
-  meta: { model?: string; tier?: ModelTier; ms?: number; usage?: { inputTokens: number | null; outputTokens: number | null } | null }; createdAt: Iso }
+  meta: { model?: string; tier?: ModelTier; ms?: number; usage?: { inputTokens: number | null; outputTokens: number | null } | null;
+    about?: About; mode?: AskMode; sources?: string[] }; createdAt: Iso }
+/** The object a question is about: attached from its own screen ("Ask about this", Q) or with the composer's +. */
+export type AboutKind = 'contact' | 'draft' | 'reply' | 'meeting' | 'analytics';
+export interface About { kind: AboutKind; id: Id; label: string }
+/** Composer modes: each one steers which part of the workspace the agent answers from. */
+export type AskMode = 'ask' | 'find_leads' | 'draft' | 'book' | 'report';
+
+// GET …/pipeline?since=ISO   PROPOSED (UI-REVISION-PLAN Phase 3; not in packages/api yet). Counts over a window, because
+// the list routes page at 50 rows and can't be summed on the client. `live` is work in flight right now, whatever the window.
+export interface Pipeline {
+  since: Iso; until: Iso;
+  found: number;                                                  // contacts added
+  drafted: number; waiting: number; blocked: number;              // drafts written; of those, in review / blocked now
+  approved: number; sent: number;                                 // drafts approved; messages sent
+  replies: number; meetingRequests: number; optOuts: number;      // replies received (bounces and out-of-office excluded)
+  booked: number;                                                 // meetings booked (canceled excluded)
+  byAgent: { agentId: Id; name: string; drafted: number }[];
+  live: { drafting: number; classifying: number };
+}
 
 // GET …/routines → { items: Routine[] }
 export interface Routine { id: Id; agentId: Id | null; agentName: string | null; name: string; category: 'briefing' | 'triage' | 'outbound' | 'sync';

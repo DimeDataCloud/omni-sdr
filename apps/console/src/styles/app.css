@@ -176,5 +176,51 @@
 [data-bump='up'] { animation: bump-up 180ms var(--ease-out); }
 @media (prefers-reduced-motion: reduce) { [data-bump] { animation: bump-tint 240ms linear; } }
 
+/* ── Home, the signature moment (UI-REVISION-PLAN Phase 3) ─────────────────────────────────────
+   The agent core: arcs are today's pipeline stages, ticks are the day's send budget. The arcs draw in once per
+   page load (.ring-draw), then hold still; an arc whose stage has work in flight gets the moving brand gradient. */
+@keyframes ring-draw { from { stroke-dasharray: 0 1; } }
+@keyframes ring-tick-in { from { opacity: 0; } }
+@keyframes ring-flow { to { stroke-dashoffset: -1; } }
+.ring-fill { transition: stroke-dasharray var(--dur-move) var(--ease-expo), stroke var(--dur-press) var(--ease-out); }
+.ring-draw .ring-fill { animation: ring-draw var(--dur-reveal) var(--ease-expo) both; animation-delay: calc(var(--i, 0) * 70ms); }
+.ring-draw .ring-tick { animation: ring-tick-in var(--dur-reveal) var(--ease-out) both; animation-delay: calc(250ms + var(--i, 0) * 5ms); }
+.ring-live { stroke-dasharray: .18 .82; animation: ring-flow 2.4s linear infinite; }
+/* Pointing at a stage in the legend lights its arc. */
+.core:has([data-stage="found"]:is(:hover, :focus-visible)) .ring-fill[data-stage="found"],
+.core:has([data-stage="drafted"]:is(:hover, :focus-visible)) .ring-fill[data-stage="drafted"],
+.core:has([data-stage="approved"]:is(:hover, :focus-visible)) .ring-fill[data-stage="approved"],
+.core:has([data-stage="sent"]:is(:hover, :focus-visible)) .ring-fill[data-stage="sent"],
+.core:has([data-stage="replies"]:is(:hover, :focus-visible)) .ring-fill[data-stage="replies"],
+.core:has([data-stage="booked"]:is(:hover, :focus-visible)) .ring-fill[data-stage="booked"] { stroke: var(--accent-hover); }
+
+/* An answer builds in: what it read first, then each paragraph. Only answers that arrive while you watch. */
+@keyframes build-in { from { opacity: 0; translate: 0 6px; } }
+.build > * { animation: build-in var(--dur-reveal) var(--ease-expo) both; animation-delay: calc(var(--i, 0) * 90ms); }
+
+/* Composer mode chips: icon only until chosen, then the label slides open. */
+.mode-chip .mode-label { max-width: 0; overflow: hidden; white-space: nowrap; opacity: 0;
+  transition: max-width var(--dur-move) var(--ease-expo), margin var(--dur-move) var(--ease-expo), opacity var(--dur-press) var(--ease-out); }
+.mode-chip[aria-checked="true"] .mode-label { max-width: 7.5rem; margin-left: 6px; opacity: 1; }
+
+/* A booked meeting as a ticket stub: a perforated edge cut out with two masks, the stub in brand green. */
+.ticket-wrap { --stub: 104px; filter: drop-shadow(0 6px 16px rgb(0 0 0 / .07)); transition: translate var(--dur-move) var(--ease-spring); }
+@media (hover: hover) { .ticket-wrap:hover { translate: 0 -2px; } }
+.ticket { display: flex; border-radius: var(--radius-lg); background: var(--accent-soft); color: var(--text);
+  -webkit-mask: radial-gradient(circle 9px at calc(100% - var(--stub)) 0, #0000 97%, #000) top / 100% 51% no-repeat,
+                radial-gradient(circle 9px at calc(100% - var(--stub)) 100%, #0000 97%, #000) bottom / 100% 51% no-repeat;
+  mask: radial-gradient(circle 9px at calc(100% - var(--stub)) 0, #0000 97%, #000) top / 100% 51% no-repeat,
+        radial-gradient(circle 9px at calc(100% - var(--stub)) 100%, #0000 97%, #000) bottom / 100% 51% no-repeat; }
+.ticket-stub { width: var(--stub); flex-shrink: 0; border-left: 2px dashed color-mix(in srgb, var(--text) 30%, transparent);
+  background: var(--brand-fill); color: var(--brand-on-fill); border-radius: 0 var(--radius-lg) var(--radius-lg) 0; }
+@keyframes ticket-in { from { opacity: 0; scale: .96; } }
+.ticket-in { animation: ticket-in var(--dur-move) var(--ease-spring) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ring-draw .ring-fill, .ring-draw .ring-tick, .ring-live, .build > *, .ticket-in { animation: none; }
+  .ring-fill, .mode-chip .mode-label, .ticket-wrap { transition: none; }
+  .ticket-wrap:hover { translate: none; }
+}
+
 /* Safe areas for the installed-to-home-screen phone view. */
 .pb-safe { padding-bottom: max(env(safe-area-inset-bottom), 0px); }
