@@ -124,17 +124,44 @@ export async function runQuality({ browser, BASE, ROOT, OUT, gate, want, open, s
   // ── Fonts: bytes for a tour of every route ──
   if (want('fonts')) {
     const { ctx, page } = await open('admin', 'light', 'desktop');
+    // Cache off: a font that finished downloading on the "/" landing page was only revalidated on the first route,
+    // and Chrome on Windows reported that 304 as 0 body bytes, so the gate summed 63.1 KB of 109.9 (found 2026-10-01).
+    await page.setCacheEnabled(false);
+    await page.evaluateOnNewDocument(() => performance.setResourceTimingBufferSize(5000));
     // Resource Timing, not response bodies: a body can be evicted once the next navigation starts.
-    const files = new Map();
+    const files = new Map(); const fails = []; const used = new Set();
     const ws = await firstWs(page);
     for (const route of ALL) {
       await page.goto(`${BASE}/w/${ws}/${route}`, { waitUntil: 'domcontentloaded' }); await settle(page); await page.evaluate(() => document.fonts.ready);
-      const got = await page.evaluate(() => performance.getEntriesByType('resource').filter((e) => /\.(woff2?|ttf|otf)(\?|$)/.test(e.name)).map((e) => [e.name, e.encodedBodySize || e.transferSize]));
+      const { got, faces } = await page.evaluate(() => {
+        const got = performance.getEntriesByType('resource').filter((e) => /\.(woff2?|ttf|otf)(\?|$)/.test(e.name)).map((e) => [e.name, e.encodedBodySize]);
+        // Each face the page loaded, with the files its @font-face rule names (the browser takes the first it can use).
+        const key = (fam, style, weight, range) => [fam.replace(/^["']|["']$/g, ''), style || 'normal', weight || 'normal', range || 'U+0-10FFFF'].join(' | ');
+        const rules = new Map();
+        const walk = (list, base) => { for (const r of list) {
+          if (r.cssRules) walk(r.cssRules, base);
+          if (!(r instanceof CSSFontFaceRule)) continue;
+          const p = (k) => r.style.getPropertyValue(k);
+          rules.set(key(p('font-family'), p('font-style'), p('font-weight'), p('unicode-range')), [...p('src').matchAll(/url\("?([^")]+)"?\)/g)].map((m) => new URL(m[1], base).href));
+        } };
+        for (const s of document.styleSheets) { try { walk(s.cssRules, s.href ?? location.href); } catch { /* a cross-origin sheet: its faces show up below as unmapped */ } }
+        const faces = [...document.fonts].filter((f) => f.status !== 'unloaded').map((f) => { const k = key(f.family, f.style, f.weight, f.unicodeRange); return [k, `${f.family} ${f.style} ${f.weight}`, rules.get(k) ?? []]; });
+        return { got, faces };
+      });
       for (const [u, b] of got) files.set(u, Math.max(files.get(u) ?? 0, b));
+      // A face in use must be counted on the route that uses it; 0 bytes means the measurement saw nothing.
+      for (const [face, label, urls] of faces) {
+        used.add(face);
+        const bytes = Math.max(0, ...urls.map((u) => got.find(([g]) => g === u)?.[1] ?? 0));
+        if (!urls.length) fails.push(`${route}: no @font-face file found for the face in use "${label}" (${face})`);
+        else if (!bytes) fails.push(`${route}: face in use "${label}" counted at 0 bytes (${urls[0].split('/').pop()})`);
+      }
     }
     const total = [...files.values()].reduce((a, b) => a + b, 0);
     const kb = (total / 1024).toFixed(1);
-    gate(`fonts ≤ ${FONT_BUDGET_KB} KB for every route (is ${kb} KB)`, total > FONT_BUDGET_KB * 1024 ? [`${kb} KB: ${[...files].map(([u, b]) => `${u.split('/').pop()} ${(b / 1024).toFixed(0)}K`).join(', ')}`] : [], files.size);
+    const list = [...files].map(([u, b]) => `${u.split('/').pop()} ${(b / 1024).toFixed(1)}K`).join(', ');
+    if (total > FONT_BUDGET_KB * 1024) fails.unshift(`${kb} KB: ${list}`);
+    gate(`fonts ≤ ${FONT_BUDGET_KB} KB for every route (is ${kb} KB)`, fails, used.size, [`${used.size} faces in use, ${files.size} files counted: ${list}`]);
     await ctx.close();
   }
 
