@@ -137,3 +137,8 @@ Changed from the plan:
 - **No "Edit" mode in Create.** Editing starts from an asset (Library, results, project), where there is something to edit.
 - **Review stays inside Studio** for now: asset states draft → in review → approved / changes requested, with the `approve` permission. Moving media into the Approvals queue waits on `content_items` (SPEC 0009).
 - **Demo generation flags are ON** in the demo seed (world v7), per decision 3 default (a). Production orgs keep every flag OFF.
+
+Gate run on the final code (Linux, Chromium 141, 2026-10-01): 18/20.
+- Passing: flows 32/32 (8 Studio and Agents steps), axe 0 violations on 128 pages, role visibility 160/160, tab walk 351/351, idle, reduced motion, phone overflow and targets, initial JS 215.7 KB (+5 KB).
+- INP fails on typing into Home's composer, the known gate artefact (PR #18 notes).
+- Visual fails: the Studio screens are new and the Agents screens have no baseline, and every baseline here was captured on Windows. They need a reviewed `--update-baselines` run on Christian's machine.
