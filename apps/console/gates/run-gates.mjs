@@ -16,7 +16,7 @@ const OUT = join(ROOT, 'gates', 'out');
 const arg = (k) => process.argv.find((a) => a.startsWith(`--${k}=`))?.split('=').slice(1).join('=');
 const REMOTE = arg('url');
 const ONLY = arg('only'); // e.g. --only=static,axe
-const CHROME = ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'].find((p) => { try { return statSync(p).isFile(); } catch { return false; } });
+const CHROME = [process.env.CHROME_PATH, 'C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'].find((p) => { try { return p && statSync(p).isFile(); } catch { return false; } });
 
 const results = [];
 function gate(name, failures, denominator, notes = []) {
