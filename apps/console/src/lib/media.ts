@@ -85,7 +85,8 @@ function background(scene: Scene, backdrop: RenderSpec['backdrop'], hue: number,
 
 function product(shape: ProductShape, hue: number, label: string | null, cx: number, base: number, size: number): string {
   const body = hsl(hue, 55, 52), dark = hsl(hue, 50, 38), light = hsl(hue, 60, 70), paper = hsl(hue, 20, 97), ink = hsl(hue, 40, 22);
-  const text = label ? esc(label.length > 18 ? label.slice(0, 17) + '…' : label) : '';
+  const max = shape === 'box' || shape === 'jar' ? 26 : 18; // wide labels fit more
+  const text = label ? esc(label.length > max ? label.slice(0, max - 1) + '…' : label) : '';
   const shadow = `<ellipse cx="${cx}" cy="${base}" rx="${size * 0.55}" ry="${size * 0.07}" fill="${hsl(0, 0, 0, 0.18)}"/>`;
   switch (shape) {
     case 'box': {
@@ -93,7 +94,7 @@ function product(shape: ProductShape, hue: number, label: string | null, cx: num
       return `${shadow}<polygon points="${x + w},${y} ${x + w + d},${y - d * 0.6} ${x + w + d},${base - d * 0.6} ${x + w},${base}" fill="${dark}"/>
         <polygon points="${x},${y} ${x + d},${y - d * 0.6} ${x + w + d},${y - d * 0.6} ${x + w},${y}" fill="${light}"/>
         <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${body}"/><rect x="${x}" y="${y + h * 0.38}" width="${w}" height="${h * 0.26}" fill="${paper}"/>
-        <text x="${cx}" y="${y + h * 0.54}" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="${size * 0.075}" fill="${ink}">${text}</text>`;
+        <text x="${cx}" y="${y + h * 0.54}" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="${size * (text.length > 18 ? 0.055 : 0.075)}" fill="${ink}">${text}</text>`;
     }
     case 'bottle': {
       const w = size * 0.42, h = size * 0.8, x = cx - w / 2, y = base - h;

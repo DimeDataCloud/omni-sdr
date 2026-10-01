@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import * as RDialog from '@radix-ui/react-dialog';
 import { toast } from 'sonner';
-import { Archive, Check, Download, FlipHorizontal2, History, Info, RotateCcw, RotateCw, Save, Scissors, Send, SlidersHorizontal, Sparkles, Type, Undo2, X } from 'lucide-react';
+import { Archive, Check, Download, FlipHorizontal2, RotateCcw, RotateCw, Save, Send, Undo2, X } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { Asset, Aspect, Edits, Scene, StudioCaps } from '@/lib/api/types';
 import { useQuery } from '@/lib/hooks';
@@ -57,12 +57,12 @@ function Body({ a, caps, onClose, build, approve, tab: tabIn, setTab }: { a: Ass
   const generated = a.source === 'generated';
   const aiOk = build && caps.imageGeneration && a.kind === 'image';
   const tabs = useMemo(() => [
-    ...(build ? [{ value: 'adjust' as Tab, label: <span className="inline-flex items-center gap-1.5"><SlidersHorizontal className="size-3.5" aria-hidden />Adjust</span> }] : []),
-    ...(build ? [{ value: 'text' as Tab, label: <span className="inline-flex items-center gap-1.5"><Type className="size-3.5" aria-hidden />Text</span> }] : []),
-    ...(build && a.kind === 'video' ? [{ value: 'video' as Tab, label: <span className="inline-flex items-center gap-1.5"><Scissors className="size-3.5" aria-hidden />Trim</span> }] : []),
-    ...(aiOk ? [{ value: 'ai' as Tab, label: <span className="inline-flex items-center gap-1.5"><Sparkles className="size-3.5" aria-hidden />AI tools</span> }] : []),
-    { value: 'versions' as Tab, label: <span className="inline-flex items-center gap-1.5"><History className="size-3.5" aria-hidden />Versions</span> },
-    { value: 'details' as Tab, label: <span className="inline-flex items-center gap-1.5"><Info className="size-3.5" aria-hidden />Details</span> },
+    ...(build ? [{ value: 'adjust' as Tab, label: 'Adjust' }] : []),
+    ...(build ? [{ value: 'text' as Tab, label: 'Text' }] : []),
+    ...(build && a.kind === 'video' ? [{ value: 'video' as Tab, label: 'Trim' }] : []),
+    ...(aiOk ? [{ value: 'ai' as Tab, label: 'AI tools' }] : []),
+    { value: 'versions' as Tab, label: 'Versions' },
+    { value: 'details' as Tab, label: 'Details' },
   ], [build, a.kind, aiOk]);
   const tab: Tab = tabIn && tabs.some((t) => t.value === tabIn) ? tabIn : build ? 'adjust' : 'details';
 

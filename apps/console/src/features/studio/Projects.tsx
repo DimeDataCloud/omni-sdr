@@ -174,7 +174,7 @@ function Sequence({ p, videos, build, onSave }: { p: Project; videos: Asset[]; b
                 <span className="tabular grid size-6 place-items-center rounded-full bg-sunken text-xs font-semibold">{i + 1}</span>
                 <p className="min-w-0 flex-1 truncate text-sm font-medium" title={v.name}>{v.name}</p>
               </div>
-              <AssetFrame asset={v} className="mt-2 w-full rounded" label={`Clip ${i + 1}: ${v.name}`} />
+              <div className="mt-2 grid h-40 place-items-center rounded bg-sunken"><AssetFrame asset={v} className={v.aspect === '16:9' ? 'w-full rounded' : 'h-full rounded'} label={`Clip ${i + 1}: ${v.name}`} /></div>
               <fieldset disabled={!build} className="mt-2 grid grid-cols-2 gap-2">
                 <legend className="sr-only">Trim clip {i + 1}</legend>
                 <Field label="In (s)">{(f) => <Input id={f.id} type="number" min={0} max={len} step={0.1} value={c.inS} onChange={(e) => set(i, { inS: Math.max(0, Math.min(Number(e.target.value), c.outS - 0.5)) })} />}</Field>
