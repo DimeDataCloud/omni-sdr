@@ -591,7 +591,7 @@ export const demoClient: Client = {
     const approved = ds.filter((d) => d.status === 'approved').length, rejected = ds.filter((d) => d.status === 'discarded').length;
     const corrections = ds.flatMap((d) => [
       ...(d.status === 'discarded' ? [{ draftId: d.id, recipient: name(d), kind: 'rejected' as const, note: d.rejectionReason, at: d.createdAt }] : []),
-      ...(d.status === 'blocked' ? [{ draftId: d.id, recipient: name(d), kind: 'blocked' as const, note: (d.gateFindings ?? []).map((f) => f.detail).join('; ') || null, at: d.gatedAt ?? d.createdAt }] : []),
+      ...(d.status === 'blocked' ? [{ draftId: d.id, recipient: name(d), kind: 'blocked' as const, note: (d.gateFindings ?? []).map((f) => f.detail.replace(/[.;\s]+$/, '')).join(' · ') || null, at: d.gatedAt ?? d.createdAt }] : []),
       ...(edits.has(d.id) ? [{ draftId: d.id, recipient: name(d), kind: 'edited' as const, note: null, at: d.createdAt }] : []),
     ]).sort((x, y) => y.at.localeCompare(x.at)).slice(0, 12);
     return { days, drafted: ds.length, approved, rejected, blocked: ds.filter((d) => d.status === 'blocked').length, inReview: ds.filter((d) => d.status === 'review').length,

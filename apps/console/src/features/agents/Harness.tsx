@@ -59,7 +59,7 @@ export function AgentSheet({ agent, onClose, readOnly }: { agent: Agent | 'new' 
         {base && <Button variant="ghost" icon={<Archive className="size-4" aria-hidden />} onClick={archive} className="mr-auto">Archive</Button>}
         <Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} disabled={!f.name.trim()} onClick={() => void save()}>{base ? 'Save' : 'Create agent'}</Button></>}>
       <div className="mb-4"><Segmented id="agent-tab" size="sm" label="Agent setup" value={tab} onChange={setTab} options={tabs} /></div>
-      <fieldset disabled={readOnly}>
+      <fieldset disabled={readOnly} className="min-w-0">
         {tab === 'role' && (
           <div className="grid gap-4 sm:grid-cols-[1fr_140px]">
             <Field label="Name">{(p) => <Input id={p.id} value={f.name} maxLength={60} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Sales Outbound" />}</Field>
