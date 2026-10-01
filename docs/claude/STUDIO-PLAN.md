@@ -116,3 +116,24 @@ Each step runs the review loop in UI-REVISION-PLAN.md (gates, visual review, a w
    - Or plan for more models later, each a paid vendor needing Christian's approval (Rails §3.3).
 
    Recommended: Google only for now.
+
+## 9. Build outcome (2026-10-01, cloud session, `/goal build the studio UI/UX`)
+
+Built on demo data in `apps/console`, using the recommended defaults for decisions 1, 3 and 4 (each still Christian's to confirm):
+
+| Piece | What exists |
+|---|---|
+| S0 Agents page | `features/agents/AgentsPage.tsx` (the old Studio, unchanged inside), nav item **Agents** (`g t`). `studio?tab=routines|learning|agents` and `studio?new=agent` redirect there; Home's "New agent" points there. |
+| Create | Modes Product shot, Image, Social post, Video, each hidden when its flag is off. Project ingredients as chips (tap one to leave it out of a run), product picker, example prompts, scene tiles drawn from the chosen product, 10 camera-move tiles that preview on hover/focus only, a start frame and length for video, shape and count, a credit estimate next to the button (Ctrl Enter generates). With every flag off, Create is Upload. |
+| Library | Every asset with review-state tabs and counts, kind, project and text filters; drag-and-drop or picked uploads (images scaled to 1600px and kept on the device; video kept in the tab only). A reviewer lands on "In review". |
+| Editor | Full screen. Crop to a channel shape, rotate, flip, brightness/contrast/saturation, headline (two styles, three positions), video trim and captions. Saving makes a new version; v1 is never changed; restore any version. AI tools (remove/replace background, upscale 2x, expand) only with `imageGeneration` on. Review: send for review, approve, or send back with a required note; saving an approved item puts it back to draft. Download exports a PNG at the channel size on the device. |
+| Projects | Cards with a 3-up preview; ingredients (brand kit, style, character) editable; a sequence of clips (order, trim, caption) with a player that runs them as one cut; "Create in this project". |
+| Demo data | `lib/api/demo/studio.ts`: 4 products, 4 projects, 11 assets across the three workspaces, 600 media credits, renders that finish a moment later. `lib/media.ts` draws every sample as SVG on the device (labeled **Demo sample**); no vendor call. |
+| Contract | `Client` gains 16 Studio methods; `types.ts` gains the Studio shapes; `docs/claude/API.md` §7.8 proposes the routes. |
+| CSP | `blob:` added to `img-src` and a `media-src 'self' blob:` line, for previewing a picked video. Needs Gemini's audit (Rails §6: CSP is part of the public surface). |
+| Gates | Agents added to every route check; 7 Studio flow steps (generate and charge, edit and version, review round-trip, video controls, flag-off path, sequence playback, old links) and a reviewer step. |
+
+Changed from the plan:
+- **No "Edit" mode in Create.** Editing starts from an asset (Library, results, project), where there is something to edit.
+- **Review stays inside Studio** for now: asset states draft → in review → approved / changes requested, with the `approve` permission. Moving media into the Approvals queue waits on `content_items` (SPEC 0009).
+- **Demo generation flags are ON** in the demo seed (world v7), per decision 3 default (a). Production orgs keep every flag OFF.

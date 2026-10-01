@@ -3,6 +3,7 @@
 import type {
   Me, Settings, Members, ApprovalsList, ApprovalCard, InboxItem, Meeting, Agent, ChatMessage, Routine, Capacity,
   Analytics, Credits, Connector, Contact, ContactDetail, Role, ModelTier, DraftStatus, Id, About, AskMode, Pipeline,
+  Asset, AssetKind, AssetStatus, Aspect, Edits, GenMode, Ingredient, MotionKey, Product, Project, Scene, SequenceClip, StudioCaps,
 } from './types';
 
 export class ApiError extends Error {
@@ -73,6 +74,25 @@ export interface Client {
   createCampaign(s: Scope, body: { name: string; icpId?: Id | null }): Promise<Campaign>;
   patchCampaign(s: Scope, id: Id, patch: Partial<Pick<Campaign, 'name' | 'status' | 'autoAuditEnabled'>>): Promise<Campaign>;
   enroll(s: Scope, campaignId: Id, contactIds: Id[]): Promise<{ enrolled: number; skipped: number }>;
+
+  // Studio (PROPOSED, STUDIO-PLAN.md). Reads: reports_view. Create, upload, edit, submit: build. Approve or send back: approve.
+  studioCaps(s: Scope): Promise<StudioCaps>;
+  assets(s: Scope, q?: { kind?: AssetKind; status?: AssetStatus; projectId?: Id; q?: string }): Promise<Asset[]>;
+  asset(s: Scope, id: Id): Promise<Asset>;
+  uploadAsset(s: Scope, body: { name: string; kind: AssetKind; src: string; aspect: Aspect; durationS?: number | null; projectId?: Id | null }): Promise<Asset>;
+  generate(s: Scope, body: { mode: GenMode; prompt: string; aspect: Aspect; count: number; scene?: Scene; motion?: MotionKey | null; durationS?: number;
+    productId?: Id | null; projectId?: Id | null; ingredients?: Ingredient[]; startFrame?: Id | null; endFrame?: Id | null; caption?: string | null }): Promise<Asset[]>;
+  editAsset(s: Scope, id: Id, body: { edits: Edits; note: string }): Promise<Asset>;
+  /** Generative edits make a new version on the server: background, upscale, expand. Gated by imageGeneration. */
+  aiEdit(s: Scope, id: Id, body: { op: 'remove_bg' | 'replace_bg' | 'upscale' | 'expand'; scene?: Scene; aspect?: Aspect }): Promise<Asset>;
+  restoreVersion(s: Scope, id: Id, n: number): Promise<Asset>;
+  patchAsset(s: Scope, id: Id, patch: { name?: string; projectId?: Id | null }): Promise<Asset>;
+  setAssetStatus(s: Scope, id: Id, status: AssetStatus, note?: string | null): Promise<Asset>;
+  archiveAsset(s: Scope, id: Id): Promise<void>;
+  products(s: Scope): Promise<Product[]>;
+  projects(s: Scope): Promise<Project[]>;
+  createProject(s: Scope, body: { name: string; productId?: Id | null }): Promise<Project>;
+  patchProject(s: Scope, id: Id, patch: { name?: string; ingredients?: Ingredient[]; sequence?: SequenceClip[] }): Promise<Project>;
 }
 
 // Mutations tell every mounted query to refetch. Simple and correct for a single-user console.

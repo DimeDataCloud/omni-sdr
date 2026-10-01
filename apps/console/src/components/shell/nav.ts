@@ -1,9 +1,9 @@
 // One nav list; each entry says who sees it (DESIGN 5.3). The shell, bottom bar, palette and route guards all read this.
-import { Home, CheckCheck, Inbox, CalendarDays, Users, BarChart3, Sparkles, Plug, Settings as Cog, type LucideIcon } from 'lucide-react';
+import { Home, CheckCheck, Inbox, CalendarDays, Users, BarChart3, Sparkles, Bot, Plug, Settings as Cog, type LucideIcon } from 'lucide-react';
 import type { Role } from '@/lib/api/types';
 import type { Action } from '@/lib/session';
 
-export type PageKey = 'home' | 'approvals' | 'inbox' | 'meetings' | 'leads' | 'analytics' | 'studio' | 'connections' | 'settings';
+export type PageKey = 'home' | 'approvals' | 'inbox' | 'meetings' | 'leads' | 'analytics' | 'studio' | 'agents' | 'connections' | 'settings';
 export interface NavItem { key: PageKey; label: string; icon: LucideIcon; shortcut?: string; visible: (role: Role, can: (a: Action) => boolean) => boolean }
 
 export const NAV: NavItem[] = [
@@ -14,6 +14,7 @@ export const NAV: NavItem[] = [
   { key: 'leads', label: 'Leads', icon: Users, shortcut: 'g l', visible: (_, can) => can('build') },
   { key: 'analytics', label: 'Analytics', icon: BarChart3, shortcut: 'g r', visible: (_, can) => can('reports_view') },
   { key: 'studio', label: 'Studio', icon: Sparkles, shortcut: 'g s', visible: (r) => r !== 'client_viewer' },
+  { key: 'agents', label: 'Agents', icon: Bot, shortcut: 'g t', visible: (r) => r !== 'client_viewer' },
   { key: 'connections', label: 'Connections', icon: Plug, visible: (r) => r !== 'client_viewer' },
   { key: 'settings', label: 'Settings', icon: Cog, visible: (r) => r !== 'client_viewer' },
 ];
@@ -23,4 +24,4 @@ export const labelFor = (item: NavItem, role: Role) => (role === 'client_viewer'
 export const homeFor = (role: Role): PageKey => (role === 'client_viewer' ? 'analytics' : 'home');
 export const MOBILE_PRIMARY: PageKey[] = ['home', 'approvals', 'inbox', 'meetings'];
 /** Desktop top bar: these sit under More so the bar never crowds. */
-export const SECONDARY: PageKey[] = ['studio', 'connections', 'settings'];
+export const SECONDARY: PageKey[] = ['studio', 'agents', 'connections', 'settings'];

@@ -298,6 +298,8 @@ Every screen spec lists: **job**, **data**, **layout**, **states**, **roles**, *
 - **Client viewer:** the same page, white-labeled, is their main view.
 
 ### 6.9 Studio (agents, routines, Auto-adjust)
+> **Superseded 2026-10-01** (DECISIONS: "Studio is the image and video marketing suite"). Studio is now the media suite in `docs/claude/STUDIO-PLAN.md`. The agents, routines and Auto-adjust spec below now describes the **Agents** page (`/w/:ws/agents`; STUDIO-PLAN §2, default A pending Christian).
+
 - **Agents** (`POST/PATCH/DELETE agents`): editor with name, station, badge, model tier (with a one-line explanation of each tier and relative cost), role prompt (monospace-free text area, 8000 chars, character count), context sources, **autonomous mode** switch with its exact meaning: "Runs its routines without being asked. Everything it drafts still needs approval." Archive (not delete) with confirmation.
 - **Routines** (`GET/POST/PATCH routines`): name, category (Briefing · Triage · Outbound · Sync), schedule (plain text now, e.g. "weekdays 08:00"), agent, active switch. "Paused by Omni-SDR" when `pausedByOps` (not clearable). *The runner isn't built yet*: routines save and toggle; show "Last run —" until it exists.
 - **Auto-adjust log:** a list of what the system learned, each traceable to its source event and revertible (*backend pending*, SPEC Station 08). It never changes guardrails; say so in the header.

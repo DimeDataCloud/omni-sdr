@@ -3,12 +3,15 @@
 // - style-src 'unsafe-inline': the toast library injects a <style> element at runtime; scripts stay 'self' only.
 // - static.cloudflareinsights.com: the zone's Cloudflare Web Analytics beacon (injected at the edge). Page views
 //   only; nothing reaches prospects. Remove both entries if Web Analytics is turned off for omnisdr.com.
+// - blob: in img-src and media-src: Studio previews a file the person just picked (URL.createObjectURL) before it is
+//   uploaded. A blob: URL can only be minted by this page's own scripts, so it adds no third-party origin.
 export function appCsp(styleNonce?: string) {
   return [
     "default-src 'self'",
     "script-src 'self' https://static.cloudflareinsights.com",
     styleNonce ? `style-src 'self' 'nonce-${styleNonce}'` : "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data:",
+    "img-src 'self' data: blob:",
+    "media-src 'self' blob:",
     "font-src 'self'",
     "connect-src 'self' https://cloudflareinsights.com",
     "object-src 'none'",
