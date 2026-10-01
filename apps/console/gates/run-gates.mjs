@@ -141,7 +141,8 @@ if ((wantRoutes || wantFlows || wantQuality) && BASE) {
           for (const re of FORBIDDEN) if (re.test(text)) termFails.push(`${tag} "${text.match(re)[0]}"`);
           if (persona === 'client' && /Omni-SDR/.test(text + (await page.title()))) brandFails.push(`${tag} shows "Omni-SDR"`);
           if (vp === 'phone') {
-            const o = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+            // clientWidth, not innerWidth: mobile emulation widens innerWidth to fit content that overflows, which hid a 87px overflow.
+            const o = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
             if (o > 1) overflowFails.push(`${tag} scrolls sideways by ${o}px`);
             const small = await page.evaluate(() => [...document.querySelectorAll('button, [role=tab], input:not([type=hidden]), select, a[href]')].map((e) => (e.tagName === 'INPUT' && e.closest('label')) || e)
               .filter((e) => { const r = e.getBoundingClientRect(); const cs = getComputedStyle(e); return r.width && r.height && cs.visibility !== 'hidden' && !e.closest('.sr-only') && !(e.tagName === 'A' && cs.display === 'inline'); })
