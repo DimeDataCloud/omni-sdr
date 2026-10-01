@@ -55,8 +55,8 @@ offline and fails the build if an explicit opt-out scores below 0.9; it caught t
 
 **The fix is billing, not more pruning.** With request-based billing an idle instance costs nothing, so a
 Cloud Scheduler ping every 5 minutes keeps it warm for about $0.17 a month (8,640 pings at the 100 ms minimum),
-against ~$78 a month for `min-instances=1`. [VERIFY: whether Cloud Run keeps the instance through 5-minute gaps;
-measurement pending, section 6.]
+against ~$78 a month for `min-instances=1`. Measured once: after 10 idle minutes the instance answered in 0.61 s
+and no new instance started. Cloud Run doesn't promise that, so the ping runs every 5 minutes, not 10.
 
 ## 4. Does it cost less than Jev?
 Per decision, no: CPU Laya is ~20x Jev at every volume. In dollars per month, yes, until the free tier runs out,
@@ -88,7 +88,7 @@ One image (`--build-arg TORCH_INDEX=…/cu130`), same API, so callers don't chan
 ## 6. Open items
 | # | Item | Owner |
 |---|---|---|
-| L1 | Keep-warm: measure whether the instance survives 5- and 10-minute idle gaps, then add a Cloud Scheduler job with its own service account (cloud resources: needs Christian's OK) | Claude measures; Christian approves |
+| L1 | Keep-warm: a Cloud Scheduler job pinging `/health` every 5 minutes with its own invoker service account, added when the inbox worker goes live (a new job, SA and IAM binding: needs Christian's OK) | Christian approves; Claude builds |
 | L2 | Wire `refinePending` into the inbox worker once it is deployed (no API is in production yet; nothing calls the decider today) | Claude |
 | L3 | Golden set: 100 labelled replies, then fit `stop` and `meet` thresholds; re-fit on any checkpoint change | Claude |
 | L4 | Fine-tune for the 9-way label (vendor: 0.362 → 0.766 on their benchmark) before the label leaves shadow | Claude, after L3 |
