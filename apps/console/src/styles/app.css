@@ -224,3 +224,6 @@
 
 /* Safe areas for the installed-to-home-screen phone view. */
 .pb-safe { padding-bottom: max(env(safe-area-inset-bottom), 0px); }
+
+/* Studio: media frames size their headline and captions to their own width (cqw), at any thumbnail size. */
+.media-frame { container-type: inline-size; }

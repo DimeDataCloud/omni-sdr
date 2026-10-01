@@ -42,7 +42,7 @@ export interface World {
   audit: AuditRow[]; credits: { data: number; action: number; media: number };
 }
 
-export const WORLD_VERSION = 6;
+export const WORLD_VERSION = 7;
 
 // Deterministic randomness so the demo looks the same on every device.
 function rng(seed: number) {
@@ -119,7 +119,9 @@ export function buildWorld(now = new Date()): World {
   idn = 0;
   const rand = rng(20260929);
   const org = { id: uid('org'), name: 'Northside Growth', accountType: 'agency' as const, subscriptionStatus: 'trialing' as const,
-    trialEndsAt: iso(new Date(now.getTime() + 5 * 86400e3)), featureFlags: { level2: false, imageGeneration: false, videoGeneration: false } };
+    trialEndsAt: iso(new Date(now.getTime() + 5 * 86400e3)), // Generation flags ON in the demo only, so Studio's Create can be judged (STUDIO-PLAN decision 3, default (a) pending
+    // Christian). Nothing is generated: the demo draws labeled samples on the device. Production orgs start with every flag OFF.
+    featureFlags: { level2: false, imageGeneration: true, videoGeneration: true } };
   const mkWs = (name: string, clientApprovals: boolean): WorkspaceRow => ({ id: uid('ws'), name, timezone: 'America/Chicago', trustLevel: 1,
     clientApprovalsEnabled: clientApprovals, autoAdjustEnabled: false, autoAdjustSources: ['booked_meetings', 'rejections'],
     postalAddress: '100 Example Ave, Suite 200, Nashville, TN 37203', customDomain: null, createdAt: iso(ago(now, 60 * 24 * 21)) });

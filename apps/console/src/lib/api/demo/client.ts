@@ -7,6 +7,7 @@ import { ApiError, invalidate, type Client, type Scope, type Campaign, type Icp 
 import type { ApprovalCard, Agent, ChatMessage, Contact, InboxItem, Meeting, Routine, Role, Analytics, Me, Pipeline, AboutKind, AskMode } from '../types';
 import { load, save, gate, newId, personaEmail, convertOnMeeting } from './store';
 import { think } from './brain';
+import { studioDemo } from './studio';
 
 const ABOUT_KINDS: AboutKind[] = ['contact', 'draft', 'reply', 'meeting', 'analytics'];
 const MODES: AskMode[] = ['ask', 'find_leads', 'draft', 'book', 'report'];
@@ -551,6 +552,8 @@ export const demoClient: Client = {
     audit(w, s.workspaceId, m.userId, 'enroll', 'campaign', campaignId);
     return { enrolled, skipped };
   }),
+
+  ...studioDemo({ tenant, read, write, audit }),
 };
 
 export const ROLE_LABEL: Record<Role, string> = { admin: 'Admin', operator: 'Operator', reviewer: 'Reviewer', client_viewer: 'Client' };

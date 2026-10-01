@@ -151,3 +151,40 @@ export interface ContactDetail extends Contact {
 // GET …/icps → { items: { id, lineageId, name, version, data, createdAt }[] } (latest version per lineage)
 // GET …/campaigns → { items: { id, name, status: 'draft'|'active'|'paused'|'archived', icpId, autoAuditEnabled, enrolled, live }[] }
 // GET …/activity (admin) → { items: { id, actor, actorEmail, action, entityType, entityId, at }[] }
+
+// ── Studio: the image and video suite (PROPOSED, docs/claude/STUDIO-PLAN.md; SPEC §4 0009_content_assets) ──────────────
+// Not in packages/api yet. Generation is server-side only and gated by the org flags `imageGeneration` / `videoGeneration`
+// (DECISIONS 2026-09-28): with a flag off the UI hides that action and offers upload or pick-from-library instead.
+export type AssetKind = 'image' | 'video';
+export type AssetStatus = 'draft' | 'review' | 'approved' | 'changes_requested';
+export type Aspect = '1:1' | '4:5' | '9:16' | '16:9';
+/** Create modes. Each maps to one generator flag: video → videoGeneration, the rest → imageGeneration. */
+export type GenMode = 'image' | 'product' | 'video' | 'social';
+export type Scene = 'studio' | 'podium' | 'counter' | 'outdoor' | 'flatlay';
+export type ProductShape = 'box' | 'bottle' | 'tube' | 'jar';
+/** How a generated picture was composed. The demo draws it locally (lib/media.ts); the real API stores the file instead. */
+export interface RenderSpec { shape: ProductShape | null; hue: number; scene: Scene; seed: number; label: string | null; backdrop: 'scene' | 'clean' | 'cutout' }
+/** Non-destructive edits. Saving them makes a new version; the original version is never changed. */
+export interface Edits {
+  crop: Aspect | null; rotate: 0 | 90 | 180 | 270; flipH: boolean;
+  brightness: number; contrast: number; saturation: number;              // percent, 100 = unchanged
+  text: { value: string; position: 'top' | 'center' | 'bottom'; style: 'sans' | 'serif' } | null;
+  trim: { inS: number; outS: number } | null;                             // video only
+  captions: string | null;                                                 // video only, burned in at export
+}
+export interface AssetVersion { n: number; render: RenderSpec | null; src: string | null; edits: Edits; note: string; scale: 1 | 2; createdAt: Iso; createdBy: string }
+export interface Ingredient { id: Id; kind: 'product' | 'brand' | 'style' | 'character'; label: string; assetId: Id | null; productId: Id | null }
+export interface Generation { mode: GenMode; prompt: string; model: string; ingredients: Ingredient[]; motion: MotionKey | null;
+  startFrame: Id | null; endFrame: Id | null; credits: number; sample: boolean }
+export type MotionKey = 'static' | 'push_in' | 'pull_out' | 'pan_left' | 'pan_right' | 'tilt_up' | 'crane_up' | 'orbit' | 'crash_zoom' | 'handheld';
+export interface Asset {
+  id: Id; kind: AssetKind; name: string; status: AssetStatus; source: 'upload' | 'generated';
+  aspect: Aspect; durationS: number | null; projectId: Id | null; productId: Id | null;
+  versions: AssetVersion[]; current: number;                               // index into versions
+  generation: Generation | null; rendering: boolean; reviewNote: string | null;
+  createdBy: string; createdAt: Iso; updatedAt: Iso;
+}
+export interface Product { id: Id; name: string; tagline: string; shape: ProductShape; hue: number; description: string }
+export interface SequenceClip { id: Id; assetId: Id; inS: number; outS: number; caption: string }
+export interface Project { id: Id; name: string; productId: Id | null; ingredients: Ingredient[]; sequence: SequenceClip[]; createdAt: Iso; assetCount: number }
+export interface StudioCaps { imageGeneration: boolean; videoGeneration: boolean; mediaCredits: number; sample: boolean }

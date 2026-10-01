@@ -83,12 +83,12 @@ if (!REMOTE && (want('bundle') || wantRoutes || wantFlows || wantQuality)) {
 
 // ── Browser gates ─────────────────────────────────────────────────────────────────────────────
 const PERSONAS = {
-  admin: { email: 'maya@example.com', pages: ['home', 'approvals', 'inbox', 'meetings', 'leads', 'analytics', 'studio', 'connections', 'settings'] },
-  operator: { email: 'sam@example.com', pages: ['home', 'approvals', 'inbox', 'meetings', 'leads', 'analytics', 'studio', 'connections', 'settings'] },
-  reviewer: { email: 'riley@example.com', pages: ['home', 'approvals', 'inbox', 'meetings', 'analytics', 'studio', 'connections', 'settings'] },
+  admin: { email: 'maya@example.com', pages: ['home', 'approvals', 'inbox', 'meetings', 'leads', 'analytics', 'studio', 'agents', 'connections', 'settings'] },
+  operator: { email: 'sam@example.com', pages: ['home', 'approvals', 'inbox', 'meetings', 'leads', 'analytics', 'studio', 'agents', 'connections', 'settings'] },
+  reviewer: { email: 'riley@example.com', pages: ['home', 'approvals', 'inbox', 'meetings', 'analytics', 'studio', 'agents', 'connections', 'settings'] },
   client: { email: 'client@example.com', pages: ['approvals', 'meetings', 'analytics'] },
 };
-const ALL = ['home', 'approvals', 'inbox', 'meetings', 'leads', 'analytics', 'studio', 'connections', 'settings'];
+const ALL = ['home', 'approvals', 'inbox', 'meetings', 'leads', 'analytics', 'studio', 'agents', 'connections', 'settings'];
 const VIEWPORTS = { desktop: { width: 1440, height: 900 }, phone: { width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } };
 const FORBIDDEN = [/open rate/i, /\bopened\b/i, /SOC ?2/i, /send now/i, /auto-?send/i, /coming soon/i, /send via gmail/i, /AI-verified/i, /\bsupercharge/i, /\bseamless/i];
 
@@ -396,6 +396,92 @@ if ((wantRoutes || wantFlows || wantQuality) && BASE) {
     });
     await ctx.close();
   }
+  // Studio (STUDIO-PLAN.md): generate → library → edit → review, the flag-off path, and the old agent links.
+  {
+    const { ctx, page, errors } = await open('admin', 'light', 'desktop');
+    await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => /\/w\/[^/]+\/\w+/.test(location.pathname), { timeout: 15000 });
+    const ws = new URL(page.url()).pathname.split('/')[2];
+    const studioText = () => page.evaluate(() => document.body.innerText);
+    const clickText = (sel, re) => page.evaluate((s, r) => { const el = [...document.querySelectorAll(s)].find((b) => new RegExp(r).test(b.textContent.trim())); if (!el) throw new Error(`no ${s} matching ${r}`); el.click(); }, sel, re);
+    let made = '';
+    await step('studio: a product shot costs what it says, renders, and lands in the Library as a draft', async () => {
+      await page.goto(`${BASE}/w/${ws}/studio`); await settle(page);
+      const credits = async () => Number((await page.$eval('[aria-label$="media credits left"]', (e) => e.getAttribute('aria-label'))).match(/\d+/)[0]);
+      const before = await credits();
+      const cost = Number((await studioText()).match(/≈ (\d+) media credits/)[1]);
+      await clickText('[role=radiogroup][aria-label="What to make"] [role=radio]', '^Product shot');
+      await page.$eval('form[aria-label="Create media"] textarea', (t) => t.focus());
+      await page.keyboard.type('Kit on a podium, soft light');
+      await clickText('form[aria-label="Create media"] button[type=submit]', '^Generate');
+      await page.waitForFunction(() => document.querySelectorAll('[role=status]').length > 0 && /Rendering/.test(document.body.innerText), { timeout: 4000 });
+      await page.waitForFunction(() => !/Rendering (image|video)…/.test(document.body.innerText), { timeout: 10000 });
+      await settle(page);
+      const after = await credits();
+      if (before - after !== cost) throw new Error(`charged ${before - after}, the estimate said ${cost}`);
+      made = await page.$eval('section[aria-labelledby=results-h] ul li button[aria-label^="Open "]', (b) => b.getAttribute('aria-label').replace(/^Open /, ''));
+      if (!/^Kit on a podium/.test(made)) throw new Error(`newest result is "${made}"`);
+      await page.goto(`${BASE}/w/${ws}/studio?view=library`); await settle(page);
+      const card = await page.evaluate((n) => [...document.querySelectorAll('ul[aria-label=Media] li')].find((li) => li.textContent.includes(n))?.innerText ?? '', made);
+      if (!/Draft/.test(card) || !/Demo sample/.test(card)) throw new Error(`library card reads "${card.replace(/\s+/g, ' ')}"`);
+    });
+    await step('studio: the editor crops to a channel, saves v2 without touching v1, and sends it for review', async () => {
+      await page.click(`button[aria-label="Open ${made}"]`); await page.waitForSelector('[role=dialog] [aria-label="Edit panel"]'); await settle(page);
+      await clickText('[role=dialog] button[aria-pressed]', '^Vertical 9:16');
+      await clickText('[role=dialog] button', '^Save version');
+      await page.waitForFunction(() => /v2 of 2/.test(document.querySelector('[role=dialog]')?.innerText ?? ''), { timeout: 5000 });
+      await clickText('[role=dialog] [role=tab]', 'Versions');
+      const v = await page.$eval('[role=dialog] ol[aria-label^="Versions"]', (o) => o.innerText);
+      if (!/v1 · Generated/.test(v) || !/v2 · Cropped to 9:16/.test(v)) throw new Error(`versions read "${v.replace(/\s+/g, ' ')}"`);
+      await clickText('[role=dialog] button', '^Send for review');
+      await page.waitForFunction(() => /In review/.test(document.querySelector('[role=dialog] header')?.innerText ?? ''), { timeout: 5000 });
+    });
+    await step('studio: approving needs a review state; a sent-back item carries its note', async () => {
+      await clickText('[role=dialog] button', '^Request changes');
+      await page.type('[role=dialog] textarea', 'Make the logo bigger.');
+      await clickText('[role=dialog] button', '^Send back');
+      await page.waitForFunction(() => /Changes requested/.test(document.querySelector('[role=dialog]')?.innerText ?? '') && /Make the logo bigger/.test(document.querySelector('[role=dialog]')?.innerText ?? ''), { timeout: 5000 });
+      if (await page.evaluate(() => [...document.querySelectorAll('[role=dialog] button')].some((b) => b.textContent.trim() === 'Approve'))) throw new Error('Approve offered on an item that is not in review');
+      await clickText('[role=dialog] button', '^Send for review');
+      await page.waitForFunction(() => [...document.querySelectorAll('[role=dialog] button')].some((b) => b.textContent.trim() === 'Approve'), { timeout: 5000 });
+      await clickText('[role=dialog] button', '^Approve$');
+      await page.waitForFunction(() => /Approved/.test(document.querySelector('[role=dialog] header')?.innerText ?? ''), { timeout: 5000 });
+      await page.keyboard.press('Escape'); await settle(page);
+    });
+    await step('studio: video offers camera moves and a start frame, and charges by length', async () => {
+      await page.goto(`${BASE}/w/${ws}/studio`); await settle(page);
+      await clickText('[role=radiogroup][aria-label="What to make"] [role=radio]', '^Video');
+      const n = await page.$$eval('[role=radiogroup][aria-label="Camera move"] [role=radio]', (x) => x.length);
+      if (n !== 10) throw new Error(`${n} camera moves`);
+      if (!/Start frame/.test(await studioText())) throw new Error('no start frame picker');
+      await clickText('[role=tab]', '^8s');
+      if (!/≈ 48 media credits/.test(await studioText())) throw new Error('an 8-second video should estimate 48 credits');
+    });
+    await step('studio: with generation off, Create offers upload and no Generate button', async () => {
+      await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('omni-demo-world')); s.world.org.featureFlags.imageGeneration = false; s.world.org.featureFlags.videoGeneration = false; localStorage.setItem('omni-demo-world', JSON.stringify(s)); });
+      await page.goto(`${BASE}/w/${ws}/studio`); await settle(page);
+      const t = await studioText();
+      if (!/Generation is off for this workspace/.test(t)) throw new Error('no flag-off notice');
+      if (await page.evaluate(() => [...document.querySelectorAll('button')].some((b) => /^Generate/.test(b.textContent.trim())))) throw new Error('Generate shown with the flags off');
+      if (!/Choose files/.test(t)) throw new Error('no upload offered');
+      await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('omni-demo-world')); s.world.org.featureFlags.imageGeneration = true; s.world.org.featureFlags.videoGeneration = true; localStorage.setItem('omni-demo-world', JSON.stringify(s)); });
+    });
+    await step('studio: a project plays its sequence clip by clip', async () => {
+      await page.goto(`${BASE}/w/${ws}/studio?view=projects`); await settle(page);
+      await clickText('ul li button', 'Whitening kit launch'); await settle(page);
+      await clickText('button', '^Play sequence');
+      await page.waitForFunction(() => /Clip 1 of 2/.test(document.body.innerText), { timeout: 3000 });
+      await page.waitForFunction(() => /Clip 2 of 2/.test(document.body.innerText), { timeout: 9000 });
+      await clickText('button', '^Stop');
+    });
+    await step('agents: old Studio agent links land on the Agents page', async () => {
+      await page.goto(`${BASE}/w/${ws}/studio?tab=routines`); await settle(page);
+      if (!/\/agents\?tab=routines$/.test(page.url())) throw new Error(`landed on ${page.url()}`);
+      if (!/Morning|routine/i.test(await studioText())) throw new Error('no routines listed');
+    });
+    for (const e of errors) flow.push(`console: ${e.slice(0, 200)}`);
+    await ctx.close();
+  }
   {
     const { ctx, page } = await open('reviewer', 'light', 'desktop');
     await page.goto(`${BASE}/`); await page.waitForFunction(() => /\/w\/[^/]+\/home/.test(location.pathname)); await settle(page);
@@ -404,9 +490,15 @@ if ((wantRoutes || wantFlows || wantQuality) && BASE) {
       await page.goto(page.url().replace(/\/home.*$/, '/approvals')); await settle(page);
       if (await page.evaluate(() => [...document.querySelectorAll('button')].some((b) => /^Ask an agent/.test(b.getAttribute('aria-label') ?? '')))) throw new Error('Ask shown to a reviewer');
     });
+    await step('reviewer: Studio opens on the review queue, with no Generate or Upload', async () => {
+      await page.goto(page.url().replace(/\/approvals.*$/, '/studio?view=library')); await settle(page);
+      const t = await page.evaluate(() => document.body.innerText);
+      if (/Choose files/.test(t) || await page.evaluate(() => [...document.querySelectorAll('button')].some((b) => /^Generate/.test(b.textContent.trim())))) throw new Error('reviewer can make media');
+      if (await page.$eval('[role=tablist][aria-label="Review state"] [aria-selected=true]', (b) => b.textContent).then((x) => !/^In review/.test(x))) throw new Error('library does not open on the review queue');
+    });
     await ctx.close();
   }
-  gate('flows: keyboard approvals, gate on edit, chat, booking, palette, hold, Home core and Ask about this', flow, flowSteps);
+  gate('flows: keyboard approvals, gate on edit, chat, booking, palette, hold, Home core, Ask about this, Studio', flow, flowSteps);
   }
   if (wantQuality) await runQuality({ browser, BASE, ROOT, OUT, gate, want: wantQ, open, settle, REMOTE, ALL });
   await browser.close();

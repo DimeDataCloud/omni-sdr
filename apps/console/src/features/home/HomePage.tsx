@@ -118,7 +118,7 @@ function AgentRail({ agents, loading, selectedId, onSelect, onOverview }: { agen
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted" aria-hidden />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search agents" className="h-9 w-full rounded-md border border-line bg-surface/70 pr-2 pl-8 text-sm placeholder:text-muted max-md:h-11" />
         </label>
-        {can('build') && <IconButton label="New agent" onClick={() => nav('../studio?new=agent')} className="border border-line bg-surface/70"><Plus className="size-4" aria-hidden /></IconButton>}
+        {can('build') && <IconButton label="New agent" onClick={() => nav('../agents?new=agent')} className="border border-line bg-surface/70"><Plus className="size-4" aria-hidden /></IconButton>}
       </div>
       {onOverview && (
         <button onClick={onOverview} aria-current={!selectedId || undefined} className={cx(row(!selectedId), 'mb-1 items-center')}>
