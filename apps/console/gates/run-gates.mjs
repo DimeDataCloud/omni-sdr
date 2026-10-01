@@ -419,7 +419,7 @@ if ((wantRoutes || wantFlows || wantQuality) && BASE) {
       await settle(page);
       const after = await credits();
       if (before - after !== cost) throw new Error(`charged ${before - after}, the estimate said ${cost}`);
-      made = await page.$eval('#results-h ~ ul li button[aria-label^="Open "]', (b) => b.getAttribute('aria-label').replace(/^Open /, ''));
+      made = await page.$eval('section[aria-labelledby=results-h] ul li button[aria-label^="Open "]', (b) => b.getAttribute('aria-label').replace(/^Open /, ''));
       if (!/^Kit on a podium/.test(made)) throw new Error(`newest result is "${made}"`);
       await page.goto(`${BASE}/w/${ws}/studio?view=library`); await settle(page);
       const card = await page.evaluate((n) => [...document.querySelectorAll('ul[aria-label=Media] li')].find((li) => li.textContent.includes(n))?.innerText ?? '', made);

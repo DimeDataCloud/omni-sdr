@@ -53,9 +53,10 @@ export function AssetFrame({ asset, version, edits, controls = false, className,
           : <img src={src} alt="" draggable={false} className={cx('absolute inset-0 size-full', fit === 'cover' ? 'object-cover' : 'object-contain')} style={imgStyle} />
       ) : null}
       {text && !asset.rendering && (
-        <p aria-hidden className={cx('pointer-events-none absolute inset-x-[8%] text-center text-white [text-shadow:0_2px_12px_rgb(0_0_0/.45)]',
+        // White on a photo in both themes (a theme token would turn dark in light mode); the shadow keeps it legible.
+        <p aria-hidden className={cx('pointer-events-none absolute inset-x-[8%] text-center [text-shadow:0_2px_12px_rgb(0_0_0/.45)]',
           e.text!.position === 'top' ? 'top-[8%]' : e.text!.position === 'bottom' ? 'bottom-[8%]' : 'top-1/2 -translate-y-1/2',
-          e.text!.style === 'serif' ? 'font-display' : 'font-bold')} style={{ fontSize: e.text!.style === 'serif' ? `calc(${fs} * 1.15)` : fs, lineHeight: 1.2 }}>{text}</p>
+          e.text!.style === 'serif' ? 'font-display' : 'font-bold')} style={{ color: 'white', fontSize: e.text!.style === 'serif' ? `calc(${fs} * 1.15)` : fs, lineHeight: 1.2 }}>{text}</p>
       )}
       {asset.kind === 'video' && e.captions?.trim() && !asset.rendering && (
         <p aria-hidden className="pointer-events-none absolute inset-x-[10%] bottom-[4%] text-center"><span className="rounded bg-inverse/70 px-1.5 py-0.5 text-fg-inverse" style={{ fontSize: `calc(${fs} * .55)` }}>{e.captions}</span></p>

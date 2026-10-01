@@ -2,7 +2,8 @@
 // The demo has no generator and calls no vendor (rails §8): a "generated" picture here is an SVG composed on the device
 // from its RenderSpec and always labeled "Demo sample". The real API stores the rendered file and returns its URL instead.
 // Colors are hsl() built from the spec's hue (the tokens-only gate forbids hex in components and helpers).
-import type { Aspect, Edits, GenMode, MotionKey, ProductShape, RenderSpec, Scene } from '@/lib/api/types';
+import type { Aspect, Edits, MotionKey, ProductShape, RenderSpec, Scene } from '@/lib/api/types';
+export { CREDIT_COST, costOf, NO_EDITS } from './studio-rules';
 
 export const ASPECTS: { value: Aspect; label: string; hint: string; w: number; h: number }[] = [
   { value: '1:1', label: 'Square', hint: 'Feed, LinkedIn', w: 1080, h: 1080 },
@@ -36,11 +37,6 @@ export const MOTIONS: { key: MotionKey; label: string; hint: string; frames: Key
 ];
 export const motionOf = (k: MotionKey | null) => MOTIONS.find((m) => m.key === (k ?? 'static'))!;
 
-/** Media credits per output, shown before generating; the server charges. Demo estimates until Station 22 sets prices [VERIFY Vertex Imagen/Veo pricing]. */
-export const CREDIT_COST: Record<GenMode, number> = { image: 4, product: 6, social: 5, video: 6 }; // video: per second
-export const costOf = (mode: GenMode, count: number, durationS = 6) => (mode === 'video' ? CREDIT_COST.video * durationS : CREDIT_COST[mode] * count);
-
-export const NO_EDITS: Edits = { crop: null, rotate: 0, flipH: false, brightness: 100, contrast: 100, saturation: 100, text: null, trim: null, captions: null };
 
 // ── Drawing ────────────────────────────────────────────────────────────────────────────────────
 const hsl = (h: number, s: number, l: number, a = 1) => `hsl(${Math.round(((h % 360) + 360) % 360)} ${s}% ${l}%${a < 1 ? ` / ${a}` : ''})`;

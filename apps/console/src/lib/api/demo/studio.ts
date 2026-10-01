@@ -6,7 +6,7 @@ import { ApiError, invalidate, type Client, type Scope } from '../client';
 import type { Asset, AssetStatus, Aspect, GenMode, Ingredient, MotionKey, Product, Project, RenderSpec, Scene, StudioCaps } from '../types';
 import type { World, MemberRow } from './seed';
 import { builtAt, newId } from './store';
-import { CREDIT_COST, NO_EDITS, costOf } from '@/lib/media';
+import { CREDIT_COST, NO_EDITS, costOf } from '@/lib/studio-rules';
 
 const KEY = 'omni-demo-media';
 const MEDIA_VERSION = 1;
