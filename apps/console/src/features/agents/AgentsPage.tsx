@@ -1,21 +1,21 @@
 // Agents: agents, routines and the Auto-adjust log. Moved out of Studio on 2026-10-01, when Studio became the image and
 // video suite (DECISIONS 2026-10-01; STUDIO-PLAN.md §2, default A pending Christian). Auto-adjust never changes guardrails.
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { AnimatePresence, motion } from 'motion/react';
 import { toast } from 'sonner';
-import { Plus, Bot, Repeat, Archive, Sparkles, Lock } from 'lucide-react';
+import { Plus, Bot, Repeat, Sparkles, Lock } from 'lucide-react';
 import { api } from '@/lib/api';
-import type { Agent, ModelTier, Routine, Badge as BadgeCode } from '@/lib/api/types';
+import type { Agent, Routine } from '@/lib/api/types';
 import { useQuery } from '@/lib/hooks';
 import { useWorkspace } from '@/lib/session';
 import { useCommands } from '@/lib/commands';
-import { deferAction, usePending } from '@/lib/undo';
+import { usePending } from '@/lib/undo';
 import { TIER, plural, relTime } from '@/lib/format';
-import { Avatar, Badge, Button, EmptyState, Field, Input, Page, PageHeader, Segmented, Select, Sheet, SkeletonList, Switch, Textarea, cx, listItem, listStagger } from '@/components/ui';
+import { AgentSheet, AUTONOMY } from './Harness';
+import { Avatar, Badge, Button, EmptyState, Field, Input, Page, PageHeader, Segmented, Select, Sheet, SkeletonList, Switch, listItem, listStagger } from '@/components/ui';
 
 type Tab = 'agents' | 'routines' | 'learning';
-const BADGES: BadgeCode[] = ['EXEC', 'OPS', 'TRI', 'SDR', 'MKT', 'CS', 'FIN', 'INT', 'HR'];
 
 export default function AgentsPage() {
   const [params, setParams] = useSearchParams();
@@ -52,11 +52,11 @@ function Agents({ autoNew }: { autoNew: boolean }) {
                 <div className="flex items-center gap-3">
                   <Avatar kind="agent" text={a.badge} size={40} />
                   <div className="min-w-0 flex-1"><p className="truncate font-semibold">{a.name}</p><p className="text-xs text-muted">{TIER[a.modelTier].label} · {plural(a.activeRoutines, 'routine')}</p></div>
-                  {a.autonomousMode && <Badge tone="success">Autonomous</Badge>}
+                  <Badge tone={a.autonomy === 'draft' ? 'neutral' : 'info'}>{AUTONOMY.find((x) => x.value === a.autonomy)?.label}</Badge>
                 </div>
                 <p className="mt-3 line-clamp-3 text-sm text-muted">{a.systemPrompt || 'No role prompt yet.'}</p>
                 <div className="mt-auto flex flex-wrap gap-1.5 pt-3">{a.contextSources.map((s) => <Badge key={s}>{s}</Badge>)}</div>
-                <p className="mt-3 text-xs text-muted">Created {relTime(a.createdAt, tz)}</p>
+                <p className="mt-3 text-xs text-muted">{a.autonomousMode ? 'Runs its routines on schedule · ' : ''}Created {relTime(a.createdAt, tz)}</p>
               </button>
             </motion.li>
           ))}
@@ -64,62 +64,6 @@ function Agents({ autoNew }: { autoNew: boolean }) {
       )}
       <AgentSheet agent={edit} onClose={() => setEdit(null)} readOnly={!can('build')} />
     </>
-  );
-}
-
-function AgentSheet({ agent, onClose, readOnly }: { agent: Agent | 'new' | null; onClose: () => void; readOnly: boolean }) {
-  const { scope } = useWorkspace();
-  const base = agent && agent !== 'new' ? agent : null;
-  const [f, setF] = useState({ name: '', badge: 'SDR' as BadgeCode, modelTier: 'flash' as ModelTier, systemPrompt: '', contextSources: '', autonomousMode: false });
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    if (agent) setF(base ? { name: base.name, badge: base.badge, modelTier: base.modelTier, systemPrompt: base.systemPrompt, contextSources: base.contextSources.join(', '), autonomousMode: base.autonomousMode }
-      : { name: '', badge: 'SDR', modelTier: 'flash', systemPrompt: '', contextSources: '', autonomousMode: false });
-  }, [agent]); // eslint-disable-line react-hooks/exhaustive-deps
-  const body = { name: f.name.trim(), badge: f.badge, modelTier: f.modelTier, systemPrompt: f.systemPrompt, autonomousMode: f.autonomousMode,
-    contextSources: f.contextSources.split(',').map((s) => s.trim()).filter(Boolean) };
-  const save = async () => {
-    setBusy(true);
-    try { if (base) await api.patchAgent(scope, base.id, body); else await api.createAgent(scope, body); toast.success(base ? 'Saved.' : `${body.name} is ready. Find it on Home.`); onClose(); }
-    catch (e) { toast.error((e as Error).message); } finally { setBusy(false); }
-  };
-  const archive = () => {
-    const b = base!;
-    deferAction({ ids: [b.id], kind: 'archive', workspaceId: scope.workspaceId, message: `${b.name} archived. Its routines stopped.`, commit: () => api.archiveAgent(scope, b.id) });
-    onClose();
-  };
-  return (
-    <Sheet open={Boolean(agent)} onOpenChange={(v) => !v && onClose()} title={base ? base.name : 'New agent'} description="Agents draft and answer. They never send." wide
-      footer={readOnly ? undefined : <>
-        {base && <Button variant="ghost" icon={<Archive className="size-4" aria-hidden />} onClick={archive} className="mr-auto">Archive</Button>}
-        <Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} disabled={!f.name.trim()} onClick={save}>{base ? 'Save' : 'Create agent'}</Button></>}>
-      <fieldset disabled={readOnly} className="grid gap-4 sm:grid-cols-[1fr_140px]">
-        <Field label="Name">{(p) => <Input id={p.id} value={f.name} maxLength={60} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Sales Outbound" />}</Field>
-        <Field label="Badge">{(p) => <Select id={p.id} value={f.badge} onChange={(e) => setF({ ...f, badge: e.target.value as BadgeCode })}>{BADGES.map((b) => <option key={b}>{b}</option>)}</Select>}</Field>
-        <fieldset className="sm:col-span-2">
-          <legend className="mb-1.5 text-sm font-medium">Model tier</legend>
-          <div className="grid gap-2 sm:grid-cols-3">
-            {(Object.keys(TIER) as ModelTier[]).map((t) => (
-              <label key={t} className={cx('flex cursor-pointer flex-col rounded-lg border p-3 transition-colors', f.modelTier === t ? 'border-ink bg-accent-soft' : 'border-line hover:bg-sunken')}>
-                <span className="flex items-center gap-2"><input type="radio" name="tier" checked={f.modelTier === t} onChange={() => setF({ ...f, modelTier: t })} className="accent-[var(--accent-ink)]" /><span className="font-medium">{TIER[t].label}</span>
-                  <span className="ml-auto text-xs text-muted">≈{TIER[t].credits}×</span></span>
-                <span className="mt-1 text-xs text-muted">{TIER[t].hint}</span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
-        <Field label="Role prompt" hint={`${f.systemPrompt.length} / 8000`} className="sm:col-span-2">
-          {(p) => <Textarea id={p.id} aria-describedby={p.describedBy} rows={6} maxLength={8000} value={f.systemPrompt} onChange={(e) => setF({ ...f, systemPrompt: e.target.value })} placeholder="What this agent is for, and how it should work." />}
-        </Field>
-        <Field label="Context sources" hint="Comma-separated: what it may read, e.g. Leads, Evidence, Inbox" className="sm:col-span-2">
-          {(p) => <Input id={p.id} aria-describedby={p.describedBy} value={f.contextSources} onChange={(e) => setF({ ...f, contextSources: e.target.value })} />}
-        </Field>
-        <div className="rounded-lg border border-line p-3 sm:col-span-2">
-          <Switch checked={f.autonomousMode} onChange={(v) => setF({ ...f, autonomousMode: v })} disabled={readOnly} label="Autonomous mode"
-            description="Runs its routines without being asked. Everything it drafts still needs approval." />
-        </div>
-      </fieldset>
-    </Sheet>
   );
 }
 

@@ -4,10 +4,10 @@
 import { can } from '@db/permissions.mjs';
 import { CONNECTORS, freeEmailChecks } from '@rules/catalog.mjs';
 import { ApiError, invalidate, type Client, type Scope, type Campaign, type Icp } from '../client';
-import type { ApprovalCard, Agent, ChatMessage, Contact, InboxItem, Meeting, Routine, Role, Analytics, Me, Pipeline, AboutKind, AskMode } from '../types';
+import type { Dataset, ApprovalCard, Agent, ChatMessage, Contact, InboxItem, Meeting, Routine, Role, Analytics, Me, Pipeline, AboutKind, AskMode } from '../types';
 import { load, save, gate, newId, personaEmail, convertOnMeeting } from './store';
 import { think } from './brain';
-import { studioDemo } from './studio';
+import { studioDemo, mediaCounts } from './studio';
 
 const ABOUT_KINDS: AboutKind[] = ['contact', 'draft', 'reply', 'meeting', 'analytics'];
 const MODES: AskMode[] = ['ask', 'find_leads', 'draft', 'book', 'report'];
@@ -81,8 +81,30 @@ function agentOut(w: World, a: World['agents'][number]): Agent {
   return { id: a.id, name: a.name, station: a.station, badge: a.badge as Agent['badge'], modelTier: a.modelTier, systemPrompt: a.systemPrompt,
     contextSources: a.contextSources, autonomousMode: a.autonomousMode, appearance: a.appearance, archivedAt: a.archivedAt, createdBy: a.createdBy, createdAt: a.createdAt,
     lastMessage: last ? { preview: last.body.slice(0, 120), sender: last.sender, at: last.createdAt } : null,
-    activeRoutines: w.routines.filter((r) => r.agentId === a.id && r.active && !r.pausedReason).length };
+    activeRoutines: w.routines.filter((r) => r.agentId === a.id && r.active && !r.pausedReason).length,
+    autonomy: (a.appearance.autonomy as Agent['autonomy'] | undefined) ?? 'draft' };
 }
+
+/** Datasets an agent can be given (Setup → Data). `source` is the contextSources tag; aliases cover older tags. */
+const DATASETS: { key: Dataset['key']; name: string; source: string; aliases?: string[]; about: string; rules: string[]; manage: string; always?: boolean }[] = [
+  { key: 'leads', name: 'Leads', source: 'Leads', about: 'People and companies to reach, with fit scores.', manage: 'leads',
+    rules: ['Emails are checked before a first touch is written.', 'Anyone who opted out never gets another message.'] },
+  { key: 'evidence', name: 'Evidence', source: 'Evidence', aliases: ['Web'], about: 'Facts fetched about each lead, with the page they came from.', manage: 'leads',
+    rules: ['Every claim in a draft must point to a fact here (the claims gate).', 'Facts expire; an expired fact can\'t back a claim.'] },
+  { key: 'icp', name: 'Ideal customer profiles', source: 'ICP', about: 'Who you sell to, versioned.', manage: 'leads', rules: ['Edits make a new version; older campaigns keep theirs.'] },
+  { key: 'drafts', name: 'Drafts and sequences', source: 'Approvals', about: 'Every draft, its gate verdict and who decided it.', manage: 'approvals',
+    rules: ['Nothing sends without a person approving it (Level 1).', 'Edited drafts are gated again before they can be approved.'] },
+  { key: 'replies', name: 'Replies', source: 'Inbox', about: 'Inbound replies, classified, with their SLA.', manage: 'inbox',
+    rules: ['Meeting requests get a 2-business-hour SLA.', 'Opt-out replies suppress the address at once.'] },
+  { key: 'meetings', name: 'Meetings', source: 'Meetings', aliases: ['Calendar'], about: 'Booked calls and their outcomes.', manage: 'meetings', rules: ['Booking a meeting ends that lead\'s open sequences.'] },
+  { key: 'results', name: 'Results history', source: 'Analytics', about: 'Sends, replies and meetings by day and by step. No open tracking, ever.', manage: 'analytics', rules: ['Counts only; no message bodies.'] },
+  { key: 'suppression', name: 'Do-not-contact list', source: 'Suppression', about: 'Addresses that must never be contacted.', manage: 'settings?tab=safety', always: true,
+    rules: ['Every agent and every send checks it. It can\'t be switched off.', 'Stored as a fingerprint, not the address.'] },
+  { key: 'products', name: 'Products', source: 'Products', about: 'What you sell, for product shots and copy.', manage: 'studio?view=projects', rules: ['Product shots can\'t change the product itself.'] },
+  { key: 'brand', name: 'Brand kits and styles', source: 'Brand', about: 'Colors, type and style notes, held as project ingredients.', manage: 'studio?view=projects', rules: ['Every generation in a project inherits its ingredients.'] },
+  { key: 'media', name: 'Media library', source: 'Media', about: 'Uploaded and generated images and video.', manage: 'studio?view=library', rules: ['Everything is a draft until someone approves it.'] },
+];
+const reads = (a: World['agents'][number], d: (typeof DATASETS)[number]) => d.always || a.contextSources.some((t) => [d.source, ...(d.aliases ?? [])].some((x) => x.toLowerCase() === t.toLowerCase()));
 const routineOut = (w: World, r: World['routines'][number]): Routine => ({ id: r.id, agentId: r.agentId, agentName: w.agents.find((a) => a.id === r.agentId)?.name ?? null,
   name: r.name, category: r.category, schedule: r.schedule, active: r.active, pausedReason: r.pausedReason, pausedByOps: Boolean(r.pausedReason?.startsWith('ops:')),
   lastRunAt: r.lastRunAt, nextRunAt: r.nextRunAt, createdAt: r.createdAt });
@@ -302,7 +324,12 @@ export const demoClient: Client = {
     const { m } = tenant(w, s, 'build');
     const a = w.agents.find((x) => x.id === id && x.ws === s.workspaceId && !x.archivedAt);
     if (!a) throw nf('agent');
-    Object.assign(a, patch);
+    const { autonomy, ...rest } = patch;
+    // Above "draft" needs Trust Level 2 and a verified sending domain; no workspace has them in the MVP (SPEC §5).
+    if (autonomy && !['suggest', 'draft'].includes(autonomy)) throw new ApiError(403, 'forbidden', 'Sending on its own needs Trust Level 2 and a verified sending domain. Every message is approved by a person for now.');
+    const allowed = ['name', 'station', 'badge', 'modelTier', 'systemPrompt', 'contextSources', 'autonomousMode'] as const;
+    for (const k of allowed) if (k in rest) (a as unknown as Record<string, unknown>)[k] = (rest as Record<string, unknown>)[k];
+    if (autonomy) a.appearance = { ...a.appearance, autonomy };
     audit(w, s.workspaceId, m.userId, 'update', 'agent', id);
     return agentOut(w, a);
   }),
@@ -551,6 +578,44 @@ export const demoClient: Client = {
     }
     audit(w, s.workspaceId, m.userId, 'enroll', 'campaign', campaignId);
     return { enrolled, skipped };
+  }),
+
+  agentStats: (s, id, days = 30) => read((w) => {
+    tenant(w, s, 'reports_view');
+    const a = w.agents.find((x) => x.id === id && x.ws === s.workspaceId);
+    if (!a) throw nf('agent');
+    const since = new Date(Date.now() - days * 86400e3).toISOString();
+    const ds = w.drafts.filter((d) => d.ws === s.workspaceId && d.agentId === id && d.createdAt >= since);
+    const edits = new Set(w.audit.filter((e) => e.action === 'edit' && e.entityType === 'draft').map((e) => e.entityId));
+    const name = (d: DraftRow) => { const e = w.enrollments.find((x) => x.id === d.enrollmentId); return w.contacts.find((c) => c.id === e?.contactId)?.name ?? 'a lead'; };
+    const approved = ds.filter((d) => d.status === 'approved').length, rejected = ds.filter((d) => d.status === 'discarded').length;
+    const corrections = ds.flatMap((d) => [
+      ...(d.status === 'discarded' ? [{ draftId: d.id, recipient: name(d), kind: 'rejected' as const, note: d.rejectionReason, at: d.createdAt }] : []),
+      ...(d.status === 'blocked' ? [{ draftId: d.id, recipient: name(d), kind: 'blocked' as const, note: (d.gateFindings ?? []).map((f) => f.detail).join('; ') || null, at: d.gatedAt ?? d.createdAt }] : []),
+      ...(edits.has(d.id) ? [{ draftId: d.id, recipient: name(d), kind: 'edited' as const, note: null, at: d.createdAt }] : []),
+    ]).sort((x, y) => y.at.localeCompare(x.at)).slice(0, 12);
+    return { days, drafted: ds.length, approved, rejected, blocked: ds.filter((d) => d.status === 'blocked').length, inReview: ds.filter((d) => d.status === 'review').length,
+      edited: ds.filter((d) => edits.has(d.id)).length, approvalRate: approved + rejected ? Math.round((approved / (approved + rejected)) * 1000) / 10 : null, corrections };
+  }),
+  datasets: (s) => read((w): Dataset[] => {
+    tenant(w, s, 'reports_view');
+    const ws = s.workspaceId;
+    const latest = (xs: (string | null | undefined)[]) => (xs.filter(Boolean) as string[]).sort().at(-1) ?? null;
+    const media = mediaCounts(w, ws);
+    const size: Record<Dataset['key'], { count: number; updatedAt: string | null }> = {
+      leads: { count: w.contacts.filter((c) => c.ws === ws).length, updatedAt: latest(w.contacts.filter((c) => c.ws === ws).map((c) => c.createdAt)) },
+      evidence: { count: w.evidence.filter((e) => e.ws === ws).length, updatedAt: latest(w.evidence.filter((e) => e.ws === ws).map((e) => e.fetchedAt)) },
+      icp: { count: new Set(w.icps.filter((i) => i.ws === ws && !i.archivedAt).map((i) => i.lineageId)).size, updatedAt: latest(w.icps.filter((i) => i.ws === ws).map((i) => i.createdAt)) },
+      drafts: { count: w.drafts.filter((d) => d.ws === ws).length, updatedAt: latest(w.drafts.filter((d) => d.ws === ws).map((d) => d.createdAt)) },
+      replies: { count: w.inbound.filter((r) => r.ws === ws).length, updatedAt: latest(w.inbound.filter((r) => r.ws === ws).map((r) => r.receivedAt)) },
+      meetings: { count: w.meetings.filter((m) => m.ws === ws).length, updatedAt: latest(w.meetings.filter((m) => m.ws === ws).map((m) => m.createdAt)) },
+      results: { count: w.sent.filter((x) => x.ws === ws).length, updatedAt: latest(w.sent.filter((x) => x.ws === ws).map((x) => x.sentAt)) },
+      suppression: { count: w.suppression.length, updatedAt: null },
+      products: media.products, brand: media.brand, media: media.media,
+    };
+    const agents = w.agents.filter((a) => a.ws === ws && !a.archivedAt);
+    return DATASETS.map((d) => ({ key: d.key, name: d.name, about: d.about, source: d.source, rules: d.rules, manage: d.manage, always: Boolean(d.always),
+      ...size[d.key], readers: agents.filter((a) => reads(a, d)).map((a) => ({ agentId: a.id, name: a.name })) }));
   }),
 
   ...studioDemo({ tenant, read, write, audit }),
