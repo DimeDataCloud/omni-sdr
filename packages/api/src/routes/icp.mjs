@@ -26,17 +26,23 @@ export function registerIcp(r) {
       }
       await audit(tx, m, 'icp_propose', 'workspace', m.workspaceId);
     }, { action: 'build' });
-    let parsed = null; let failure = null;
+    // Whatever ends the call (#47 audit P2-1 pattern): a usable proposal settles the job; anything else, a thrown error
+    // included, gives the credits back.
+    let parsed = null; let failure = null; let ok = false;
     try {
-      const out = await ctx.model.generate(buildIcpRequest({ rows, notes: b.notes }));
-      parsed = parseIcp(out.text, rows, { hasNotes: Boolean(b.notes?.trim()) });
-      if (!parsed.proposal) failure = parsed.problems.at(-1);
-      else parsed.provenance = { model: out.model, tier: ICP_TIER, prompt: ICP_PROMPT_ID, prompt_sha: ICP_PROMPT_SHA, job };
-    } catch { failure = 'model_failed'; }
-    if (failure) {
-      await ctx.tenant((tx) => tx.query(`SELECT app_credit_release('action', $1, 'icp_proposal', $2)`, [ICP_CREDITS, job]), { action: 'build' });
-      throw new HttpError(502, 'proposal_failed', 'no usable proposal came back; your credits were returned', { reason: failure });
+      try {
+        const out = await ctx.model.generate(buildIcpRequest({ rows, notes: b.notes }));
+        parsed = parseIcp(out.text, rows, { hasNotes: Boolean(b.notes?.trim()) });
+        if (!parsed.proposal) failure = parsed.problems.at(-1);
+        else parsed.provenance = { model: out.model, tier: ICP_TIER, prompt: ICP_PROMPT_ID, prompt_sha: ICP_PROMPT_SHA, job };
+      } catch { failure = 'model_failed'; }
+      ok = !failure;
+    } finally {
+      await ctx.tenant((tx) => (ok
+        ? tx.query(`SELECT app_credit_settle('action', 'icp_proposal', $1)`, [job])
+        : tx.query(`SELECT app_credit_release('action', $1, 'icp_proposal', $2)`, [ICP_CREDITS, job])), { action: 'build' });
     }
+    if (failure) throw new HttpError(502, 'proposal_failed', 'no usable proposal came back; your credits were returned', { reason: failure });
     // `data` is what POST …/icps saves: the traits with their citations, plus the rows they cite, so the saved
     // version can always show why each trait is there.
     const cited = new Set(parsed.proposal.traits.flatMap((t) => t.rows));
