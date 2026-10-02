@@ -27,6 +27,13 @@ const MOBILE_SIG = /^(sent from my \w+|sent from (outlook|mail|yahoo mail)( for 
 const OUR_FOOTER = /^unsubscribe:\s*https?:\/\/\S+\/u\/\S+\s*$/i;
 const DISCLAIMER = /^(confidentiality notice|disclaimer|privileged (and|&) confidential|this (e-?mail|message|communication)( and any (files|attachments)( transmitted with it)?)? (is|are|may (be|contain))\b.*\bconfidential)/i;
 
+// A tail about to be cut that asks to stop (in anything but our own footer) is kept: an opt-out must never be lost
+// to cleaning (found in the 2026-10-02 audit: "Thanks.\n--\nPlease remove me" lost its opt-out).
+// Only a first-person request counts here; boilerplate such as "To unsubscribe from our newsletter" in a signature or
+// disclaimer doesn't, or a meeting request with a corporate disclaimer would read as an opt-out.
+const OPT_OUT_REQUEST = /\b(remove me|unsubscribe me|take me off|opt me out|stop (emailing|contacting|sending|messaging)( to)? (me|us)|do(n'?t| not) (contact|email|message|write to) (me|us)|no more (emails?|messages))\b|^\s*stop\s*[.!]?\s*$/im;
+const optOutIn = (ls) => OPT_OUT_REQUEST.test(ls.filter((l) => !OUR_FOOTER.test(l.trim()) && !/^\s*>/.test(l)).join('\n'));
+
 export function cleanReplyBody(body = '') {
   let lines = String(body).replace(/\r\n?/g, '\n').split('\n');
   const hasText = (ls) => ls.some((l) => l.trim() && !/^\s*>/.test(l));
@@ -36,12 +43,12 @@ export function cleanReplyBody(body = '') {
   // person wrote something above it; otherwise the "header" may be their own words.
   for (let i = 0; i < lines.length; i++) {
     const outlook = OUTLOOK_FROM.test(lines[i].trim()) && lines.slice(i + 1, i + 4).some((l) => OUTLOOK_NEXT.test(l.trim()));
-    if ((ORIGINAL_HEADER.test(lines[i].trim()) || outlook) && hasText(lines.slice(0, i))) { lines = lines.slice(0, i); break; }
+    if ((ORIGINAL_HEADER.test(lines[i].trim()) || outlook) && hasText(lines.slice(0, i)) && !optOutIn(lines.slice(i))) { lines = lines.slice(0, i); break; }
   }
   // Quoted lines and the attribution line go wherever they are, so text written below a quote is kept.
   lines = lines.filter((l) => !/^\s*>/.test(l) && !ATTRIBUTION.test(l.trim()) && !OUR_FOOTER.test(l.trim()) && !MOBILE_SIG.test(l.trim()));
   // A signature ("-- " on its own line) or a disclaimer runs to the end: cut it when something is left above.
-  const sig = lines.findIndex((l, i) => (/^--\s*$/.test(l) || DISCLAIMER.test(l.trim())) && hasText(lines.slice(0, i)));
+  const sig = lines.findIndex((l, i) => (/^--\s*$/.test(l) || DISCLAIMER.test(l.trim())) && hasText(lines.slice(0, i)) && !optOutIn(lines.slice(i)));
   if (sig > 0) lines = lines.slice(0, sig);
   return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
