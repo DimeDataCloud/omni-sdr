@@ -42,7 +42,9 @@ export function extractFacts(html, finalUrl) {
     booking: {
       online: online || null, vendor: vendorHit ? vendorHit[1] : null, book_link_text: bookLink,
       text: online ? `Your homepage offers online booking through ${vendorHit[1]}.`
-        : bookLink ? `Your homepage has a "${bookLink.slice(0, 60)}" link.` : null,
+        // A fixed sentence, not the anchor text: words from the prospect's own page would reach the prompt and, verbatim,
+        // the email (PR #47 audit P3). The text itself stays in book_link_text for people, never for a draft.
+        : bookLink ? 'Your homepage has a link to book an appointment.' : null,
     },
     contact: { form: contactForm || null, phone_link: telLink || null,
       text: contactForm ? 'Your homepage has a contact form.' : null },
