@@ -30,6 +30,15 @@ test('an opt-out written under the sender\'s own "--" line is still read when no
   assert.equal(intent('--\nunsubscribe'), 'unsubscribe');
 });
 
+test('an opt-out below a signature line or a disclaimer is never cut (audit 2026-10-02)', () => {
+  assert.equal(intent('Thanks for the note.\n--\nPlease remove me from your list.'), 'unsubscribe');
+  assert.equal(intent('Got it.\nThis email is confidential and intended only for you; also unsubscribe me.'), 'unsubscribe');
+  assert.equal(intent('Thanks.\n--\nJordan\nStop emailing me.'), 'unsubscribe');
+  // Our own footer in the cut tail still doesn't count.
+  assert.notEqual(intent(gmail('Thursday works.')), 'unsubscribe');
+  assert.notEqual(intent(`Thursday works.\n\n-----Original Message-----\n${ORIGINAL}`), 'unsubscribe');
+});
+
 test('signature, mobile footer and legal disclaimer are removed', () => {
   const body = 'Not interested, thanks.\n\n--\nJordan Ellis | Operations Director\nTo unsubscribe from our newsletter, click here.\n';
   assert.equal(cleanReplyBody(body), 'Not interested, thanks.');
