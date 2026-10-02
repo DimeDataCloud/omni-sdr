@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { Clapperboard, Image as ImageIcon, Megaphone, Package, Wand2, Check, Layers } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { Aspect, GenMode, Ingredient, MotionKey, Scene, StudioCaps } from '@/lib/api/types';
-import { useQuery } from '@/lib/hooks';
+import { useFillHeight, useQuery } from '@/lib/hooks';
 import { useWorkspace } from '@/lib/session';
 import { ASPECTS, MOTIONS, SCENES, costOf, renderUrl } from '@/lib/media';
 import { Banner, Button, EmptyState, Field, Input, Segmented, Select, SkeletonList, Textarea, cx } from '@/components/ui';
@@ -38,6 +38,7 @@ export function CreateView({ caps, onOpen, projectId: initialProject }: { caps: 
   const assets = useQuery(() => api.assets(scope), [ws], { key: assetsKey(ws) });
   const [mode, setMode] = useState<GenMode>(modes[0]?.value ?? 'product');
   const [prompt, setPrompt] = useState('');
+  const [dockFill, dockFillVar] = useFillHeight<HTMLFormElement>();
   const [aspect, setAspect] = useState<Aspect>(MODES.find((m) => m.value === mode)!.aspect);
   const [count, setCount] = useState<'1' | '2' | '3' | '4'>('2');
   const [scene, setScene] = useState<Scene>('studio');
@@ -100,7 +101,10 @@ export function CreateView({ caps, onOpen, projectId: initialProject }: { caps: 
 
   return (
     <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,480px)_minmax(0,1fr)]">
-      <form className="card space-y-5 p-4 md:p-5 xl:sticky xl:top-20 xl:self-start" onSubmit={(e) => { e.preventDefault(); void go(); }} aria-label="Create media">
+      {/* Prompt dock (Google Flow, Higgsfield): on wide screens the panel fills the window, its options scroll inside it,
+          and cost + Generate stay pinned at the bottom, so the main action never scrolls away. */}
+      <form ref={dockFill} style={dockFillVar} className="card overflow-hidden xl:sticky xl:top-20 xl:flex xl:max-h-[var(--fill,calc(100dvh-96px))] xl:flex-col xl:self-start" onSubmit={(e) => { e.preventDefault(); void go(); }} aria-label="Create media">
+        <div className="space-y-5 p-4 md:p-5 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
         <div role="radiogroup" aria-label="What to make" className="grid grid-cols-2 gap-2">
           {modes.map((m, i) => (
             <button key={m.value} ref={modeKeys.ref(i)} type="button" role="radio" aria-checked={mode === m.value} tabIndex={modeKeys.tabIndex(m.value, i)}
@@ -201,7 +205,8 @@ export function CreateView({ caps, onOpen, projectId: initialProject }: { caps: 
             <Segmented id="count" label="How many" value={count} onChange={setCount} options={(['1', '2', '3', '4'] as const).map((c) => ({ value: c, label: c }))} /></div>}
         </div>
 
-        <div className="space-y-2 border-t border-line pt-4">
+        </div>
+        <div className="space-y-2 border-t border-line bg-sunken/60 px-4 py-3 md:px-5">
           <div className="flex flex-wrap items-center gap-3">
             <p className="tabular text-sm"><span className="font-medium">≈ {cost} media credits</span> <span className="text-muted">· {caps.mediaCredits.toLocaleString('en-US')} left</span></p>
             <Button type="submit" variant="primary" className="ml-auto" loading={busy} disabled={!canGo} icon={<Wand2 className="size-4" aria-hidden />}>

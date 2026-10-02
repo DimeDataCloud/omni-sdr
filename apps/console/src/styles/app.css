@@ -227,3 +227,9 @@
 
 /* Studio: media frames size their headline and captions to their own width (cqw), at any thumbnail size. */
 .media-frame { container-type: inline-size; }
+
+/* A tab row that scrolls sideways on a phone fades at its right edge (iOS), so a cut-off tab reads as "more this way";
+   the padding lets the last tab clear the fade once scrolled to the end. Static on purpose: no animation to settle. */
+@media (width < 64rem) {
+  .edge-fade { mask-image: linear-gradient(to right, #000 calc(100% - 28px), #0000); padding-right: 28px; }
+}
