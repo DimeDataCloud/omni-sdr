@@ -46,6 +46,8 @@ test('propose: a cited proposal, 2 credits at the press, the clients in a data b
   const r = await api.call('POST', `${api.W}/icps/propose`, { body: { clients: CLIENTS, notes: 'Our best clients have a busy front desk.' } });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(await balance(), b0 - 2);
+  const kinds = async (job) => (await api.q(`SELECT kind, delta::int AS d FROM credit_ledger WHERE ref_type = 'icp_proposal' AND ref_id = $1 ORDER BY id`, [job])).map((x) => [x.kind, x.d]);
+  assert.deepEqual(await kinds(r.body.provenance.job), [['reserve', -2], ['settle', 0]], 'a usable proposal settles its job');
   assert.equal(r.body.proposal.traits.length, 4);
   assert.ok(r.body.proposal.traits.every((t) => t.rows.length || t.notes), 'every trait has a source');
   assert.deepEqual(r.body.data.sources.map((s) => s.row), [1, 2, 3, 4]);
@@ -66,6 +68,8 @@ test('a model that cites nothing real gets no proposal, and the credits come bac
   assert.equal(r.status, 502);
   assert.equal(r.body.details.reason, 'no_supported_traits');
   assert.equal(await balance(), b0, 'refunded');
+  const last = (await api.q(`SELECT ref_id FROM credit_ledger WHERE ref_type = 'icp_proposal' ORDER BY id DESC LIMIT 1`))[0].ref_id;
+  assert.deepEqual((await api.q(`SELECT kind FROM credit_ledger WHERE ref_id = $1 ORDER BY id`, [last])).map((x) => x.kind), ['reserve', 'release']);
   reply = () => { throw new Error('vertex 500'); };
   assert.equal((await api.call('POST', `${api.W}/icps/propose`, { body: { clients: CLIENTS } })).status, 502);
   assert.equal(await balance(), b0);
