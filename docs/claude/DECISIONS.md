@@ -283,6 +283,13 @@ Christian: "The studio is specifically for the video and image marketing suite. 
 - Unchanged by this entry: the 2026-09-28 generation decision. Every generator sits behind its own per-org flag, OFF until Christian turns it on, with no dead buttons; generation runs server-side only (Rails §8).
 - Not decided by this entry: where agents, routines and the Auto-adjust log move to. The proposal is in docs/claude/STUDIO-PLAN.md.
 
+## 2026-10-01 — A simpler workspace: few pages around inbound, outbound and marketing, with full control in setup
+Station: 02/03 (IA, frontend) · Decided by: Christian
+Christian: "better page and workspace optimization. Making the workspace very intuitive and organized. Not too many pages, focused on the inbound, outbound, and marketing simplicity things brings you while still presenting and allowing detailed decisions correction, optimization, and harness setup per feature/tool/agent/dataset"
+- The workspace is organized around inbound, outbound and marketing, with as few top-level pages as possible.
+- Detail stays available: every feature, tool, agent and dataset has a place to see its decisions, correct them, tune it and set it up.
+- Not decided by this entry: the exact grouping and names. The proposal is docs/claude/WORKSPACE-PLAN.md.
+
 ## 2026-10-01 — Laya is the decision engine; no Jev, ever
 Station: 24 (model registry) · 15 (inbound) · 12/13 (gate) · Decided by: Christian
 Christian: "laya now no jev ever. solve low latencey hosting."

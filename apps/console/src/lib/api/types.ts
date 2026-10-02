@@ -81,6 +81,7 @@ export interface Agent {
   id: Id; name: string; station: string; badge: Badge; modelTier: ModelTier; systemPrompt: string; contextSources: string[];
   autonomousMode: boolean; appearance: Record<string, unknown>; archivedAt: Iso | null; createdBy: Id | null; createdAt: Iso;
   lastMessage: { preview: string; sender: 'user' | 'agent'; at: Iso } | null; activeRoutines: number;
+  autonomy: Autonomy;                                    // PROPOSED (WORKSPACE-PLAN.md); 'draft' until set
 }
 // GET …/agents/{id}/messages → { items: ChatMessage[] } (oldest first)
 // POST …/agents/{id}/messages { body, modelTier?, about?, mode? } → 201 { userMessage, reply }; 502 { details: { userMessage } } if the model fails
@@ -188,3 +189,22 @@ export interface Product { id: Id; name: string; tagline: string; shape: Product
 export interface SequenceClip { id: Id; assetId: Id; inS: number; outS: number; caption: string }
 export interface Project { id: Id; name: string; productId: Id | null; ingredients: Ingredient[]; sequence: SequenceClip[]; createdAt: Iso; assetCount: number }
 export interface StudioCaps { imageGeneration: boolean; videoGeneration: boolean; mediaCredits: number; sample: boolean }
+
+// ── Setup: the harness per agent and per dataset (PROPOSED, docs/claude/WORKSPACE-PLAN.md) ──────────────────────────
+/** How far an agent may go on its own. Levels from BrainAI methodology (UI-REVISION-PLAN Phase 4). Above "draft" is
+ *  locked until the workspace reaches Trust Level 2 with a verified sending domain: every message is approved today. */
+export type Autonomy = 'suggest' | 'draft' | 'guardrails' | 'autopilot';
+// GET …/agents/{id}/stats?days=30
+export interface AgentStats {
+  days: number; drafted: number; approved: number; rejected: number; blocked: number; inReview: number; edited: number;
+  approvalRate: number | null;                         // approved / (approved + rejected), percent; null = nothing decided yet
+  corrections: { draftId: Id; recipient: string; kind: 'rejected' | 'edited' | 'blocked'; note: string | null; at: Iso }[];
+}
+// GET …/datasets → what the agents can read, how big and fresh it is, and who reads it
+export type DatasetKey = 'leads' | 'evidence' | 'icp' | 'drafts' | 'replies' | 'meetings' | 'results' | 'suppression' | 'products' | 'brand' | 'media';
+export interface Dataset {
+  key: DatasetKey; name: string; about: string; source: string;     // `source` is the tag an agent's contextSources uses
+  count: number; updatedAt: Iso | null; readers: { agentId: Id; name: string }[];
+  rules: string[]; manage: string;                                  // manage: the page (and query) where its rows are corrected
+  always: boolean;                                                  // true: every agent and every send honors it; not a toggle
+}

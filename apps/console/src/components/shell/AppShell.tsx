@@ -10,7 +10,7 @@ import { useSession, useWorkspace } from '@/lib/session';
 import { useTheme, setTheme, useDensity, setDensity } from '@/lib/theme';
 import { ROLE, initials } from '@/lib/format';
 import { PERSONAS } from '@/lib/api/demo/seed';
-import { NAV, MOBILE_PRIMARY, SECONDARY, labelFor, type PageKey } from './nav';
+import { NAV, SECTIONS, MOBILE_SECTIONS, labelFor, rememberPage, sectionOf, sectionTarget, type PageKey, type SectionKey } from './nav';
 import { CommandPalette } from './CommandPalette';
 import { prefetchProps } from './prefetch';
 import { useOverlay, openOverlay, toggleOverlay } from '@/lib/overlays';
@@ -47,6 +47,12 @@ export function AppShell() {
   const client = role === 'client_viewer';
   const base = `/w/${scope.workspaceId}`;
   const count = (k: PageKey) => (k === 'approvals' ? <Count n={review} label={`${review} drafts in review`} /> : k === 'inbox' ? <Count n={urgent} tone="danger" label={`${urgent} replies due within an hour`} /> : null);
+  const sectionCount = (s: SectionKey) => (s === 'outbound' && can('approve') ? count('approvals') : s === 'inbound' && can('inbox_read') ? count('inbox') : null);
+  // Sections this person can open, each linking to the page they last used in it.
+  const sections = SECTIONS.map((s) => ({ ...s, to: sectionTarget(s.key, items) })).filter((s): s is typeof s & { to: PageKey } => s.to !== null);
+  const current = sectionOf(page);
+  useEffect(() => { if (page) rememberPage(page as PageKey); }, [page]);
+  const sectionLabel = (s: { key: SectionKey; label: string }) => (client && s.key === 'results' ? 'Results' : s.label);
 
   // g-then-key navigation, "?" for the shortcut sheet, Ctrl/Cmd K for the palette.
   const pending = useRef<number | null>(null);
@@ -91,31 +97,13 @@ export function AppShell() {
           </NavLink>
           <WorkspaceSwitcher current={name} />
           <nav aria-label="Main" className="ml-2 hidden min-w-0 flex-1 items-center gap-0.5 lg:flex">
-            {items.filter((i) => !SECONDARY.includes(i.key)).map((i) => (
-              <NavLink key={i.key} to={`${base}/${i.key}`} viewTransition {...prefetchProps(i.key, scope)} className={({ isActive }) => cx('relative isolate flex h-9 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium transition-colors',
-                isActive ? 'text-fg' : 'text-muted hover:text-fg')}>
-                {({ isActive }) => (<>
-                  {isActive && <motion.span layoutId="nav-pill" className="absolute inset-0 -z-10 rounded-md bg-surface shadow-sm ring-1 ring-line" transition={{ type: 'spring', bounce: 0.1, duration: 0.35 }} />}
-                  <i.icon className="size-4" aria-hidden /><span>{labelFor(i, role)}</span>{count(i.key)}
-                </>)}
+            {sections.map((sec) => (
+              <NavLink key={sec.key} to={`${base}/${sec.to}`} data-section={sec.key} viewTransition {...prefetchProps(sec.to, scope)} title={sec.hint} aria-current={current === sec.key ? 'page' : undefined}
+                className={cx('relative isolate flex h-9 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium transition-colors', current === sec.key ? 'text-fg' : 'text-muted hover:text-fg')}>
+                {current === sec.key && <motion.span layoutId="nav-pill" className="absolute inset-0 -z-10 rounded-md bg-surface shadow-sm ring-1 ring-line" transition={{ type: 'spring', bounce: 0.1, duration: 0.35 }} />}
+                <sec.icon className="size-4" aria-hidden /><span>{sectionLabel(sec)}</span>{sectionCount(sec.key)}
               </NavLink>
             ))}
-            {items.some((i) => SECONDARY.includes(i.key)) && (
-              <Menu.Root modal={false}>
-                <Menu.Trigger className={cx('relative isolate flex h-9 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium transition-colors',
-                  SECONDARY.includes(page as PageKey) ? 'bg-surface text-fg shadow-sm ring-1 ring-line' : 'text-muted hover:text-fg')}>
-                  <MoreHorizontal className="size-4" aria-hidden />{SECONDARY.includes(page as PageKey) ? labelFor(items.find((i) => i.key === page)!, role) : 'More'}
-                </Menu.Trigger>
-                <Menu.Portal>
-                  <Menu.Content align="start" sideOffset={6} className={cx(menuPanel, 'min-w-52')}>
-                    {items.filter((i) => SECONDARY.includes(i.key)).map((i) => (
-                      <Menu.Item key={i.key} className={menuItem} onSelect={() => nav(`${base}/${i.key}`, { viewTransition: true })}><i.icon className="size-4" aria-hidden />{labelFor(i, role)}
-                        {i.shortcut && <span className="ml-auto flex gap-1">{i.shortcut.split(' ').map((k) => <span key={k} className="kbd">{k}</span>)}</span>}</Menu.Item>
-                    ))}
-                  </Menu.Content>
-                </Menu.Portal>
-              </Menu.Root>
-            )}
           </nav>
           <div className="ml-auto flex shrink-0 items-center gap-1">
             <button onClick={() => openOverlay('palette')} className="hidden h-9 items-center gap-2 rounded-md border border-line bg-surface/70 px-2.5 text-sm text-muted transition-colors hover:text-fg md:flex">
@@ -143,20 +131,20 @@ export function AppShell() {
       </AnimatePresence>
 
       <main id="main" tabIndex={-1} className="flex-1 pb-24 outline-none lg:pb-0">
+        {current && <SectionTabs section={current} items={items.filter((i) => i.section === current)} base={base} page={page} count={count} role={role} />}
         <Outlet />
       </main>
 
       {/* Phone and tablet: bottom bar (DESIGN 5.2) */}
       <nav aria-label="Main" className="glass fixed inset-x-0 bottom-0 z-40 border-x-0 border-b-0 pb-safe [view-transition-name:app-tabbar] lg:hidden">
         <div className="mx-auto grid max-w-lg grid-cols-5">
-          {items.filter((i) => MOBILE_PRIMARY.includes(i.key) || (client && i.key === 'analytics')).slice(0, 4).map((i) => (
-            <NavLink key={i.key} to={`${base}/${i.key}`} viewTransition {...prefetchProps(i.key, scope)} className={({ isActive }) => cx('relative flex h-16 flex-col items-center justify-center gap-1 text-xs font-medium', isActive ? 'text-fg' : 'text-muted')}>
-              {({ isActive }) => (<>
-                {isActive && <motion.span layoutId="tab-dot" className="absolute top-1.5 h-1 w-8 rounded-full bg-fill" transition={{ type: 'spring', bounce: 0.2, duration: 0.35 }} />}
-                <span className="relative"><i.icon className="size-5" aria-hidden />
-                  <span className="absolute -top-2 -right-3">{count(i.key)}</span></span>
-                {labelFor(i, role)}
-              </>)}
+          {(client ? sections : sections.filter((x) => MOBILE_SECTIONS.includes(x.key))).slice(0, 4).map((sec) => (
+            <NavLink key={sec.key} to={`${base}/${sec.to}`} viewTransition {...prefetchProps(sec.to, scope)} aria-current={current === sec.key ? 'page' : undefined}
+              className={cx('relative flex h-16 flex-col items-center justify-center gap-1 text-xs font-medium', current === sec.key ? 'text-fg' : 'text-muted')}>
+              {current === sec.key && <motion.span layoutId="tab-dot" className="absolute top-1.5 h-1 w-8 rounded-full bg-fill" transition={{ type: 'spring', bounce: 0.2, duration: 0.35 }} />}
+              <span className="relative"><sec.icon className="size-5" aria-hidden />
+                <span className="absolute -top-2 -right-3">{sectionCount(sec.key)}</span></span>
+              {sectionLabel(sec)}
             </NavLink>
           ))}
           <button onClick={() => setMore(true)} className="flex h-16 flex-col items-center justify-center gap-1 text-xs font-medium text-muted" aria-haspopup="dialog">
@@ -165,18 +153,46 @@ export function AppShell() {
         </div>
       </nav>
       <Sheet open={more} onOpenChange={setMore} title="More">
-        <div className="grid grid-cols-3 gap-2 pb-2">
-          {items.filter((i) => !MOBILE_PRIMARY.includes(i.key)).map((i) => (
-            <NavLink key={i.key} to={`${base}/${i.key}`} viewTransition {...prefetchProps(i.key, scope)} className={({ isActive }) => cx('flex flex-col items-center gap-2 rounded-lg border p-3 text-sm font-medium', isActive ? 'border-ink bg-accent-soft' : 'border-line bg-surface')}>
-              <i.icon className="size-5" aria-hidden />{labelFor(i, role)}
-            </NavLink>
+        <div className="space-y-4 pb-2">
+          {sections.filter((x) => client ? false : !MOBILE_SECTIONS.includes(x.key)).map((sec) => (
+            <section key={sec.key} aria-label={sec.label}>
+              <h3 className="section-title mb-2">{sectionLabel(sec)}</h3>
+              <div className="grid grid-cols-3 gap-2">
+                {items.filter((i) => i.section === sec.key).map((i) => (
+                  <NavLink key={i.key} to={`${base}/${i.key}`} viewTransition {...prefetchProps(i.key, scope)} className={({ isActive }) => cx('flex flex-col items-center gap-2 rounded-lg border p-3 text-sm font-medium', isActive ? 'border-ink bg-accent-soft' : 'border-line bg-surface')}>
+                    <i.icon className="size-5" aria-hidden />{labelFor(i, role)}
+                  </NavLink>
+                ))}
+              </div>
+            </section>
           ))}
-          <NavLink to="/workspaces" className="flex flex-col items-center gap-2 rounded-lg border border-line bg-surface p-3 text-sm font-medium"><LayoutGrid className="size-5" aria-hidden />Workspaces</NavLink>
+          <NavLink to="/workspaces" className="flex items-center justify-center gap-2 rounded-lg border border-line bg-surface p-3 text-sm font-medium"><LayoutGrid className="size-5" aria-hidden />All workspaces</NavLink>
         </div>
       </Sheet>
 
       <PaletteHost />
       <HelpHost />
+    </div>
+  );
+}
+
+/** A section's pages as tabs under the top bar; hidden when the section has only one page for this person. */
+function SectionTabs({ section, items, base, page, count, role }: { section: SectionKey; items: typeof NAV; base: string; page: string | undefined; count: (k: PageKey) => ReactNode; role: Parameters<typeof labelFor>[1] }) {
+  const { scope } = useWorkspace();
+  if (items.length < 2) return null;
+  const sec = SECTIONS.find((x) => x.key === section)!;
+  return (
+    <div className="mx-auto max-w-[1600px] px-3 pt-3 md:px-4">
+      <nav aria-label={`${sec.label} pages`} className="flex max-w-full items-center gap-1 overflow-x-auto border-b border-line">
+        <span className="mr-2 hidden shrink-0 text-xs font-semibold tracking-wide text-muted uppercase sm:inline">{sec.label}</span>
+        {items.map((i) => (
+          <NavLink key={i.key} to={`${base}/${i.key}`} viewTransition {...prefetchProps(i.key, scope)} title={i.hint}
+            className={cx('-mb-px flex h-10 shrink-0 items-center gap-1.5 border-b-2 px-2.5 text-sm font-medium transition-colors max-md:h-11',
+              page === i.key ? 'border-ink text-fg' : 'border-transparent text-muted hover:text-fg')}>
+            <i.icon className="size-4" aria-hidden />{labelFor(i, role)}{count(i.key)}
+          </NavLink>
+        ))}
+      </nav>
     </div>
   );
 }

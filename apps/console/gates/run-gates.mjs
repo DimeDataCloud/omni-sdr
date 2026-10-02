@@ -83,12 +83,12 @@ if (!REMOTE && (want('bundle') || wantRoutes || wantFlows || wantQuality)) {
 
 // ── Browser gates ─────────────────────────────────────────────────────────────────────────────
 const PERSONAS = {
-  admin: { email: 'maya@example.com', pages: ['home', 'approvals', 'inbox', 'meetings', 'leads', 'analytics', 'studio', 'agents', 'connections', 'settings'] },
-  operator: { email: 'sam@example.com', pages: ['home', 'approvals', 'inbox', 'meetings', 'leads', 'analytics', 'studio', 'agents', 'connections', 'settings'] },
-  reviewer: { email: 'riley@example.com', pages: ['home', 'approvals', 'inbox', 'meetings', 'analytics', 'studio', 'agents', 'connections', 'settings'] },
+  admin: { email: 'maya@example.com', pages: ['home', 'approvals', 'inbox', 'meetings', 'leads', 'analytics', 'studio', 'agents', 'data', 'connections', 'settings'] },
+  operator: { email: 'sam@example.com', pages: ['home', 'approvals', 'inbox', 'meetings', 'leads', 'analytics', 'studio', 'agents', 'data', 'connections', 'settings'] },
+  reviewer: { email: 'riley@example.com', pages: ['home', 'approvals', 'inbox', 'meetings', 'analytics', 'studio', 'agents', 'data', 'connections', 'settings'] },
   client: { email: 'client@example.com', pages: ['approvals', 'meetings', 'analytics'] },
 };
-const ALL = ['home', 'approvals', 'inbox', 'meetings', 'leads', 'analytics', 'studio', 'agents', 'connections', 'settings'];
+const ALL = ['home', 'approvals', 'inbox', 'meetings', 'leads', 'analytics', 'studio', 'agents', 'data', 'connections', 'settings'];
 const VIEWPORTS = { desktop: { width: 1440, height: 900 }, phone: { width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } };
 const FORBIDDEN = [/open rate/i, /\bopened\b/i, /SOC ?2/i, /send now/i, /auto-?send/i, /coming soon/i, /send via gmail/i, /AI-verified/i, /\bsupercharge/i, /\bseamless/i];
 
@@ -141,7 +141,8 @@ if ((wantRoutes || wantFlows || wantQuality) && BASE) {
           for (const re of FORBIDDEN) if (re.test(text)) termFails.push(`${tag} "${text.match(re)[0]}"`);
           if (persona === 'client' && /Omni-SDR/.test(text + (await page.title()))) brandFails.push(`${tag} shows "Omni-SDR"`);
           if (vp === 'phone') {
-            const o = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+            // clientWidth, not innerWidth: mobile emulation widens innerWidth to fit content that overflows, which hid a 87px overflow.
+            const o = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
             if (o > 1) overflowFails.push(`${tag} scrolls sideways by ${o}px`);
             const small = await page.evaluate(() => [...document.querySelectorAll('button, [role=tab], input:not([type=hidden]), select, a[href]')].map((e) => (e.tagName === 'INPUT' && e.closest('label')) || e)
               .filter((e) => { const r = e.getBoundingClientRect(); const cs = getComputedStyle(e); return r.width && r.height && cs.visibility !== 'hidden' && !e.closest('.sr-only') && !(e.tagName === 'A' && cs.display === 'inline'); })
@@ -396,6 +397,60 @@ if ((wantRoutes || wantFlows || wantQuality) && BASE) {
     });
     await ctx.close();
   }
+  // Workspace sections and the Setup harness (WORKSPACE-PLAN.md).
+  {
+    const { ctx, page, errors } = await open('admin', 'light', 'desktop');
+    await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => /\/w\/[^/]+\/\w+/.test(location.pathname), { timeout: 15000 });
+    const ws = new URL(page.url()).pathname.split('/')[2];
+    const pick = (sel, re) => page.evaluate((s, r) => { const el = [...document.querySelectorAll(s)].find((b) => new RegExp(r).test(b.textContent.trim())); if (!el) throw new Error(`no ${s} matching ${r}`); el.click(); }, sel, re);
+    await step('sections: six in the top bar; a section shows its pages as tabs and remembers the last one', async () => {
+      await page.goto(`${BASE}/w/${ws}/approvals`); await settle(page);
+      const top = await page.$$eval('header nav[aria-label=Main] a', (a) => a.map((x) => x.textContent.replace(/\d+$/, '').trim()));
+      if (top.join('|') !== 'Home|Outbound|Inbound|Marketing|Results|Setup') throw new Error(`top bar reads ${top.join(', ')}`);
+      const tabs = await page.$$eval('nav[aria-label="Outbound pages"] a', (a) => a.map((x) => x.textContent.replace(/\d+$/, '').trim()));
+      if (tabs.join('|') !== 'Approvals|Leads') throw new Error(`Outbound tabs read ${tabs.join(', ')}`);
+      await page.click(`nav[aria-label="Outbound pages"] a[href="/w/${ws}/leads"]`); await settle(page);
+      await page.click('header nav[aria-label=Main] a[data-section=inbound]'); await settle(page);
+      const back = await page.$eval('header nav[aria-label=Main] a[data-section=outbound]', (a) => a.getAttribute('href'));
+      if (!back.endsWith('/leads')) throw new Error(`Outbound now links to ${back}, not the last page used`);
+    });
+    await step('setup: autonomy above "Draft for approval" is locked, with the reason', async () => {
+      await page.goto(`${BASE}/w/${ws}/agents`); await settle(page);
+      await page.click('ul li button.card'); await page.waitForSelector('[role=dialog]');
+      await pick('[role=dialog] [role=tab]', '^Autonomy');
+      const r = await page.$$eval('[role=dialog] input[name=autonomy]', (x) => x.map((i) => `${i.value}:${i.disabled ? 'locked' : 'open'}:${i.checked ? 'on' : ''}`));
+      if (r.join(',') !== 'suggest:open:,draft:open:on,guardrails:locked:,autopilot:locked:') throw new Error(`autonomy reads ${r.join(',')}`);
+      if (!/Needs Trust Level 2/.test(await page.$eval('[role=dialog]', (d) => d.innerText))) throw new Error('no reason shown for the lock');
+    });
+    let agentName = '';
+    await step('setup: data access set on an agent shows up in Data, and in the access matrix', async () => {
+      agentName = await page.$eval('[role=dialog] h2', (h) => h.textContent);
+      await pick('[role=dialog] [role=tab]', '^Data');
+      await page.waitForFunction(() => [...document.querySelectorAll('[role=dialog] [role=switch]')].length > 5, { timeout: 5000 });
+      const sw = await page.evaluateHandle(() => [...document.querySelectorAll('[role=dialog] li')].find((li) => /^Media library/.test(li.innerText))?.querySelector('[role=switch]'));
+      if (await sw.evaluate((b) => b.getAttribute('aria-checked')) === 'true') throw new Error('already reads Media library');
+      await sw.click();
+      await pick('[role=dialog] button', '^Save$'); await settle(page);
+      await page.goto(`${BASE}/w/${ws}/data`); await settle(page);
+      const card = await page.evaluate(() => [...document.querySelectorAll('ul li button.card')].find((b) => /^Media library/.test(b.innerText))?.innerText ?? '');
+      if (!card.includes(agentName)) throw new Error(`Media library card reads "${card.replace(/\s+/g, ' ')}"`);
+      await pick('[role=tab]', '^Access by agent'); await settle(page);
+      if (!(await page.$eval(`input[aria-label="${agentName} reads Media library"]`, (i) => i.checked))) throw new Error('the matrix disagrees');
+      await page.click(`input[aria-label="${agentName} reads Media library"]`); await settle(page);
+      if (await page.$eval(`input[aria-label="${agentName} reads Media library"]`, (i) => i.checked)) throw new Error('unticking in the matrix did not stick');
+    });
+    await step('setup: an agent\'s performance shows its numbers and the corrections people made', async () => {
+      await page.goto(`${BASE}/w/${ws}/agents`); await settle(page);
+      await pick('ul li button.card', 'Sales Outbound'); await page.waitForSelector('[role=dialog]');
+      await pick('[role=dialog] [role=tab]', '^Performance');
+      await page.waitForFunction(() => /Approval rate/.test(document.querySelector('[role=dialog]')?.innerText ?? ''), { timeout: 5000 });
+      const t = await page.$eval('[role=dialog]', (d) => d.innerText);
+      if (!/Corrections/.test(t)) throw new Error('no corrections section');
+    });
+    for (const e of errors) flow.push(`console: ${e.slice(0, 200)}`);
+    await ctx.close();
+  }
   // Studio (STUDIO-PLAN.md): generate → library → edit → review, the flag-off path, and the old agent links.
   {
     const { ctx, page, errors } = await open('admin', 'light', 'desktop');
@@ -498,7 +553,7 @@ if ((wantRoutes || wantFlows || wantQuality) && BASE) {
     });
     await ctx.close();
   }
-  gate('flows: keyboard approvals, gate on edit, chat, booking, palette, hold, Home core, Ask about this, Studio', flow, flowSteps);
+  gate('flows: keyboard approvals, gate on edit, chat, booking, palette, hold, Home core, Ask about this, Studio, sections and Setup', flow, flowSteps);
   }
   if (wantQuality) await runQuality({ browser, BASE, ROOT, OUT, gate, want: wantQ, open, settle, REMOTE, ALL });
   await browser.close();
