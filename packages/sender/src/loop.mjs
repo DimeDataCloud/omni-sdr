@@ -103,7 +103,20 @@ export async function runSendPass(client, { adapterFor, urls, now = () => new Da
       if (why) { skip(why); continue; }
       const mb = [...room.values()].filter((m) => m.left > 0).sort((a, b) => b.left - a.left)[0];
       if (!mb) { skip('no_mailbox_room'); continue; }
-      const r = await sendDraft(client, { orgId, workspaceId, draftId: d.id, mailboxId: mb.id, adapter: adapterFor(mb, { orgId, workspaceId }), urls });
+      const adapter = adapterFor(mb, { orgId, workspaceId });
+      // Get the mailbox ready (an access token) before claiming: a claim consumes the draft for good, so a token
+      // Google refuses must stop here, leaving the draft to send once the mailbox is reconnected.
+      try {
+        await adapter.ready?.();
+      } catch (e) {
+        if (e?.kind === 'auth') {
+          await withService(client, ctx, (tx) => tx.query(`UPDATE mailboxes SET paused_reason = 'reconnect' WHERE id = $1 AND paused_reason IS NULL`, [mb.id]));
+          tally.paused.push(mb.id);
+        }
+        room.delete(mb.id); skip(e?.kind === 'auth' ? 'mailbox_needs_reconnect' : 'mailbox_not_ready');
+        continue;
+      }
+      const r = await sendDraft(client, { orgId, workspaceId, draftId: d.id, mailboxId: mb.id, adapter, urls });
       if (r.outcome === 'sent') {
         tally.sent++; mb.left--;
         if (tally.sent < maxSends) await pause(jitterMs());

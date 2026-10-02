@@ -206,3 +206,20 @@ test('credentials: the console can connect but never read a token back; another 
   assert.equal(open(KEY, { orgId: a.org, workspaceId: a.ws, mailboxId: a.mailbox },
     (await one(db, `SELECT secret FROM mailbox_credentials WHERE mailbox_id = $1`, [a.mailbox])).secret).startsWith('1//refresh-'), true);
 });
+
+test('loop: a token Google refuses pauses the mailbox before any claim, so the draft still sends after reconnecting', async () => {
+  const db = await freshDb();
+  const t = await tenant(db, 'alpha');
+  await connect(db, t);
+  const draft = await approvedDraft(db, t);
+  const sent = [];
+  const refused = { adapterFor: () => ({ name: 'gmail', async ready() { const e = new Error('invalid_grant'); e.kind = 'auth'; throw e; }, async send(m) { sent.push(m); return { providerMessageId: 'x' }; } }) };
+  const r = await runSendPass(db, { adapterFor: refused.adapterFor, urls: URLS, now: () => WED_10, pause: async () => {} });
+  assert.deepEqual([r.sent, r.paused, r.skipped.mailbox_needs_reconnect], [0, [t.mailbox], 1]);
+  assert.equal((await q(db, `SELECT 1 FROM messages WHERE draft_id = $1`, [draft])).length, 0, 'nothing claimed');
+  assert.equal((await q(db, `SELECT 1 FROM send_counters WHERE mailbox_id = $1`, [t.mailbox])).length, 0, 'no cap unit spent');
+  // Reconnected: the same draft goes.
+  await db.query(`UPDATE mailboxes SET paused_reason = NULL WHERE id = $1`, [t.mailbox]);
+  const again = await pass(db, fakeAdapter());
+  assert.equal(again.sent, 1);
+});
