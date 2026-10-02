@@ -69,3 +69,16 @@ test('0012: a new org starts its trial with action and data credits, through the
   assert.deepEqual(ledger, bal, 'balance = sum(ledger)');
   assert.deepEqual((await db.query(`SELECT DISTINCT kind, ref_type FROM credit_ledger WHERE org_id = $1`, [org])).rows, [{ kind: 'grant', ref_type: 'trial' }]);
 });
+
+test('settle closes a job: nothing can be released after it, it happens once, and the settle row moves no money', async () => {
+  const { db, a } = await setup();
+  await asApp(db, a, `SELECT app_credit_reserve('action', 10, 'generate', 'job-s')`);
+  await asApp(db, a, `SELECT app_credit_release('action', 3, 'generate', 'job-s')`);
+  await asApp(db, a, `SELECT app_credit_settle('action', 'generate', 'job-s')`);
+  assert.match(await refused(asApp(db, a, `SELECT app_credit_release('action', 1, 'generate', 'job-s')`)) ?? '', /settled/);
+  assert.match(await refused(asApp(db, a, `SELECT app_credit_settle('action', 'generate', 'job-s')`)) ?? '', /already settled/);
+  assert.match(await refused(asApp(db, a, `SELECT app_credit_settle('action', 'generate', 'never-held')`)) ?? '', /holds nothing/);
+  assert.equal(await bal(db, a.org), 43);
+  const [{ n }] = (await db.query(`SELECT count(*)::int AS n FROM credit_ledger WHERE org_id = $1 AND kind = 'settle' AND delta = 0`, [a.org])).rows;
+  assert.equal(n, 1, 'one zero-amount settle row');
+});
