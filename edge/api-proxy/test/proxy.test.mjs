@@ -32,10 +32,13 @@ test('passes method, path, query, body and auth through; drops hop and Cloudflar
   }));
 
 test('a redirect to the run.app origin is rewritten to the public name; others are left alone', () => withFetch(
-  async (url) => new Response(null, { status: 303, headers: { location: url.endsWith('/a') ? `${ORIGIN}/u/done` : 'https://example.com/x' } }),
+  async (url) => new Response(null, { status: 303, headers: { location: url.endsWith('/a') ? `${ORIGIN}/u/done`
+    : url.endsWith('/c') ? `${ORIGIN}.evil.example/x` : 'https://example.com/x' } }),
   async () => {
     assert.equal((await worker.fetch(new Request('https://api.omnisdr.com/a'), { ORIGIN })).headers.get('location'), 'https://api.omnisdr.com/u/done');
     assert.equal((await worker.fetch(new Request('https://api.omnisdr.com/b'), { ORIGIN })).headers.get('location'), 'https://example.com/x');
+    assert.equal((await worker.fetch(new Request('https://api.omnisdr.com/c'), { ORIGIN })).headers.get('location'), `${ORIGIN}.evil.example/x`,
+      'a host that only shares the prefix is not the origin');
   }));
 
 test('refuses to run with no or a non-run.app origin; an unreachable API is a clean 502', async () => {

@@ -53,7 +53,8 @@ export default {
     // own host is rewritten so the run.app name never leaks into a browser's address bar.
     const out = new Response(res.body, res);
     const loc = out.headers.get('location');
-    if (loc && loc.startsWith(env.ORIGIN)) out.headers.set('location', `${url.origin}${loc.slice(env.ORIGIN.length)}`);
+    // Only the origin itself: `${ORIGIN}.evil.example` shares the prefix but is another host (#52 re-audit P3).
+    if (loc && loc.startsWith(env.ORIGIN) && /^(?:[/?#]|$)/.test(loc.slice(env.ORIGIN.length))) out.headers.set('location', `${url.origin}${loc.slice(env.ORIGIN.length)}`);
     return out;
   },
 };
