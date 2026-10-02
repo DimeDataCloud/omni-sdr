@@ -23,6 +23,13 @@ async function call(as, method, path, body) {
   const out = res.status === 204 ? null : await res.json().catch(() => null);
   return { status: res.status, body: out };
 }
+async function raw(as, path) {
+  const res = await fetch(`${API}${path}`, { headers: { authorization: `Bearer dev:${as}` } });
+  return { status: res.status, type: res.headers.get('content-type') ?? '', disposition: res.headers.get('content-disposition') ?? '',
+    csp: res.headers.get('content-security-policy') ?? '', text: await res.text() };
+}
+/** A route that isn't on this server yet answers 404 with no handler; the step reports NOT BUILT instead of FAIL. */
+const absent = (r) => r.status === 404 && /not.?found/i.test(JSON.stringify(r.body ?? '')) && !/contact|campaign|workspace/i.test(JSON.stringify(r.body ?? ''));
 const ok = (r, want, what) => { if (r.status !== want) throw new Error(`${what}: ${r.status} ${JSON.stringify(r.body)?.slice(0, 200)}`); return r.body; };
 
 async function step(id, title, fn) {
@@ -34,6 +41,7 @@ async function step(id, title, fn) {
   }
 }
 const notBuilt = (what) => ({ notBuilt: what });
+const f0 = (a) => Array.isArray(a) && a.length > 0;
 const partial = (what) => ({ partial: `partial: ${what}` });
 
 // ── Maya: owner ─────────────────────────────────────────────────────────────────────────────────
@@ -49,7 +57,17 @@ await step('M1', 'Signs up as Owner; 7-day trial', async () => {
   if (o?.accountType !== 'owner' || o.subscriptionStatus !== 'trialing' || o.role !== 'admin') throw new Error(`org ${JSON.stringify(o)}`);
   return partial('Stripe Checkout (card-required trial) not wired');
 });
-await step('M2', 'Composer asks one question at a time; every question skippable', async () => notBuilt('composer + proactive onboarding (sprint 2)'));
+await step('M2', 'Composer asks one question at a time; every question skippable', async () => {
+  const first = await call(maya, 'GET', `${T()}/onboarding`);
+  if (absent(first)) return notBuilt('onboarding API (PR #50) not on this server; composer UI');
+  const q1 = ok(first, 200, 'onboarding').next;
+  if (!q1?.key || !q1.skippable) throw new Error(`first question ${JSON.stringify(q1)}`);
+  const after = ok(await call(maya, 'POST', `${T()}/onboarding`, { key: q1.key, skip: true }), 200, 'skip');
+  if (after.next?.key === q1.key || !after.skipped.includes(q1.key)) throw new Error(`skip did not move on: ${JSON.stringify(after.next)}`);
+  const answered = ok(await call(maya, 'POST', `${T()}/onboarding`, { key: 'offer', value: 'Same-day dental booking for busy families in Nashville.' }), 200, 'answer');
+  if (!answered.answered.includes('offer')) throw new Error('offer not recorded');
+  return partial('the composer UI that asks them (console)');
+});
 await step('M3', 'ICP v1 → v2; the campaign stays pinned to v1', async () => {
   const v1 = ok(await call(maya, 'POST', `${T()}/icps`, { name: 'Dental practices', data: { region: 'Nashville' } }), 201, 'icp v1');
   const c = ok(await call(maya, 'POST', `${T()}/campaigns`, { name: 'Q4 dental', icpId: v1.id }), 201, 'campaign');
@@ -87,7 +105,12 @@ await step('M6', 'Campaign: a 3-step sequence, gated before review', async () =>
   const d = ok(await call(maya, 'POST', `${T()}/drafts`, { enrollmentId: M.enrollment, step: 1, subject: 'Re: Quick question',
     body: 'Hi Lena, just bringing this back to the top of your inbox. Is next week any better?' }), 201, 'follow-up');
   M.draft = d.id; M.draftGate = d.gate;
-  return notBuilt('no first touch can pass the gate: it must cite evidence, and only the enricher writes evidence (sprint 4); generation (sprint 5)');
+  const enr = await call(maya, 'POST', `${T()}/contacts/${M.contacts[0]}/enrich`);
+  if (absent(enr)) return notBuilt('enricher route (PR #48) and generation (PR #47) not on this server');
+  if (![200, 201].includes(enr.status)) throw new Error(`enrich → ${enr.status} ${JSON.stringify(enr.body)?.slice(0, 160)}`);
+  const est = await call(maya, 'GET', `${T()}/campaigns/${M.campaign}/generate/estimate`);
+  if (absent(est)) return notBuilt('generation (PR #47); the enricher answers (example domains are never fetched)');
+  return notBuilt('generation runs only with a model on; this server has OMNI_MODEL off ($0)');
 });
 await step('M7', 'Approvals: edit re-gates, approve; sends from her Gmail under window, ramp and cap', async () => {
   if (!M.draft) throw new Error('no draft from M6');
@@ -100,8 +123,9 @@ await step('M7', 'Approvals: edit re-gates, approve; sends from her Gmail under 
   return notBuilt('the send: Gmail connect + send job (PR #36 part 1 of 2); approval itself passes');
 });
 await step('M8', 'Inbound: reply via reply.omnisdr.com → classified → SLA → booked → sequence stops', async () =>
-  notBuilt('end to end needs a real send; the reply path itself is live (email-worker → /internal/inbound, verified 2026-10-02)'));
-await step('M9', 'Follow-up: steps 2–3 go out; out-of-office snoozes; no-show gets a reschedule draft', async () => notBuilt('follow-up sends (PR #36), OOO snooze, no-show draft'));
+  notBuilt('needs a real send (a reply is routed by its Reply-To token); built: email-worker → /internal/inbound, rules, SLA escalation (0008)'));
+await step('M9', 'Follow-up: steps 2–3 go out; out-of-office snoozes; no-show gets a reschedule draft', async () =>
+  notBuilt('needs a real send; built: send loop with step waits (#36/#42), OOO snooze + wake and no-show reschedule (#45)'));
 await step('M10', 'Analytics: sends, replies, meetings, rate by step; no open rate', async () => {
   const a = ok(await call(maya, 'GET', `${T()}/analytics?days=30`), 200, 'analytics');
   for (const k of ['sent', 'replies', 'positive', 'meetings']) if (typeof a.totals?.[k] !== 'number') throw new Error(`totals.${k}`);
@@ -110,7 +134,20 @@ await step('M10', 'Analytics: sends, replies, meetings, rate by step; no open ra
   const cr = ok(await call(maya, 'GET', `${T()}/credits`), 200, 'credits');
   if (!cr.balances) throw new Error('credits');
 });
-await step('M11', 'Reports and export: PDF + Doc, leads to CSV/Sheets, meetings to the CRM', async () => notBuilt('reports, exports, CRM push (sprint 9)'));
+await step('M11', 'Reports and export: PDF + Doc, leads to CSV/Sheets, meetings to the CRM', async () => {
+  const rep = ok(await call(maya, 'GET', `${T()}/reports/campaigns/${M.campaign}`), 200, 'report');
+  if (!rep.totals || JSON.stringify(rep).match(/open/i)) throw new Error('report totals missing, or an open rate');
+  const page = await raw(maya, `${T()}/reports/campaigns/${M.campaign}?format=html`);
+  if (page.status !== 200 || !page.type.startsWith('text/html') || /<script/i.test(page.text) || !/default-src 'none'/.test(page.csp)) {
+    throw new Error(`printable report: ${page.status} ${page.type} csp=${page.csp}`);
+  }
+  for (const f of ['contacts', 'meetings']) {
+    const csv = await raw(maya, `${T()}/exports/${f}.csv`);
+    if (csv.status !== 200 || !csv.type.startsWith('text/csv') || !/attachment/.test(csv.disposition)) throw new Error(`${f}.csv → ${csv.status} ${csv.type}`);
+  }
+  if (f0(M.contacts) && !(await raw(maya, `${T()}/exports/contacts.csv`)).text.includes('Lena Ortiz')) throw new Error('contacts.csv is missing a contact');
+  return partial("PDF is the browser's print of the page; Google Doc/Sheets export and CRM push (sprint 9)");
+});
 
 // ── Northside Growth: agency ───────────────────────────────────────────────────────────────────
 const admin = who('northside-admin'); const op = who('sam'); const rev = who('riley'); const client = who('client');
@@ -146,10 +183,18 @@ await step('A3', 'The client sees analytics; approves only when the admin turns 
   ok(await call(client, 'GET', `${NT()}/approvals`), 200, 'client approvals with toggle on');
   const other = await call(client, 'GET', `/v1/o/${N.org}/w/${N.ws2}/analytics?days=30`);
   if (other.status !== 403 && other.status !== 404) throw new Error(`client reached another client's workspace → ${other.status}`);
-  const staffOnly = await call(client, 'GET', `${NT()}/agents`);
-  if (staffOnly.status === 200) return partial('client_viewer can still read agents/routines/campaigns (bug bounty #4, defaulted to restrict; not built yet)');
+  for (const p of ['agents', 'routines', 'campaigns', 'connectors', 'capacity', 'credits']) {
+    const r = await call(client, 'GET', `${NT()}/${p}`);
+    if (r.status !== 403) throw new Error(`client_viewer reads the team's ${p} → ${r.status} (bug bounty #4, #43)`);
+  }
 });
-await step('A4', 'Reports carry the agency brand on the agency domain (white-label)', async () => notBuilt('white-label + custom domains (sprint 9)'));
+await step('A4', 'Reports carry the agency brand on the agency domain (white-label)', async () => {
+  const camp = ok(await call(admin, 'POST', `${NT()}/campaigns`, { name: 'Brightline Q4' }), 201, 'agency campaign');
+  const page = await raw(client, `${NT()}/reports/campaigns/${camp.id}?format=html`);
+  if (page.status !== 200) throw new Error(`client report → ${page.status}`);
+  if (!page.text.includes(`Northside ${RUN}`) || /omni-?sdr/i.test(page.text)) throw new Error('report is not white-label (agency name missing or Omni-SDR shown)');
+  return partial("the agency's own domain (custom domains, sprint 9)");
+});
 
 // ── Report ─────────────────────────────────────────────────────────────────────────────────────
 const n = (s) => results.filter((r) => r.state === s).length;
