@@ -71,7 +71,10 @@ export function registerMailboxes(r, { google: fromEnv = loadGoogleConfig(), fet
       const ws = ctx.params.ws;
       const mb = (await tx.query(
         `INSERT INTO mailboxes (org_id, workspace_id, provider, address, daily_cap) VALUES ($1, $2, 'gmail', $3, $4)
-         ON CONFLICT (workspace_id, address) DO UPDATE SET paused_reason = NULL RETURNING id, address, daily_cap`,
+         ON CONFLICT (workspace_id, address) DO UPDATE
+           -- Reconnecting lifts only the pauses connecting fixes. An ops hold or a bounce/complaint breaker stays (PR #42 audit P2).
+           SET paused_reason = CASE WHEN mailboxes.paused_reason IN ('reconnect', 'disconnected') THEN NULL ELSE mailboxes.paused_reason END
+         RETURNING id, address, daily_cap, paused_reason`,
         [m.orgId, ws, got.email, DAY_ONE_CAP])).rows[0];
       const secret = seal(g.mailboxKey, { orgId: m.orgId, workspaceId: ws, mailboxId: mb.id }, got.refreshToken);
       // Update-then-insert, not ON CONFLICT DO UPDATE: an upsert needs SELECT on the row, and app_rw never gets SELECT
@@ -85,7 +88,8 @@ export function registerMailboxes(r, { google: fromEnv = loadGoogleConfig(), fet
           [m.orgId, ws, mb.id, secret, got.scopes, m.userId]);
       }
       await audit(tx, m, 'connect', 'mailbox', mb.id);
-      return { status: 201, body: { id: mb.id, provider: 'gmail', address: mb.address, dailyCap: mb.daily_cap, scopes: got.scopes.filter((s) => s === GMAIL_SEND), connected: true } };
+      return { status: 201, body: { id: mb.id, provider: 'gmail', address: mb.address, dailyCap: mb.daily_cap, scopes: got.scopes.filter((s) => s === GMAIL_SEND),
+        pausedReason: mb.paused_reason, connected: !mb.paused_reason } };
     }, { action: 'connections' });
   });
 

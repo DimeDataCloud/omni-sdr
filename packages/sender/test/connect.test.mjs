@@ -150,6 +150,28 @@ test('send job: a revoked grant pauses the mailbox without spending the draft; r
   } finally { await a.stop(); }
 });
 
+test('connect: reconnecting lifts a reconnect/disconnect pause but never an ops hold or a breaker (PR #42 audit P2)', async () => {
+  const a = await api();
+  try {
+    const connect = async (code) => {
+      const state = new URL((await a.call('POST', `${a.W}/mailboxes/google/start`)).body.url).searchParams.get('state');
+      return (await a.call('POST', `${a.W}/mailboxes/google/finish`, { body: { code, state } })).body;
+    };
+    const mb = await connect('auth-code-111');
+    for (const reason of ['ops: complaint spike', 'breaker: bounce rate 6%']) {
+      await a.q(`UPDATE mailboxes SET paused_reason = $2 WHERE id = $1`, [mb.id, reason]);
+      const again = await connect('auth-code-222');
+      assert.deepEqual([again.id, again.pausedReason, again.connected], [mb.id, reason, false], reason);
+      assert.equal((await a.q(`SELECT paused_reason FROM mailboxes WHERE id = $1`, [mb.id]))[0].paused_reason, reason, 'still paused');
+    }
+    for (const reason of ['reconnect', 'disconnected']) {
+      await a.q(`UPDATE mailboxes SET paused_reason = $2 WHERE id = $1`, [mb.id, reason]);
+      const again = await connect('auth-code-333');
+      assert.deepEqual([again.pausedReason, again.connected], [null, true], reason);
+    }
+  } finally { await a.stop(); }
+});
+
 test('send job: refuses to run without the unsubscribe base or Google config', async () => {
   const logs = [];
   assert.equal(await runSend({ DATABASE_URL: 'x' }, { google: GOOGLE, log: (e) => logs.push(e) }), 2);
