@@ -13,6 +13,7 @@ const EXPECTED = {
   accept_invite: ['app_rw'], create_org_with_admin: ['app_rw'], create_workspace: ['app_rw'],
   ensure_user: ['app_rw'], my_memberships: ['app_rw'], unsubscribe: ['app_rw'],
   credit_reserve: ['ops'], credit_release: ['ops'],
+  app_credit_reserve: ['app_rw'], app_credit_release: ['app_rw'], app_credit_settle: ['app_rw'],   // 0009 (#47)
   inbox_resolve_reply: ['inbox_svc'], inbox_undecided: ['inbox_svc'], inbox_wake_snoozed: ['inbox_svc'], inbox_sla_due: ['inbox_svc'],
   sender_due_workspaces: ['sender_svc'],
   send_guard: [], send_guard_enrollment: [],  // trigger-only

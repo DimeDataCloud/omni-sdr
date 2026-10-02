@@ -20,6 +20,8 @@ COPY --from=deps /app/packages/db/node_modules packages/db/node_modules
 COPY packages/api/package.json packages/api/
 COPY packages/api/src packages/api/src
 COPY packages/ai/src packages/ai/src
+COPY packages/ai/prompts packages/ai/prompts
+COPY packages/ai/evals packages/ai/evals
 COPY packages/db/src packages/db/src
 COPY packages/db/migrations packages/db/migrations
 COPY packages/gate/src packages/gate/src
