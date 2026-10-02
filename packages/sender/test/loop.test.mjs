@@ -112,6 +112,15 @@ test('guard: a stopped enrollment refuses the send in the database, even when ca
   assert.deepEqual([r.sent, r.skipped.enrollment_stopped], [0, 1]);
 });
 
+test('rules: a reschedule note is due at once, whatever its step and whether the step before it sent (0008 purpose)', () => {
+  const base = { enrollment_state: 'awaiting_approval', timezone: 'America/Chicago', step: 3, prev_sent_at: null };
+  assert.equal(notDueReason({ ...base, purpose: 'sequence' }, WED_10), 'previous_step_not_sent');
+  assert.equal(notDueReason({ ...base, purpose: 'reschedule' }, WED_10), null);
+  assert.equal(notDueReason({ ...base, purpose: 'reschedule', prev_sent_at: WED_10.toISOString() }, WED_10), null, 'no business-day wait');
+  assert.equal(notDueReason({ ...base, purpose: 'reschedule' }, new Date('2026-10-10T15:00:00Z')), 'outside_window', 'the window still applies (Saturday)');
+  assert.equal(notDueReason({ ...base, purpose: 'reschedule', enrollment_state: 'stopped' }, WED_10), 'enrollment_stopped');
+});
+
 test('loop: step 2 waits for step 1 to be sent and 3 business days to pass', async () => {
   const db = await freshDb();
   const t = await tenant(db, 'alpha', { cap: 10 });

@@ -7,6 +7,7 @@
 //   - approved email draft with no message yet, in a workspace sender_due_workspaces() lists
 //   - its enrollment isn't stopped, converted, completed, paused or snoozed
 //   - step 0 at once; a later step only after the previous step was sent and WAIT_BUSINESS_DAYS have passed
+//   - a no-show's reschedule note (purpose 'reschedule', 0008) at once, whatever its step: it isn't a sequence step
 //   - now is inside the send window: weekdays, 08:00–17:00 in the workspace's time zone
 import { withService } from '../../db/src/context.mjs';
 import { sendDraft } from './send.mjs';
@@ -50,7 +51,7 @@ export function businessDaysBetween(from, to, timeZone) {
 export function notDueReason(d, now) {
   if (INACTIVE.has(d.enrollment_state)) return `enrollment_${d.enrollment_state}`;
   if (!inWindow(now, d.timezone)) return 'outside_window';
-  if (d.step > 0) {
+  if (d.step > 0 && d.purpose !== 'reschedule') {
     if (!d.prev_sent_at) return 'previous_step_not_sent';
     const need = WAIT_BUSINESS_DAYS[d.step] ?? WAIT_BUSINESS_DAYS[2];
     if (businessDaysBetween(new Date(d.prev_sent_at), now, d.timezone) < need) return 'waiting';
@@ -83,7 +84,7 @@ export async function runSendPass(client, { adapterFor, urls, now = () => new Da
     const ctx = { orgId, workspaceId, role: 'sender_svc' };
     const { drafts, mailboxes } = await withService(client, ctx, async (tx) => ({
       drafts: (await tx.query(`
-        SELECT d.id, d.step, e.state AS enrollment_state, w.timezone,
+        SELECT d.id, d.step, d.purpose, e.state AS enrollment_state, w.timezone,
                (SELECT m.sent_at FROM drafts p JOIN messages m ON m.draft_id = p.id
                  WHERE p.enrollment_id = d.enrollment_id AND p.step = d.step - 1 AND m.state = 'sent'
                  ORDER BY m.sent_at DESC LIMIT 1) AS prev_sent_at
