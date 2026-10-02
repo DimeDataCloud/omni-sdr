@@ -71,6 +71,36 @@ Shapes, not tested command lines. `<…>` are placeholders.
    with the right intent, not suppressed, then `decided_at` set by the refine job. Reply "STOP" to a second
    one: the address lands in `suppression`.
 
+## 3b. The database is the e2-micro VM (Christian 2026-10-02), not Cloud SQL
+
+This replaces approval A and steps 1, 3 and 4 above. The VM scripts are in `infra/db-vm` (README there), tested
+end to end on Debian 12 + Postgres 16.15 by `infra/db-vm/test/run-in-docker.sh`.
+
+- **Setup.** After claude-local's approvals 1–6, copy `infra/db-vm` to the VM over the IAP tunnel and run
+  `setup.sh` with `OMNI_OWNER_PASSWORD` piped in from Secret Manager and `ALLOW_CIDR` = the Cloud Run
+  Direct VPC egress subnet. It refuses `0.0.0.0/0`.
+- **Backup before migrating:** run `backup.sh` once by hand first, then `restore-check.sh` (it must report
+  0 differing tables).
+- **Migrations and the API login:** the same as steps 3–4, from a Cloud Run job with Direct VPC egress
+  (claude-local's approval 7). `DATABASE_URL=…@<vm-internal-ip>:5432/omni?sslmode=no-verify`.
+  `migrate-cli.mjs --check-login=omni_api` must print PASS.
+
+Five points on the plan as written (claude-cloud's review):
+1. **Patching.** With no external IP and only Private Google Access, the VM reaches Google APIs but not
+   `deb.debian.org` or `apt.postgresql.org`, so `unattended-upgrades` can't fetch security fixes. Proposal: a
+   monthly patch window that attaches the temporary IP for ~15 minutes, inside the free hour, and runs
+   `apt-get upgrade`. Cloud NAT is the alternative, but it isn't free. [VERIFY] cloud.google.com/nat/pricing
+2. **Backup permissions:** give the VM's service account `storage.objectCreator` and `storage.objectViewer`
+   (the restore check lists and reads), not `objectAdmin`. Add a 14-day bucket retention policy, unlocked, so a
+   compromised VM can't delete the backups it wrote. The lifecycle rule still removes them after 14 days.
+3. **Passwords don't need to live on the VM.** `setup.sh` takes the owner password once, piped over IAP; the
+   VM needs no Secret Manager access.
+4. **RPO is 24 hours.** WAL archiving to the same bucket (`archive_command` with `gcloud storage cp`) would bring
+   that to minutes for roughly the same storage. It's a later step, not needed for pilots.
+5. **The $0 rule and images:** the API image is ~330 MB uncompressed. It goes to the same Artifact Registry
+   repository as the decider's image, so check the free storage allowance before keeping more than one version.
+   [VERIFY] cloud.google.com/artifact-registry/pricing
+
 ## 4. Rollback
 
 - API, jobs: Cloud Run traffic to the previous revision; jobs simply aren't run.

@@ -1,0 +1,8 @@
+[Unit]
+Description=Omni-SDR nightly database dump to Cloud Storage (infra/db-vm/backup.sh)
+After=postgresql.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/omni-backup.env
+ExecStart=/opt/omni/backup.sh

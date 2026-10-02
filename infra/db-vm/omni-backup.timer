@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the Omni-SDR database dump nightly
+
+[Timer]
+OnCalendar=*-*-* 08:15:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
