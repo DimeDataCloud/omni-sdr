@@ -27,6 +27,8 @@ async function connect(db, t, mailbox = t.mailbox) {
 async function tenant(db, label, opts) {
   const t = await seedTenant(db, label, opts);
   await db.query(`DELETE FROM meetings WHERE org_id = $1`, [t.org]);
+  // Anything that references a seeded reply goes first (0008's notifications), whichever migrations this tree has.
+  if ((await db.query(`SELECT to_regclass('notifications') AS t`)).rows[0].t) await db.query(`DELETE FROM notifications WHERE org_id = $1`, [t.org]);
   await db.query(`DELETE FROM inbound_messages WHERE org_id = $1`, [t.org]);
   await db.query(`DELETE FROM messages WHERE org_id = $1`, [t.org]);
   await db.query(`DELETE FROM send_counters WHERE org_id = $1`, [t.org]);
@@ -84,6 +86,10 @@ test('loop: nothing goes outside the window, without a connected mailbox, or fro
   assert.deepEqual([night.sent, night.skipped.outside_window], [0, 1]);
   await as(db, 'app_rw', { org: t.org, ws: [t.ws] }, () => db.query(`UPDATE mailbox_credentials SET revoked_at = now() WHERE mailbox_id = $1`, [t.mailbox]));
   assert.equal((await pass(db, a)).skipped.no_mailbox_room, 1, 'revoked: no longer used');
+  // A live credential whose grant lacks gmail.send is not a sending mailbox either (PR #36 audit P3).
+  await as(db, 'app_rw', { org: t.org, ws: [t.ws] }, () => db.query(
+    `UPDATE mailbox_credentials SET revoked_at = NULL, scopes = ARRAY['openid', 'email'] WHERE mailbox_id = $1`, [t.mailbox]));
+  assert.equal((await pass(db, a)).skipped.no_mailbox_room, 1, 'no send scope: not used');
   assert.equal(a.calls.length, 0);
 });
 
@@ -104,6 +110,15 @@ test('guard: a stopped enrollment refuses the send in the database, even when ca
   await connect(db, t);
   const r = await pass(db, fakeAdapter());
   assert.deepEqual([r.sent, r.skipped.enrollment_stopped], [0, 1]);
+});
+
+test('rules: a reschedule note is due at once, whatever its step and whether the step before it sent (0008 purpose)', () => {
+  const base = { enrollment_state: 'awaiting_approval', timezone: 'America/Chicago', step: 3, prev_sent_at: null };
+  assert.equal(notDueReason({ ...base, purpose: 'sequence' }, WED_10), 'previous_step_not_sent');
+  assert.equal(notDueReason({ ...base, purpose: 'reschedule' }, WED_10), null);
+  assert.equal(notDueReason({ ...base, purpose: 'reschedule', prev_sent_at: WED_10.toISOString() }, WED_10), null, 'no business-day wait');
+  assert.equal(notDueReason({ ...base, purpose: 'reschedule' }, new Date('2026-10-10T15:00:00Z')), 'outside_window', 'the window still applies (Saturday)');
+  assert.equal(notDueReason({ ...base, purpose: 'reschedule', enrollment_state: 'stopped' }, WED_10), 'enrollment_stopped');
 });
 
 test('loop: step 2 waits for step 1 to be sent and 3 business days to pass', async () => {
@@ -205,4 +220,21 @@ test('credentials: the console can connect but never read a token back; another 
   assert.ok(cross, 'refused');
   assert.equal(open(KEY, { orgId: a.org, workspaceId: a.ws, mailboxId: a.mailbox },
     (await one(db, `SELECT secret FROM mailbox_credentials WHERE mailbox_id = $1`, [a.mailbox])).secret).startsWith('1//refresh-'), true);
+});
+
+test('loop: a token Google refuses pauses the mailbox before any claim, so the draft still sends after reconnecting', async () => {
+  const db = await freshDb();
+  const t = await tenant(db, 'alpha');
+  await connect(db, t);
+  const draft = await approvedDraft(db, t);
+  const sent = [];
+  const refused = { adapterFor: () => ({ name: 'gmail', async ready() { const e = new Error('invalid_grant'); e.kind = 'auth'; throw e; }, async send(m) { sent.push(m); return { providerMessageId: 'x' }; } }) };
+  const r = await runSendPass(db, { adapterFor: refused.adapterFor, urls: URLS, now: () => WED_10, pause: async () => {} });
+  assert.deepEqual([r.sent, r.paused, r.skipped.mailbox_needs_reconnect], [0, [t.mailbox], 1]);
+  assert.equal((await q(db, `SELECT 1 FROM messages WHERE draft_id = $1`, [draft])).length, 0, 'nothing claimed');
+  assert.equal((await q(db, `SELECT 1 FROM send_counters WHERE mailbox_id = $1`, [t.mailbox])).length, 0, 'no cap unit spent');
+  // Reconnected: the same draft goes.
+  await db.query(`UPDATE mailboxes SET paused_reason = NULL WHERE id = $1`, [t.mailbox]);
+  const again = await pass(db, fakeAdapter());
+  assert.equal(again.sent, 1);
 });

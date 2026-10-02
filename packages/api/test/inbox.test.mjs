@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { startApi } from './helpers.mjs';
 import { classifyReply, addBusinessMinutes } from '../src/services/inbox.mjs';
+import { returnDateFrom } from '../src/services/reply-rules.mjs';
 import { sendDraft } from '../../sender/src/send.mjs';
 
 let api;
@@ -84,15 +85,21 @@ test('a meeting request lands with an SLA; the sequence stops; a retry is a dupl
   assert.deepEqual([again.body.outcome, again.body.id], ['duplicate', r.body.id]);
 });
 
-test('an opt-out reply suppresses the address in the same transaction; an out-of-office does not stop anything', async () => {
+test('an opt-out reply suppresses the address in the same transaction; an out-of-office snoozes, it does not stop', async () => {
   const email = 'aisha@crescent-ortho.example';
   await api.q(`UPDATE enrollments SET state = 'waiting', stop_reason = NULL
     WHERE contact_id = (SELECT id FROM contacts WHERE email = $1)`, [email]);
   const thread = await sentTo(email);
-  const ooo = await api.signedInbound({ ...thread, body: 'I am out of the office until Monday.', receivedAt: new Date().toISOString() });
+  const oooAt = new Date();
+  const ooo = await api.signedInbound({ ...thread, body: 'I am out of the office until Monday.', receivedAt: oooAt.toISOString() });
   assert.equal(ooo.body.outcome, 'recorded');
-  const [live] = await api.q(`SELECT state FROM enrollments WHERE contact_id = (SELECT id FROM contacts WHERE email = $1)`, [email]);
-  assert.equal(live.state, 'waiting');
+  // Acceptance step 9 (0008): snoozed to the return date, remembering it was waiting; never stopped.
+  const [live] = await api.q(`SELECT state, resume_state, stop_reason, next_run_at FROM enrollments WHERE contact_id = (SELECT id FROM contacts WHERE email = $1)`, [email]);
+  assert.deepEqual([live.state, live.resume_state, live.stop_reason], ['snoozed', 'waiting', 'ooo_snooze']);
+  const [{ timezone }] = await api.q(`SELECT timezone FROM workspaces WHERE id = $1`, [api.demo.workspaces[0]]);
+  const wake = returnDateFrom('I am out of the office until Monday.', oooAt, timezone);
+  assert.ok(wake, 'fixture: "until Monday" parses');
+  assert.equal(new Date(live.next_run_at).toISOString(), wake.toISOString());
   const out = await api.signedInbound({ ...thread, body: 'Please unsubscribe me.', receivedAt: new Date().toISOString() });
   assert.equal(out.body.outcome, 'recorded');
   const sup = await api.q(`SELECT reason FROM suppression WHERE value_hash = value_hash($1) AND scope_org_id = $2`, [email, api.demo.org]);
@@ -172,7 +179,7 @@ const noulAns = (p) => ({ type: 'noul', noul: p, answer_confidence: Math.max(p, 
 // Answers taken from the 2026-10-01 bench: what laya said about texts like these.
 const benchLike = fakeDecider((state) => {
   const b = state.body.toLowerCase();
-  if (b.includes('write to me again')) return { stop: noulAns(0.65), meet: noulAns(0.05) };
+  if (b.includes('reporting you as spam')) return { stop: noulAns(0.65), meet: noulAns(0.05) };
   if (b.includes('out of the office')) return { stop: noulAns(0.13), meet: noulAns(0.08) };
   if (b.includes('send over a few times')) return { stop: noulAns(0.09), meet: noulAns(0.80) };
   return { stop: noulAns(0.0), meet: noulAns(0.1) };
@@ -193,7 +200,9 @@ async function replyFrom(email, body) {
 
 test('model pass: an opt-out the rules missed is suppressed and recorded with the revision that decided it', async () => {
   const email = 'daniel@northgate-dental.example';
-  const ref = await replyFrom(email, 'I never signed up for this. How did you get my address? Don\'t write to me again.');
+  // An implied opt-out the rules can't read (golden rt-066); "don't write to me again" was the fixture until the
+  // rules learned it (L11, 2026-10-02).
+  const ref = await replyFrom(email, 'I never signed up for this. If I get one more of these I\'m reporting you as spam.');
   const [ruled] = await api.q(`SELECT intent FROM inbound_messages WHERE id = $1`, [ref.id]);
   assert.notEqual(ruled.intent, 'unsubscribe', 'fixture: the rules must miss this one for the test to mean anything');
   const out = await refineReply(api.db, ref, { decider: benchLike });

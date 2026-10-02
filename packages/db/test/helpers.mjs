@@ -93,6 +93,10 @@ export async function seedTenant(db, label, { cap = 5, trust = 1, heat = 1 } = {
     [org, ws, `guest@${label}.test`])).id;
   await db.query(`INSERT INTO meetings (org_id, workspace_id, contact_id, inbound_message_id, provider, starts_at, ends_at)
     VALUES ($1, $2, $3, $4, 'native', now() + interval '1 day', now() + interval '1 day 30 minutes')`, [org, ws, guest, inbound]);
+  // 0008: one SLA notification per tenant, so the RLS matrix and the FK rule cover the table.
+  await as(db, 'inbox_svc', { org, ws: [ws] }, () => db.query(
+    `INSERT INTO notifications (org_id, workspace_id, inbound_message_id, kind, channel, due_at) VALUES ($1, $2, $3, 'sla_meeting', 'in_app', now())`,
+    [org, ws, inbound]));
   return { ...t, message, inbound };
 }
 
