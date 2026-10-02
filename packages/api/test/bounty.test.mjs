@@ -2,7 +2,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { startApi, claimsFor, signJwt } from './helpers.mjs';
+import { startApi, claimsFor, signJwt, KEYS } from './helpers.mjs';
 import { createApp } from '../src/app.mjs';
 import { googleKeySource, verifyIdToken } from '../src/auth.mjs';
 
@@ -49,4 +49,26 @@ test('made-up key ids force at most one certificate refresh a minute', async () 
   clock += 61_000;
   await verifyIdToken(signJwt(claimsFor('x@example.com'), { kid: 'made-up-late' }), { projectId: 'omni-test', getKey: src }).catch(() => {});
   assert.equal(fetches, 3, 'after a minute a new kid may refresh again');
+});
+
+test('a bogus kid can\'t hold the refresh slot against a real rotation; repeating it costs no fetch', async () => {
+  let fetches = 0; let clock = 0; let certs = { k1: 'current' };
+  const src = googleKeySource({
+    fetchImpl: async () => { fetches++; return { ok: true, headers: new Map([['cache-control', 'max-age=3600']]), json: async () => ({ ...certs }) }; },
+    now: () => clock, toKey: () => KEYS.k1,
+  });
+  const ok = (kid) => verifyIdToken(signJwt(claimsFor('x@example.com'), { kid }), { projectId: 'omni-test', getKey: src });
+  await ok('k1');
+  assert.equal(fetches, 1);
+  await ok('attacker-1').catch(() => {});              // takes the forced refresh
+  assert.equal(fetches, 2);
+  certs = { k1: 'current', k2: 'rotated' };            // Google rotates right after
+  clock += 10_000;
+  await ok('k2');                                      // waits 10 s at most, not a minute
+  assert.equal(fetches, 3);
+  for (let i = 0; i < 10; i++) { clock += 10_000; await ok('attacker-1').catch(() => {}); }   // to 110 s after it was marked
+  assert.equal(fetches, 3, 'a kid already found missing is not fetched again for 2 minutes');
+  clock += 15_000;   // past the 2-minute window: a kid Google publishes late is locked out no longer than this
+  await ok('attacker-1').catch(() => {});
+  assert.equal(fetches, 4, 'after 2 minutes the kid may be looked up again');
 });

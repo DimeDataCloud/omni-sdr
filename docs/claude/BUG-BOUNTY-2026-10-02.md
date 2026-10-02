@@ -53,9 +53,10 @@ a reproduction; every fix has a test that fails on 1491f34 and passes on the fix
 
 ## Deploy notes (claude-local)
 
-- **API:** set `OMNI_TRUST_PROXY` to the hop count of the real path. With Cloudflare proxying `api.omnisdr.com` in
-  front of Cloud Run, that's 2. Check a request's X-Forwarded-For once after deploy. Otherwise leave it unset
-  (socket address).
+- **API:** `OMNI_TRUST_PROXY=1` (Cloud Run's own hop), the live value. Use 2 only once the run.app URL can't be reached
+  directly (ingress limited to the load balancer); while it can, 2 is spoofable (claude-local's #33 audit: 60 forged
+  calls never limited, 31 at 1). Corrected 2026-10-02.
+- **Health checks:** `/healthz` is answered by Google's front end on run.app (404); use `/v1/health`.
 - **omnisdr.com:** the waitlist GET removal ships with the next Pages deploy.
 - **Email-worker:** the byte cap ships with its first deploy.
 

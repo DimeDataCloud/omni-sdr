@@ -17,16 +17,21 @@ const b64urlJson = (part) => {
 };
 
 // Google's certs, cached for the max-age the response carries (they rotate daily).
-export function googleKeySource({ fetchImpl = fetch, url = SECURETOKEN_CERTS_URL, now = () => Date.now() } = {}) {
+export function googleKeySource({ fetchImpl = fetch, url = SECURETOKEN_CERTS_URL, now = () => Date.now(), toKey = (pem) => new X509Certificate(pem).publicKey } = {}) {
   let cache = { keys: null, expires: 0 };
   let inflight = null;
-  let lastForced = -Infinity; // an unknown kid forces a refresh at most once a minute, so made-up kids can't drive fetches
+  // An unknown kid forces a refresh at most once every 10 s, so made-up kids can't drive fetches (6 a minute at most),
+  // and a real rotation that lands while an attacker holds the slot waits 10 s, not a minute (claude-local's #33 P3).
+  // A kid still missing after a refresh is remembered for 2 minutes, so repeating one bogus kid costs nothing, and a
+  // kid Google publishes late is locked out for 2 minutes at most (#43 audit P3; was 10).
+  let lastForced = -Infinity;
+  const missing = new Map(); // kid -> until (bounded)
   async function load() {
     const res = await fetchImpl(url);
     if (!res.ok) throw new AuthError(`signing keys unavailable (${res.status})`);
     const certs = await res.json();
     const maxAge = Number((/max-age=(\d+)/.exec(res.headers.get('cache-control') ?? '') ?? [])[1] ?? 3600);
-    const keys = new Map(Object.entries(certs).map(([kid, pem]) => [kid, new X509Certificate(pem).publicKey]));
+    const keys = new Map(Object.entries(certs).map(([kid, pem]) => [kid, toKey(pem)]));
     cache = { keys, expires: now() + Math.min(maxAge, 86400) * 1000 };
     return keys;
   }
@@ -36,10 +41,14 @@ export function googleKeySource({ fetchImpl = fetch, url = SECURETOKEN_CERTS_URL
       await inflight;
     }
     let key = cache.keys.get(kid);
-    if (!key && now() - lastForced >= 60000) {   // a key rotated in before our cache expired: refresh once
+    if (!key && (missing.get(kid) ?? -Infinity) <= now() && now() - lastForced >= 10000) {   // rotated in before our cache expired
       lastForced = now();
       inflight ??= load().finally(() => { inflight = null; });
       key = (await inflight).get(kid);
+      if (!key) {
+        if (missing.size >= 1000) missing.delete(missing.keys().next().value);
+        missing.set(kid, now() + 120000);
+      }
     }
     return key ?? null;
   };

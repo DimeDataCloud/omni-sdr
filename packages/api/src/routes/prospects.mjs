@@ -93,7 +93,7 @@ export function registerProspects(r) {
         count(e.id)::int AS enrolled, count(e.id) FILTER (WHERE e.state NOT IN ('stopped', 'converted', 'completed'))::int AS live
       FROM campaigns cp LEFT JOIN enrollments e ON e.campaign_id = cp.id GROUP BY cp.id ORDER BY cp.name`)).rows;
     return { items: rows.map(camel) };
-  }, { action: 'reports_view' }));
+  }, { action: 'team_view' }));
 
   r.post(`${T}/campaigns`, (ctx) => {
     const b = parse(v.object({ name: v.string({ min: 1, max: 120 }), icpId: v.optional(v.nullable(v.uuid())) }), ctx.body);
