@@ -162,3 +162,70 @@ test('unsubscribe: GET only shows the button; POST suppresses; unknown and reuse
   assert.match(page.headers.get('content-security-policy'), /default-src 'none'/);
   assert.ok(api.logs.every((l) => !String(l.path ?? '').includes(token)), 'unsubscribe tokens must not be logged');
 });
+
+// ─── the model pass (DECISIONS 2026-10-01: Laya as `decider`) ──────────────────────────────────────────────
+import { refineReply, refinePending } from '../src/services/inbox.mjs';
+import { fakeDecider } from '../../ai/src/decide.mjs';
+import { withService } from '../../db/src/context.mjs';
+
+const noulAns = (p) => ({ type: 'noul', noul: p, answer_confidence: Math.max(p, 1 - p) });
+// Answers taken from the 2026-10-01 bench: what laya said about texts like these.
+const benchLike = fakeDecider((state) => {
+  const b = state.body.toLowerCase();
+  if (b.includes('write to me again')) return { stop: noulAns(0.65), meet: noulAns(0.05) };
+  if (b.includes('out of the office')) return { stop: noulAns(0.13), meet: noulAns(0.08) };
+  if (b.includes('send over a few times')) return { stop: noulAns(0.09), meet: noulAns(0.80) };
+  return { stop: noulAns(0.0), meet: noulAns(0.1) };
+});
+const flaky = fakeDecider(() => { throw new Error('decider down'); });
+
+// A reply recorded the way ingestReply records it (rules intent, rules effects skipped: not under test here).
+async function replyFrom(email, body) {
+  const [c] = await api.q(`SELECT id, org_id, workspace_id FROM contacts WHERE email = $1`, [email]);
+  const ref = { orgId: c.org_id, workspaceId: c.workspace_id };
+  const v = classifyReply({ body });
+  const id = await withService(api.db, { ...ref, role: 'inbox_svc' }, async (tx) => (await tx.query(
+    `INSERT INTO inbound_messages (org_id, workspace_id, contact_id, channel, from_address, subject, body, received_at, intent, intent_confidence, classified_by)
+     VALUES ($1, $2, $3, 'email', $4, 'Re: hello', $5, now(), $6, $7, $8) RETURNING id`,
+    [ref.orgId, ref.workspaceId, c.id, email, body, v.intent, v.confidence, v.by])).rows[0].id);
+  return { id, ...ref };
+}
+
+test('model pass: an opt-out the rules missed is suppressed and recorded with the revision that decided it', async () => {
+  const email = 'daniel@northgate-dental.example';
+  const ref = await replyFrom(email, 'I never signed up for this. How did you get my address? Don\'t write to me again.');
+  const [ruled] = await api.q(`SELECT intent FROM inbound_messages WHERE id = $1`, [ref.id]);
+  assert.notEqual(ruled.intent, 'unsubscribe', 'fixture: the rules must miss this one for the test to mean anything');
+  const out = await refineReply(api.db, ref, { decider: benchLike });
+  assert.deepEqual(out, { outcome: 'decided', effects: ['suppress'] });
+  const sup = await api.q(`SELECT reason FROM suppression WHERE value_hash = value_hash($1)`, [email]);
+  assert.deepEqual(sup.map((s) => s.reason), ['reply_unsubscribe_model']);
+  const [row] = await api.q(`SELECT intent, decision FROM inbound_messages WHERE id = $1`, [ref.id]);
+  assert.equal(row.intent, ruled.intent, 'the model pass never rewrites the intent');
+  assert.equal(row.decision.registry, 'reply_triage@1');
+  assert.equal(row.decision.answers.stop, 0.65);
+  assert.equal((await refineReply(api.db, ref, { decider: benchLike })).outcome, 'already_decided');
+});
+
+test('model pass: a meeting the rules missed gets an SLA counted from when the reply arrived', async () => {
+  const ref = await replyFrom('priya@eastside-smiles.example', 'This is timely. Can you send over a few times next week?');
+  const [before] = await api.q(`SELECT sla_due_at, received_at FROM inbound_messages WHERE id = $1`, [ref.id]);
+  assert.equal(before.sla_due_at, null, 'fixture: the rules must miss this one');
+  assert.deepEqual((await refineReply(api.db, ref, { decider: benchLike })).effects, ['sla']);
+  const [after] = await api.q(`SELECT sla_due_at FROM inbound_messages WHERE id = $1`, [ref.id]);
+  assert.ok(after.sla_due_at > before.received_at);
+});
+
+test('model pass: a down decider changes nothing and leaves the reply for the next pass; a pass stops at the first failure', async () => {
+  const ref = await replyFrom('marcus@harbor-pediatric.example', 'Don\'t write to me again.');
+  const out = await refineReply(api.db, ref, { decider: flaky });
+  assert.equal(out.outcome, 'decider_failed');
+  const [row] = await api.q(`SELECT decided_at FROM inbound_messages WHERE id = $1`, [ref.id]);
+  assert.equal(row.decided_at, null);
+  const tally = await refinePending(api.db, { decider: flaky, limit: 50 });
+  assert.deepEqual(tally, { decided: 0, failed: 1, skipped: 0 });
+  const done = await refinePending(api.db, { decider: benchLike, limit: 500 });
+  assert.equal(done.failed, 0);
+  assert.ok(done.decided >= 1);
+  assert.equal((await api.q(`SELECT count(*)::int AS n FROM inbound_messages WHERE decided_at IS NULL`))[0].n, 0);
+});

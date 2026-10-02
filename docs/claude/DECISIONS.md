@@ -289,3 +289,24 @@ Christian: "better page and workspace optimization. Making the workspace very in
 - The workspace is organized around inbound, outbound and marketing, with as few top-level pages as possible.
 - Detail stays available: every feature, tool, agent and dataset has a place to see its decisions, correct them, tune it and set it up.
 - Not decided by this entry: the exact grouping and names. The proposal is docs/claude/WORKSPACE-PLAN.md.
+
+## 2026-10-01 — Laya is the decision engine; no Jev, ever
+Station: 24 (model registry) · 15 (inbound) · 12/13 (gate) · Decided by: Christian
+Christian: "laya now no jev ever. solve low latencey hosting."
+- Every classify / route / rank / check decision in JEV-PLAN.md runs on Laya (convaiinnovations/laya, Apache-2.0), self-hosted in our own GCP project as the internal `decider` service. JEV-PLAN.md's design (typed questions, safe-side-only rule, registry, golden sets, pinned version stored on the row) carries over unchanged; only the engine changes.
+- TypeSafe / Jev is out permanently, not deferred: no adapter, no fallback, no evaluation. J1–J4 in JEV-PLAN.md are closed by this entry (J2, a new data subprocessor, no longer arises: prospect text never leaves our project).
+- Low-latency hosting is Claude's to solve and measure; the hosting choice and its standing cost come back to Christian before anything runs always-on.
+
+## 2026-10-01 — The decider runs on Cloud Run (CPU) for the MVP
+Station: 24 · 23 (infra) · Decided by: Christian
+Christian: "the setup has to make sense it has to cost us less to host laya for our saas on multiple customers than to pay jev for usage" · then "approve cloud run for mvp"
+- `decider` is a Cloud Run service in project omni-sdr (us-central1): CPU only, scales to zero, IAM-only, internal ingress, max 2 instances. This is Christian's approval for that service and its image repo (`omni` in Artifact Registry).
+- The cost bar is Jev's usage price for the same decisions. Measured (LAYA-PLAN.md): per decision, Cloud Run CPU costs more than Jev would; the MVP still costs less in absolute terms because it runs inside the Cloud Run free tier and only wakes when replies are waiting. Beating Jev per decision needs a GPU kept busy, which needs volume (~1,000 customers, estimate).
+- Not approved by this entry: GPU quota, an always-on (min-instances) setting, or anything that bills while idle. Those come back to Christian with numbers.
+
+## 2026-10-01 — Laya until Jev is the cheaper option (amends "no Jev, ever")
+Station: 24 · Decided by: Christian
+Christian: "Use laya until jev becomes the most cost effective option."
+- Laya stays the engine. The switch rule is cost: when what Jev would charge for the same decisions is less than what hosting Laya costs us, Jev becomes the engine. This replaces "no Jev, ever" from the entry above; the rest of that entry stands.
+- To make the rule checkable, every decision records its input tokens (already on `inbound_messages.decision`), and the monthly Laya cost comes from the decider's billed Cloud Run usage. The comparison is a report Claude builds; the switch itself is Christian's call when the report says so.
+- Not decided: re-opening the TypeSafe DPA question (JEV-PLAN J2). It comes back only if the report crosses.

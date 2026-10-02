@@ -1,0 +1,10 @@
+{
+  "name": "@omni/ai",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Omni-SDR decision engine adapter (Laya, self-hosted as services/decider) and the decision registry. Decisions only move toward the safe side.",
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  }
+}
