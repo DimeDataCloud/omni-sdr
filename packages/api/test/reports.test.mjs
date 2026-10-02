@@ -80,3 +80,19 @@ test('CSV cells: formula injection is neutralised, quotes and newlines are escap
   const csv = toCsv([['A', 'a'], ['B', 'b']], [{ a: '=HYPERLINK("http://evil")', b: '+1 555' }, { a: '-2', b: '@SUM(A1)' }, { a: 'line\nbreak', b: 'say "hi", ok' }]);
   assert.equal(csv, 'A,B\r\n"\'=HYPERLINK(""http://evil"")",\'+1 555\r\n\'-2,\'@SUM(A1)\r\n"line\nbreak","say ""hi"", ok"\r\n');
 });
+
+test('a meeting counts for the campaign whose email the reply answered, not every campaign the contact is in (#46 audit P3)', async () => {
+  const c = await campaignWithSends();
+  const before = (await api.call('GET', `${api.W}/reports/campaigns/${c.id}`)).body.totals.meetings;
+  // Put one of this campaign's contacts into a second campaign and book a meeting there with no reply behind it.
+  // A contact with no meetings yet (a deterministic pick: with LIMIT 1 alone, a contact holding a reply-less meeting
+  // could be chosen, and enrolling it elsewhere rightly moves that meeting out of this campaign's count).
+  const [{ contact_id: contact }] = await api.q(`SELECT e.contact_id FROM enrollments e WHERE e.campaign_id = $1
+    AND NOT EXISTS (SELECT 1 FROM meetings mt WHERE mt.contact_id = e.contact_id) ORDER BY e.contact_id LIMIT 1`, [c.id]);
+  const other = (await api.call('POST', `${api.W}/campaigns`, { body: { name: 'Other campaign' } })).body.id;
+  await api.call('POST', `${api.W}/campaigns/${other}/enrollments`, { body: { contactIds: [contact] } });
+  const start = new Date(Date.now() + 3 * 864e5);
+  assert.equal((await api.call('POST', `${api.W}/meetings`, { body: { contactId: contact, startsAt: start.toISOString(),
+    endsAt: new Date(start.getTime() + 18e5).toISOString() } })).status, 201);
+  assert.equal((await api.call('GET', `${api.W}/reports/campaigns/${c.id}`)).body.totals.meetings, before, 'not this campaign\'s meeting');
+});

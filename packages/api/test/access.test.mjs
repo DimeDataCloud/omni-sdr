@@ -179,3 +179,11 @@ test('client_viewer settings: what the screens need, not the agency\'s plan, fla
   for (const k of ['subscriptionStatus', 'trialEndsAt', 'featureFlags']) assert.ok(k in admin.org, `admin keeps org.${k}`);
   for (const k of ['trustLevel', 'postalAddress', 'autoAdjustEnabled']) assert.ok(k in admin.workspace, `admin keeps workspace.${k}`);
 });
+
+test('/v1/me: a client viewer doesn\'t see the agency\'s subscription status; the team does (#43 audit P3)', async () => {
+  const client = (await api.call('GET', '/v1/me', { as: 'client@example.com' })).body.orgs.find((o) => o.id === api.demo.org);
+  assert.equal(client.role, 'client_viewer');
+  assert.ok(!('subscriptionStatus' in client));
+  const admin = (await api.call('GET', '/v1/me')).body.orgs.find((o) => o.id === api.demo.org);
+  assert.equal(typeof admin.subscriptionStatus, 'string');
+});
