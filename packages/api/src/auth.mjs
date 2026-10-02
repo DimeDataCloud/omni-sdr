@@ -22,7 +22,8 @@ export function googleKeySource({ fetchImpl = fetch, url = SECURETOKEN_CERTS_URL
   let inflight = null;
   // An unknown kid forces a refresh at most once every 10 s, so made-up kids can't drive fetches (6 a minute at most),
   // and a real rotation that lands while an attacker holds the slot waits 10 s, not a minute (claude-local's #33 P3).
-  // A kid still missing after a refresh is remembered for 10 minutes, so repeating one bogus kid costs nothing.
+  // A kid still missing after a refresh is remembered for 2 minutes, so repeating one bogus kid costs nothing, and a
+  // kid Google publishes late is locked out for 2 minutes at most (#43 audit P3; was 10).
   let lastForced = -Infinity;
   const missing = new Map(); // kid -> until (bounded)
   async function load() {
@@ -46,7 +47,7 @@ export function googleKeySource({ fetchImpl = fetch, url = SECURETOKEN_CERTS_URL
       key = (await inflight).get(kid);
       if (!key) {
         if (missing.size >= 1000) missing.delete(missing.keys().next().value);
-        missing.set(kid, now() + 600000);
+        missing.set(kid, now() + 120000);
       }
     }
     return key ?? null;
