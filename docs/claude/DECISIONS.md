@@ -318,3 +318,29 @@ Christian: "No more Gemini just this cloud session and my Claude local session"
 - Review stays two-party: each session reviews the other's work, so the author is never the auditor. Merges need the other session's review and Christian's approval (§5.6); a safety-spine change needs the other session's audit and Christian's OK (§6).
 - Rails v1.3 carries this. Older documents that name Gemini as an auditor or reviewer (SPEC, DESIGN, STUDIO-PLAN and the audits) are history; read "Gemini" there as "the other session".
 - Proposal, not decided: the workboard names `claude-local` and `claude-cloud` (rails §1, §5), so a claim says which session holds it.
+
+## 2026-10-02 — The MVP costs $0 to run and to test
+Station: 23 (infra) · all · Decided by: Christian
+Christian: "Keep production and testing cost to zero for the mvp."
+- Free tiers only for production and testing: no Cloud SQL, GPU, min-instances, paid model calls or paid data generation. Test deploys stay inside the free tier and are deleted after.
+- One accepted exception: the 2.52 GB `decider` image stays in Artifact Registry (~$0.20/month). Christian: ".20 a month is fine". Superseded API images are deleted after each deploy.
+- Recorded by claude-local from the 2026-10-02 conversation.
+
+## 2026-10-02 — Production database: Postgres 16 on the free e2-micro VM
+Station: 23 · Decided by: Christian
+Christian chose "All in Google Cloud ($0 VM)" over Cloud SQL (~$28/month) and Supabase.
+- `omni-db`: e2-micro, us-central1-a, internal IP only (an external IPv4 costs $3.65/month), nightly `pg_dump` to GCS with 14-day retention. RPO is 24 hours: the accepted trade against Cloud SQL's point-in-time recovery.
+- Deployed 2026-10-02 on Christian's "Evverything is merged deploy" (master 1491f34). Details: docs/claude/DEPLOY-HANDOFF.md §3b and the workboard.
+
+## 2026-10-02 — claude-local works without asking until the MVP is complete
+Station: all · Decided by: Christian
+Christian set claude-local's goal: "you job is to watch behind cloud session review the pull requests, keep things secure, bug free, and merged/deployed/updated." Then: "Ask no questions you have control" and "Your job isn't finished until the fullvpbis completed" (read as: the full MVP).
+- claude-local reviews and merges the other session's PRs, deploys merged work, and takes the open defaults below without asking. It still reports every deploy, cloud change and decision on the workboard, and still stays at $0 (entry above).
+- Not changed by this entry: rails §6. A change to auth, RLS, the gate, the guard or a public endpoint still gets the other session's audit before it merges.
+- Defaults claude-local took under this entry (each was a proposal with a stated default; Christian can reverse any):
+  - Bug bounty #4: `client_viewer` loses the agent, routine, campaign, connector, capacity, credit and settings reads (a team role is required); it keeps approvals (with the workspace toggle), meetings and analytics. Proposal's default: yes.
+  - Bug bounty #5: Cloudflare Turnstile on the waitlist form, and the ingest service accepts only the Pages function. Proposal's default: yes, before the waitlist is promoted. [VERIFY] Turnstile's free tier: https://developers.cloudflare.com/turnstile/
+  - Bug bounty #8: keep logout as is while the Worker password gate is single-owner; it goes away with G5.
+  - Bug bounty #9: access codes from `crypto.randomUUID()`, before any code grants anything.
+  - PR #33: merged by claude-local after its audit (approve with one P2 doc fix and one P3, both left with claude-cloud).
+  - G5 sign-in: email-link only (Google sign-in later); Identity Platform Tier 1 is free to 50,000 monthly active users, so it's inside the $0 rule. SMS and multi-factor stay off because they bill per message.

@@ -23,3 +23,10 @@ declare module '@db/permissions.mjs' {
   export const ACTIONS: readonly string[];
   export function can(m: { role: string; clientApprovalsEnabled?: boolean }, action: string): boolean;
 }
+
+// G5 build-time config (src/lib/api/http.ts, src/lib/auth.ts). Absent: the build runs the demo.
+interface ImportMetaEnv {
+  readonly VITE_OMNI_API_URL?: string;
+  readonly VITE_OMNI_IDP_KEY?: string;
+  readonly VITE_OMNI_DEV_AS?: string;
+}
