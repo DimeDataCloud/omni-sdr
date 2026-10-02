@@ -14,14 +14,14 @@ Every branch below merges cleanly onto master 1139134 in this order, all togethe
 db 54/54, API 55/55, ai 8/8, email-worker 6/6, console tsc + build clean, sign-in Worker 15/15 (claude-cloud ran
 these 2026-10-02; the console gate run is in the task report).
 
-| Order | Branch | What | Review focus |
+| Order | PR / branch | What | Review focus |
 |---|---|---|---|
-| 1 | `claude/rails-v1.3` | Rails v1.3: Gemini retired, the two sessions review each other | Christian's wording |
-| 2 | `claude/gates-fonts-preview` | Fonts gate counts real bytes; the preview server can't be orphaned or impersonated | Windows paths (taskkill, netstat): untested on Windows |
-| 3 | `claude/amazing-maxwell-876zb2` | UI: panes fill the window (Approve bar was below the fold), Studio Generate docked, phone tab fade; design notes (proposal) | Screens; PR #26's baselines need re-capturing after this (Studio desktop moves 1–1.5%) |
-| 4 | `claude/db-rollout` | Migration runner, API image, refine job; **migrations wrapped in GRANT/REVOKE CREATE** so they run without superuser | **Grants change: audit it (rails §6)** |
-| 5 | `claude/reply-cleaning` | Clean replies before the rules and Laya; a bare STOP is an opt-out again | The cleaner must never drop an opt-out |
-| 6 | `claude/email-worker` | The email-worker for `reply.omnisdr.com` (stacked on 5) | HMAC, recipient check, never drop a reply |
+| 1 | #27 `claude/rails-v1.3` | Rails v1.3: Gemini retired, the two sessions review each other | Christian's wording |
+| 2 | #28 `claude/gates-fonts-preview` | Fonts gate counts real bytes; the preview server can't be orphaned or impersonated | Windows paths (taskkill, netstat): untested on Windows |
+| 3 | #29 `claude/amazing-maxwell-876zb2` | UI: panes fill the window (Approve bar was below the fold), Studio Generate docked, phone tab fade; design notes (proposal) | Screens; PR #26's baselines need re-capturing after this (Studio desktop moves 1–1.5%) |
+| 4 | #30 `claude/db-rollout` | Migration runner, API image, refine job; **migrations wrapped in GRANT/REVOKE CREATE** so they run without superuser | **Grants change: audit it (rails §6)** |
+| 5 | #31 `claude/reply-cleaning` | Clean replies before the rules and Laya; a bare STOP is an opt-out again | The cleaner must never drop an opt-out |
+| 6 | #32 `claude/email-worker` | The email-worker for `reply.omnisdr.com` (stacked on 5) | HMAC, recipient check, never drop a reply |
 
 PR #25 (Laya training) and PR #26 (baselines) are claude-local's own. Order of #26 against 3: merge 3 first, then
 re-capture, or the visual gate fails on Studio.
