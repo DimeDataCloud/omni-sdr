@@ -10,12 +10,13 @@ import { gateDraft } from '../../../gate/src/apply.mjs';
 import { citableFacts, buildRequest, parseSequence, PROMPT_ID, PROMPT_SHA, TIER, CREDITS_PER_LEAD } from '../services/generate.mjs';
 import { missingContext } from './onboarding.mjs';
 
-const MAX_PER_RUN = 10;   // synchronous for the MVP: ~10 model calls fit well inside a request
+// Synchronous for the MVP: ~10 Flash calls fit well inside Cloud Run's default 300 s request timeout.
+const MAX_PER_RUN = 10;
 
 // Enrollments in this campaign with no drafts yet, each with its contact and citable facts.
 async function candidates(tx, campaignId, limit, now) {
   const rows = (await tx.query(`SELECT e.id, e.contact_id, c.name, c.company, c.title FROM enrollments e JOIN contacts c ON c.id = e.contact_id
-    WHERE e.campaign_id = $1 AND e.state IN ('waiting', 'drafting') AND NOT EXISTS (SELECT 1 FROM drafts d WHERE d.enrollment_id = e.id)
+    WHERE e.campaign_id = $1 AND e.state = 'waiting' AND NOT EXISTS (SELECT 1 FROM drafts d WHERE d.enrollment_id = e.id)
     ORDER BY e.id LIMIT $2`, [campaignId, limit])).rows;
   const ev = rows.length ? (await tx.query(`SELECT id, contact_id, facts FROM evidence WHERE contact_id = ANY ($1::uuid[]) AND expires_at > $2
     ORDER BY fetched_at DESC`, [rows.map((r) => r.contact_id), now])).rows : [];
@@ -59,63 +60,78 @@ export function registerGenerate(r) {
     const steps = b.steps ?? 3;
     const job = randomUUID();
 
-    // The press: pick the leads and reserve their credits in one transaction.
-    const { leads, offer, missing } = await ctx.tenant(async (tx, m) => {
+    // The press: claim the leads and reserve their credits in one transaction. Claiming (waiting -> drafting) is what
+    // stops a second press, from another tab or person, from charging and drafting the same leads again: candidates()
+    // only picks `waiting` (#47 audit P2-2).
+    const { leads, claimed, offer, missing } = await ctx.tenant(async (tx, m) => {
       const offer0 = await offerFor(tx, ctx.params.id, b.brief);
       if (!offer0) throw notFound('campaign not found');
       const all = await candidates(tx, ctx.params.id, b.limit ?? MAX_PER_RUN, ctx.now());
       const ready = all.filter((x) => x.facts.length > 0);
-      if (ready.length) {
+      const got = ready.length ? new Set((await tx.query(`UPDATE enrollments SET state = 'drafting' WHERE id = ANY ($1::uuid[]) AND state = 'waiting' RETURNING id`,
+        [ready.map((x) => x.id)])).rows.map((x) => x.id)) : new Set();
+      const mine = ready.filter((x) => got.has(x.id));
+      if (mine.length) {
         try {
-          await tx.query(`SELECT app_credit_reserve('action', $1, 'generate', $2)`, [ready.length * CREDITS_PER_LEAD, job]);
+          await tx.query(`SELECT app_credit_reserve('action', $1, 'generate', $2)`, [mine.length * CREDITS_PER_LEAD, job]);
         } catch (e) {
           if (/balance_check|no action balance/.test(e.message)) {
-            throw new HttpError(402, 'insufficient_credits', `this run needs ${ready.length * CREDITS_PER_LEAD} action credits`);
+            throw new HttpError(402, 'insufficient_credits', `this run needs ${mine.length * CREDITS_PER_LEAD} action credits`);
           }
           throw e;
         }
       }
       await audit(tx, m, 'generate', 'campaign', ctx.params.id);
-      return { leads: all, offer: offer0, missing: await missingContext(tx, m.workspaceId) };
+      return { leads: all.filter((x) => !x.facts.length || got.has(x.id)), claimed: mine, offer: offer0, missing: await missingContext(tx, m.workspaceId) };
     }, { action: 'build' });
 
-    const generated = []; const skipped = []; let failed = 0;
-    for (const lead of leads) {
-      if (!lead.facts.length) { skipped.push({ enrollmentId: lead.id, reason: 'no_evidence' }); continue; }
-      let out; const started = Date.now();
-      try {
-        out = await ctx.model.generate(buildRequest({ steps, offer,
-          prospect: { name: lead.name, company: lead.company, title: lead.title }, facts: lead.facts }));
-      } catch {
-        failed++; skipped.push({ enrollmentId: lead.id, reason: 'model_failed' }); continue;
-      }
-      const { drafts, problems } = parseSequence(out.text, lead.facts, steps);
-      if (!drafts.length) { failed++; skipped.push({ enrollmentId: lead.id, reason: problems[0] ?? 'no_drafts' }); continue; }
-      const provenance = { model: out.model, tier: TIER, prompt: PROMPT_ID, prompt_sha: PROMPT_SHA, job, ms: Date.now() - started,
-        ...(problems.length ? { problems: problems.slice(0, 5) } : {}) };
-      const ids = await ctx.tenant(async (tx, m) => {
-        const made = [];
-        for (const d of drafts) {
-          made.push({ step: d.step, id: (await tx.query(`INSERT INTO drafts (org_id, workspace_id, enrollment_id, step, channel, subject, body, claims, status, generated)
-            VALUES ($1, $2, $3, $4, 'email', $5, $6, $7, 'gating', $8) RETURNING id`,
-          [m.orgId, m.workspaceId, lead.id, d.step, d.subject, d.body, JSON.stringify(d.claims), JSON.stringify(provenance)])).rows[0].id });
+    const generated = []; const skipped = []; const done = new Set();
+    try {
+      for (const lead of leads) {
+        if (!lead.facts.length) { skipped.push({ enrollmentId: lead.id, reason: 'no_evidence' }); continue; }
+        let out; const started = Date.now();
+        try {
+          out = await ctx.model.generate(buildRequest({ steps, offer,
+            prospect: { name: lead.name, company: lead.company, title: lead.title }, facts: lead.facts }));
+        } catch {
+          skipped.push({ enrollmentId: lead.id, reason: 'model_failed' }); continue;
         }
-        await tx.query(`UPDATE enrollments SET state = 'awaiting_approval' WHERE id = $1 AND state IN ('waiting', 'drafting')`, [lead.id]);
-        return made;
-      }, { action: 'build' });
-      const gated = [];
-      for (const d of ids) {
-        const verdict = await gateDraft(ctx.client, { orgId: ctx.params.org, workspaceId: ctx.params.ws, draftId: d.id, now: ctx.now() });
-        gated.push({ ...d, gate: verdict.outcome, findings: verdict.findings });
+        const { drafts, problems } = parseSequence(out.text, lead.facts, steps);
+        if (!drafts.length) { skipped.push({ enrollmentId: lead.id, reason: problems[0] ?? 'no_drafts' }); continue; }
+        const provenance = { model: out.model, tier: TIER, prompt: PROMPT_ID, prompt_sha: PROMPT_SHA, job, ms: Date.now() - started,
+          ...(problems.length ? { problems: problems.slice(0, 5) } : {}) };
+        const ids = await ctx.tenant(async (tx, m) => {
+          const made = [];
+          for (const d of drafts) {
+            made.push({ step: d.step, id: (await tx.query(`INSERT INTO drafts (org_id, workspace_id, enrollment_id, step, channel, subject, body, claims, status, generated)
+              VALUES ($1, $2, $3, $4, 'email', $5, $6, $7, 'gating', $8) RETURNING id`,
+            [m.orgId, m.workspaceId, lead.id, d.step, d.subject, d.body, JSON.stringify(d.claims), JSON.stringify(provenance)])).rows[0].id });
+          }
+          await tx.query(`UPDATE enrollments SET state = 'awaiting_approval' WHERE id = $1 AND state = 'drafting'`, [lead.id]);
+          return made;
+        }, { action: 'build' });
+        done.add(lead.id);   // drafts exist: this lead is paid for, whatever the gate says next
+        const gated = [];
+        for (const d of ids) {
+          const verdict = await gateDraft(ctx.client, { orgId: ctx.params.org, workspaceId: ctx.params.ws, draftId: d.id, now: ctx.now() });
+          gated.push({ ...d, gate: verdict.outcome, findings: verdict.findings });
+        }
+        generated.push({ enrollmentId: lead.id, drafts: gated });
       }
-      generated.push({ enrollmentId: lead.id, drafts: gated });
+    } finally {
+      // Whatever happened above (#47 audit P2-1): leads that got no drafts are refunded and go back to `waiting`; the
+      // rest of the job is settled, so its credits are spent for good and can't be released later.
+      const undone = claimed.filter((l) => !done.has(l.id));
+      await ctx.tenant(async (tx) => {
+        if (undone.length) {
+          await tx.query(`SELECT app_credit_release('action', $1, 'generate', $2)`, [undone.length * CREDITS_PER_LEAD, job]);
+          await tx.query(`UPDATE enrollments e SET state = 'waiting' WHERE e.id = ANY ($1::uuid[]) AND e.state = 'drafting'
+            AND NOT EXISTS (SELECT 1 FROM drafts d WHERE d.enrollment_id = e.id)`, [undone.map((l) => l.id)]);
+        }
+        if (done.size) await tx.query(`SELECT app_credit_settle('action', 'generate', $1)`, [job]);
+      }, { action: 'build' });
     }
-
-    // Leads that failed get their credit back; leads with no facts were never charged.
-    if (failed) {
-      await ctx.tenant((tx) => tx.query(`SELECT app_credit_release('action', $1, 'generate', $2)`, [failed * CREDITS_PER_LEAD, job]), { action: 'build' });
-    }
-    const charged = leads.filter((l) => l.facts.length).length - failed;
+    const charged = done.size;
     return { status: 201, body: { job, generated, skipped, credits: { action: charged * CREDITS_PER_LEAD }, missingContext: missing } };
   });
 }

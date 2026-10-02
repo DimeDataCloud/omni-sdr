@@ -21,15 +21,39 @@ CREATE FUNCTION app_credit_release(p_meter text, p_amount bigint, p_ref_type tex
 RETURNS bigint LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
   IF app_org() IS NULL THEN RAISE EXCEPTION 'no tenant' USING ERRCODE = 'P0001'; END IF;
+  IF EXISTS (SELECT 1 FROM credit_ledger WHERE org_id = app_org() AND meter = p_meter AND ref_type = p_ref_type AND ref_id = p_ref_id AND kind = 'settle') THEN
+    RAISE EXCEPTION 'this job is settled; nothing can be released' USING ERRCODE = 'P0001';
+  END IF;
   RETURN credit_release(app_org(), p_meter, p_amount, p_ref_type, p_ref_id);
 END $$;
 
+-- Close a job: what it still holds is spent, and nothing can be released from it any more (#47 audit P2-1: a
+-- successful job's reservation stayed open). A zero-amount 'settle' row is the marker, so balance = sum(ledger) holds.
+-- Once per job; settling a job that holds nothing is refused.
+CREATE FUNCTION app_credit_settle(p_meter text, p_ref_type text, p_ref_id text)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF app_org() IS NULL THEN RAISE EXCEPTION 'no tenant' USING ERRCODE = 'P0001'; END IF;
+  IF EXISTS (SELECT 1 FROM credit_ledger WHERE org_id = app_org() AND meter = p_meter AND ref_type = p_ref_type AND ref_id = p_ref_id AND kind = 'settle') THEN
+    RAISE EXCEPTION 'this job is already settled' USING ERRCODE = 'P0001';
+  END IF;
+  IF coalesce((SELECT -sum(delta) FROM credit_ledger WHERE org_id = app_org() AND meter = p_meter AND ref_type = p_ref_type AND ref_id = p_ref_id
+               AND kind IN ('reserve', 'release')), 0) <= 0 THEN
+    RAISE EXCEPTION 'this job holds nothing to settle' USING ERRCODE = 'P0001';
+  END IF;
+  INSERT INTO credit_ledger (org_id, meter, delta, kind, ref_type, ref_id) VALUES (app_org(), p_meter, 0, 'settle', p_ref_type, p_ref_id);
+END $$;
+
+-- Grants first, while the migration role still owns the functions: after ALTER ... OWNER it is no longer the grantor,
+-- and on a real (non-superuser) Postgres a later REVOKE/GRANT is a silent no-op that leaves PUBLIC able to execute.
+-- PGlite runs as superuser and hides this (found on Postgres 16, 2026-10-02). The ACL moves with the ownership.
+REVOKE EXECUTE ON FUNCTION app_credit_reserve(text, bigint, text, text), app_credit_release(text, bigint, text, text), app_credit_settle(text, text, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app_credit_reserve(text, bigint, text, text), app_credit_release(text, bigint, text, text), app_credit_settle(text, text, text) TO app_rw;
 GRANT CREATE ON SCHEMA public TO ledger_owner;  -- PG15+: a new owner needs CREATE on the schema (no superuser on Cloud SQL)
 ALTER FUNCTION app_credit_reserve(text, bigint, text, text) OWNER TO ledger_owner;
 ALTER FUNCTION app_credit_release(text, bigint, text, text) OWNER TO ledger_owner;
+ALTER FUNCTION app_credit_settle(text, text, text) OWNER TO ledger_owner;
 REVOKE CREATE ON SCHEMA public FROM ledger_owner;
-REVOKE EXECUTE ON FUNCTION app_credit_reserve(text, bigint, text, text), app_credit_release(text, bigint, text, text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app_credit_reserve(text, bigint, text, text), app_credit_release(text, bigint, text, text) TO app_rw;
 -- ledger_owner calls app_org() inside the wrapper.
 GRANT EXECUTE ON FUNCTION app_org() TO ledger_owner;
 
