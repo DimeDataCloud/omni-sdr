@@ -12,7 +12,7 @@ const STATUSES = ['generating', 'gating', 'blocked', 'review', 'approved', 'disc
 const affected = (r) => r.affectedRows ?? r.rowCount ?? 0;
 
 const DRAFT_SQL = `
-  SELECT d.id, d.status, d.channel, d.step, d.subject, d.body, d.claims, d.gate_passed, d.gate_version, d.gated_at,
+  SELECT d.id, d.status, d.channel, d.step, d.purpose, d.subject, d.body, d.claims, d.gate_passed, d.gate_version, d.gated_at,
          d.gate_findings, d.rejection_reason, d.approved_by, d.approved_at, d.created_at, d.enrollment_id,
          c.id AS contact_id, c.name AS contact_name, c.title AS contact_title, c.company AS contact_company,
          c.email AS contact_email, c.email_status, c.fit_score,
@@ -44,6 +44,7 @@ async function hydrate(tx, rows, trustLevel) {
     dispatched: d.dispatched,
     channel: d.channel,
     step: d.step,
+    purpose: d.purpose,
     subject: d.subject,
     body: d.body,
     recipient: { contactId: d.contact_id, name: d.contact_name, title: d.contact_title, company: d.contact_company,
