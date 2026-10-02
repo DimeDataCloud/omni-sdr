@@ -25,6 +25,12 @@ export function registerWorkspace(r) {
       auto_adjust_sources, postal_address, custom_domain, created_at FROM workspaces WHERE id = $1`, [m.workspaceId])).rows[0];
     const o = (await tx.query(`SELECT id, name, account_type, subscription_status, trial_ends_at, feature_flags FROM orgs WHERE id = $1`,
       [m.orgId])).rows[0];
+    // A client viewer (an outside party) sees what their screens need, not the agency's plan, trial, flags, Trust Dial,
+    // postal address or Auto-adjust setup (bug bounty 2026-10-02 #4).
+    if (m.role === 'client_viewer') {
+      return { workspace: { id: w.id, name: w.name, timezone: w.timezone, clientApprovalsEnabled: w.client_approvals_enabled },
+        org: { id: o.id, name: o.name, accountType: o.account_type }, you: { userId: m.userId, role: m.role } };
+    }
     // Trust level and feature flags are shown, never editable here (ops only, SPEC §5 S7).
     return { workspace: camel(w), org: camel(o), you: { userId: m.userId, role: m.role } };
   }));
