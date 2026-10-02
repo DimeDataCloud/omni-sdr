@@ -5,6 +5,10 @@
 //   only; nothing reaches prospects. Remove both entries if Web Analytics is turned off for omnisdr.com.
 // - blob: in img-src and media-src: Studio previews a file the person just picked (URL.createObjectURL) before it is
 //   uploaded. A blob: URL can only be minted by this page's own scripts, so it adds no third-party origin.
+// - The API and Identity Platform (G5): the app calls the API with an ID token it gets from identitytoolkit and refreshes
+//   at securetoken. Exact origins only; a demo build never calls them.
+export const API_ORIGINS = ['https://omni-api-885132575622.us-central1.run.app', 'https://api.omnisdr.com'];
+const IDP_ORIGINS = ['https://identitytoolkit.googleapis.com', 'https://securetoken.googleapis.com'];
 export function appCsp(styleNonce?: string) {
   return [
     "default-src 'self'",
@@ -13,7 +17,7 @@ export function appCsp(styleNonce?: string) {
     "img-src 'self' data: blob:",
     "media-src 'self' blob:",
     "font-src 'self'",
-    "connect-src 'self' https://cloudflareinsights.com",
+    `connect-src 'self' https://cloudflareinsights.com ${[...API_ORIGINS, ...IDP_ORIGINS].join(' ')}`,
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'self'",

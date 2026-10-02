@@ -5,7 +5,7 @@ import { checkDraft, numbersIn } from '../src/check.mjs';
 const NOW = new Date('2026-09-28T12:00:00Z');
 const FUTURE = '2026-10-28T00:00:00Z';
 const evidence = new Map([
-  ['e1', { contact_id: 'c1', facts: { rating: 3.2, review_count: 41, booking: false, revenue_loss: { value: 4000 } }, expires_at: FUTURE }],
+  ['e1', { contact_id: 'c1', facts: { rating: 3.2, review_count: 41, booking: false, revenue_loss: { value: 4000 }, contact: { form: null, text: null } }, expires_at: FUTURE }],
   ['e-other', { contact_id: 'c2', facts: { rating: 4.9 }, expires_at: FUTURE }],
   ['e-old', { contact_id: 'c1', facts: { rating: 3.2 }, expires_at: '2026-09-01T00:00:00Z' }],
 ]);
@@ -37,6 +37,7 @@ test('sabotage suite: every seeded bad draft is blocked, each for the expected r
     ["another contact's evidence", withClaims([{ ...GOOD.claims[0], evidence_id: 'e-other' }, GOOD.claims[1]]), 'evidence_wrong_contact'],
     ['expired evidence', withClaims([{ ...GOOD.claims[0], evidence_id: 'e-old' }, GOOD.claims[1]]), 'evidence_expired'],
     ['fact key not on the evidence', withClaims([{ ...GOOD.claims[0], fact_key: 'stars' }, GOOD.claims[1]]), 'fact_missing'],
+    ['fact recorded as unknown (null)', withClaims([{ ...GOOD.claims[0], fact_key: 'contact.text' }, GOOD.claims[1]]), 'fact_missing'],
     ['uncited superlative', addSentence("We're the best agency in Nashville."), 'unsupported_sentence'],
     ['uncited percentage', addSentence('Clients see 30% more bookings.'), 'unsupported_sentence'],
     ['extra number in a claimed sentence', { ...GOOD, body: GOOD.body.replace('41 reviews', '41 reviews and 12 photos') }, 'unsupported_number'],

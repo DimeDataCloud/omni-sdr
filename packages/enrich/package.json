@@ -1,0 +1,13 @@
+{
+  "name": "@omni/enrich",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Website enricher: a contact's homepage → evidence the claims gate can cite. Deterministic, no model, SSRF-guarded.",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 test/*.test.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8"
+  }
+}

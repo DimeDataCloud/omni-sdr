@@ -4,7 +4,8 @@ import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import * as Menu from '@radix-ui/react-dropdown-menu';
 import { toast } from 'sonner';
 import { ChevronsUpDown, Check, Plus, Search, Moon, Sun, LogOut, RotateCcw, UserRound, MoreHorizontal, ShieldCheck, LayoutGrid, Keyboard, PauseCircle, KeyRound, Rows3 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, isDemo } from '@/lib/api';
+import { signOut } from '@/lib/auth';
 import { useQuery, useHotkeys } from '@/lib/hooks';
 import { useSession, useWorkspace } from '@/lib/session';
 import { useTheme, setTheme, useDensity, setDensity } from '@/lib/theme';
@@ -293,6 +294,7 @@ function UserMenu({ onHelp }: { onHelp: () => void }) {
             <p className="text-xs text-muted">{org && ROLE[org.role].label} · {org && ROLE[org.role].hint}</p>
           </div>
           <Menu.Separator className="my-1 h-px bg-line" />
+          {isDemo && <>
           <Menu.Label className="flex items-center gap-2 px-2.5 pt-1.5 pb-1 text-xs text-muted"><UserRound className="size-3.5" aria-hidden />Try another role <Badge tone="info" className="ml-auto">Demo</Badge></Menu.Label>
           <Menu.RadioGroup value={persona} onValueChange={(v) => { switchPersona(v); nav('/'); toast(`Viewing as ${PERSONAS.find((p) => p.email === v)?.name}`); }}>
             {PERSONAS.map((p) => (
@@ -303,15 +305,17 @@ function UserMenu({ onHelp }: { onHelp: () => void }) {
             ))}
           </Menu.RadioGroup>
           <Menu.Separator className="my-1 h-px bg-line" />
+          </>}
           <Menu.Item className={menuItem} onSelect={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun className="size-4" aria-hidden /> : <Moon className="size-4" aria-hidden />}{theme === 'dark' ? 'Light theme' : 'Dark theme (proposal)'}</Menu.Item>
           <Menu.Item className={cx(menuItem, 'max-md:hidden')} onSelect={() => setDensity(density === 'compact' ? 'comfortable' : 'compact')}><Rows3 className="size-4" aria-hidden />{density === 'compact' ? 'Comfortable rows' : 'Compact rows'}</Menu.Item>
           <Menu.Item className={cx(menuItem, 'max-lg:hidden')} onSelect={onHelp}><Keyboard className="size-4" aria-hidden />Keyboard shortcuts<span className="kbd ml-auto">?</span></Menu.Item>
-          <Menu.Item className={menuItem} onSelect={() => { resetDemo(); nav('/'); toast.success('Demo data reset.'); }}><RotateCcw className="size-4" aria-hidden />Reset demo data</Menu.Item>
+          {isDemo && <Menu.Item className={menuItem} onSelect={() => { resetDemo(); nav('/'); toast.success('Demo data reset.'); }}><RotateCcw className="size-4" aria-hidden />Reset demo data</Menu.Item>}
           <Menu.Separator className="my-1 h-px bg-line" />
           {/* Served by the sign-in Worker, not the app router: a full page load. */}
-          <Menu.Item asChild className={menuItem}><a href="/auth/password"><KeyRound className="size-4" aria-hidden />Change password</a></Menu.Item>
+          {/* The Worker's password exists only in password mode; with the real API, sign-in is an email link (G5). */}
+          {isDemo && <Menu.Item asChild className={menuItem}><a href="/auth/password"><KeyRound className="size-4" aria-hidden />Change password</a></Menu.Item>}
           <form method="post" action="/auth/logout">
-            <Menu.Item asChild className={cx(menuItem, 'w-full text-danger')} onSelect={(e) => { e.preventDefault(); (e.currentTarget as HTMLElement).closest('form')?.requestSubmit(); }}>
+            <Menu.Item asChild className={cx(menuItem, 'w-full text-danger')} onSelect={(e) => { e.preventDefault(); if (!isDemo) signOut(); (e.currentTarget as HTMLElement).closest('form')?.requestSubmit(); }}>
               <button type="submit"><LogOut className="size-4" aria-hidden />Sign out</button>
             </Menu.Item>
           </form>
