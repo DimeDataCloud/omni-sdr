@@ -80,6 +80,7 @@ test('permissions: the SPEC §7 matrix, cell by cell', () => {
     inbox_draft:        [Y, Y, N, N],
     clear_hold:         [Y, N, N, N],
     reports_view:       [Y, Y, Y, Y],
+    team_view:          [Y, Y, Y, N],
     export_pii:         [Y, Y, N, N],
   };
   assert.deepEqual(Object.keys(expected).sort(), [...ACTIONS].sort(), 'matrix test must cover every action');

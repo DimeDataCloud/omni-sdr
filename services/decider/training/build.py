@@ -17,6 +17,7 @@ import argparse, collections, hashlib, json, os, random, re
 import pandas as pd
 
 import tasks as T
+from authored import replies as A
 
 # ─── IVR routing ──────────────────────────────────────────────────────────────────────────────────────────────
 BANKING77 = {
@@ -90,6 +91,21 @@ SNIPS_BOOKING = {"BookRestaurant": "book"}
 # A calendar_set utterance that moves an existing event is a reschedule, not a booking; the source doesn't say
 # which, so those are dropped instead of guessed.
 RESCHEDULE_WORDS = re.compile(r"\b(move|moved|reschedule|push|postpone|shift|change)\b", re.I)
+
+# MInDS-14 (2026-10-02): spoken banking intents. Dropped as ambiguous for a department menu: abroad, atm_limit,
+# balance, cash_deposit, high_value_payment.
+MINDS14 = {1: "account", 2: "support", 5: "sales", 6: "support", 8: "billing", 9: "account", 11: "sales", 12: "billing", 13: "billing"}
+
+# Taskmaster-1 (2026-10-02). Labels come from the dialog's own task and annotations, through these fixed rules:
+# - book: the caller's first turn in a restaurant-table or auto-repair dialog, when it asks for a booking;
+# - confirm: a caller turn the source annotates as accepting a reservation/appointment time or date, that is short,
+#   follows an assistant question, and says yes in words (an annotated acceptance that only names a time is dropped);
+# - none: the first turn of a pizza or coffee order (ordering, not booking).
+TM_BOOK_TASKS = ("restaurant-table", "auto-repair")
+TM_BOOK_WORDS = re.compile(r"\b(book|reserv|appointment|appt|schedule|table for|set up|get (me|us) in|make a)", re.I)
+TM_CONFIRM_ANN = re.compile(r"(restaurant_reservation\.time\.reservation|auto_repair\.(time|date)\.appt)\.accept$")
+TM_ASK = re.compile(r"\?|\b(can|could|would) you\b|\barrange\b|\bas soon as\b|\bgoodbye\b", re.I)  # a new ask, or a sign-off
+TM_YES = re.compile(r"\b(yes|yeah|yep|sure|ok|okay|sounds (good|great|perfect)|works|perfect|great|fine|let'?s do|book it|that'?s good)\b", re.I)
 
 # ─── ICP: job title -> department (O*NET-SOC) ─────────────────────────────────────────────────────────────────
 SOC_EXACT = {
@@ -194,6 +210,8 @@ def main():
     ap.add_argument("--data", default=os.path.join(os.path.expanduser("~"), "omni-sdr-training"))
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--cap", type=int, default=600, help="max rows per label per source for the big ICP sources")
+    ap.add_argument("--langs", default="", help="extra MASSIVE locales for booking@1, e.g. es-ES,fr-FR (multilingual checkpoint)")
+    ap.add_argument("--no-authored", action="store_true", help="leave out the authored rows (authored/)")
     args = ap.parse_args()
     raw, out = os.path.join(args.data, "raw"), Out(os.path.join(args.data, "build"))
     rng = random.Random(args.seed)
@@ -238,6 +256,7 @@ def main():
         out.add(row(bk["version"], source, {"body": text}, bk["questions"], g, split, rid), text)
 
     none_budget = collections.Counter()
+    en_kept_book = set()
     with open(os.path.join(raw, "massive", "1.1", "data", "en-US.jsonl"), encoding="utf-8") as f:
         for line in f:
             r = json.loads(line)
@@ -245,6 +264,8 @@ def main():
             action = MASSIVE_BOOKING.get(r["intent"])
             if action == "book" and RESCHEDULE_WORDS.search(r["utt"]):
                 continue
+            if action == "book":
+                en_kept_book.add(r["id"])
             if action is None:
                 if none_budget[r["intent"]] >= 40:
                     continue
@@ -303,6 +324,77 @@ def main():
         crit, gold_key = subset(rng, T.DEPARTMENTS, d)
         out.add(row(dep["version"], "onet", {"job_title": title}, {"department": dep["question"](crit)},
                     {"department": onehot(crit, gold_key)}, hsplit(title), f"onet-{i}"), title)
+
+    # ── Added 2026-10-02 ──────────────────────────────────────────────────────────────────────────────────────
+    # IVR: MInDS-14 spoken transcripts (English locales). Each locale's own rows; split by text hash.
+    for loc in ("en-US", "en-GB", "en-AU"):
+        p = os.path.join(raw, "minds14", f"{loc}.parquet")
+        if not os.path.exists(p):
+            continue
+        for i, r in pd.read_parquet(p).iterrows():
+            dept = MINDS14.get(int(r.intent_class))
+            text = str(r.transcription).strip()
+            if dept and text:
+                ivr_row("minds14", text, dept, False, hsplit(text), f"minds14-{loc}-{i}")
+
+    # Booking (+ IVR scheduling): Taskmaster-1, crowd-written and WOZ dialogs.
+    tm_none, tm_book = collections.Counter(), collections.Counter()
+    for fname in ("self-dialogs.json", "woz-dialogs.json"):
+        p = os.path.join(raw, "taskmaster", fname)
+        if not os.path.exists(p):
+            continue
+        for dlg in json.load(open(p, encoding="utf-8")):
+            task, utts = dlg["instruction_id"], dlg["utterances"]
+            split = "test" if int(hashlib.sha256(dlg["conversation_id"].encode()).hexdigest(), 16) % 10 == 0 else "train"
+            first_user = next((u for u in utts if u["speaker"] == "USER"), None)
+            if first_user and task.startswith(TM_BOOK_TASKS) and TM_BOOK_WORDS.search(first_user["text"]) and tm_book[task.split("-")[0]] < 600:
+                # Capped: every auto-repair dialog names the same two shops, which a model would learn as "book".
+                tm_book[task.split("-")[0]] += 1
+                booking_row("taskmaster1", first_user["text"], "book", split, f"tm1-book-{dlg['conversation_id']}")
+                ivr_row("taskmaster1", first_user["text"], "scheduling", False, split, f"tm1-ivr-{dlg['conversation_id']}")
+            elif first_user and task.startswith(("pizza", "coffee")) and tm_none[task.split("-")[0]] < 300:
+                tm_none[task.split("-")[0]] += 1
+                booking_row("taskmaster1", first_user["text"], "none", split, f"tm1-none-{dlg['conversation_id']}")
+            for k, u in enumerate(utts):
+                if u["speaker"] != "USER" or k == 0 or utts[k - 1]["speaker"] != "ASSISTANT" or not utts[k - 1]["text"].rstrip().endswith("?"):
+                    continue
+                names = [a["name"] for s_ in u.get("segments", []) for a in s_["annotations"]]
+                if any(TM_CONFIRM_ANN.search(n) for n in names) and len(u["text"].split()) <= 14 and TM_YES.search(u["text"]) and not TM_ASK.search(u["text"]):
+                    booking_row("taskmaster1", u["text"], "confirm", split, f"tm1-confirm-{dlg['conversation_id']}-{k}")
+
+    # ICP department: O*NET's sample of titles workers actually report ("CEO", "HR Generalist"), same SOC mapping.
+    rep = os.path.join(raw, "onet", "db_31_0_text", "Sample of Reported Titles.txt")
+    for i, r in pd.read_csv(rep, sep="\t").iterrows():
+        d = soc_department(r["O*NET-SOC Code"])
+        title = str(r["Reported Job Title"]).strip()
+        if d:
+            crit, gold_key = subset(rng, T.DEPARTMENTS, d)
+            out.add(row(dep["version"], "onet_reported", {"job_title": title}, {"department": dep["question"](crit)},
+                        {"department": onehot(crit, gold_key)}, hsplit(title), f"onet-rep-{i}"), title)
+
+    # Authored (authored/cores.py): reply triage, booking reschedule/confirm, IVR "ask for a person". Own RNGs.
+    if not args.no_authored:
+        print("authored offered:", {"reply_triage": A.add_reply_triage(out, row), "booking": A.add_booking(out, row),
+                                    "ivr_human": A.add_ivr_human(out, row, subset), "titles": A.add_titles(out, row, subset)})
+
+    # Booking in other languages (MASSIVE 1.1, same intent mapping) for the multilingual checkpoint (L9).
+    for loc in filter(None, args.langs.split(",")):
+        with open(os.path.join(raw, "massive", "1.1", "data", f"{loc}.jsonl"), encoding="utf-8") as f:
+            ml_none = collections.Counter()
+            for line in f:
+                r = json.loads(line)
+                action = MASSIVE_BOOKING.get(r["intent"])
+                if action is None:
+                    if ml_none[r["intent"]] >= 40:
+                        continue
+                    ml_none[r["intent"]] += 1
+                    action = "none"
+                elif action == "book":
+                    # The reschedule filter is English-only, so other locales keep calendar_set out of `book`
+                    # unless its parallel English utterance (same id in en-US) was kept.
+                    if r["id"] not in en_kept_book:
+                        continue
+                booking_row(f"massive:{loc}", r["utt"], action, "test" if r["partition"] == "test" else "train", f"massive-{loc}-{r['id']}")
 
     # Replay: the vendor's own typed decisions, so specialising doesn't erase the base skills.
     for split in ("train", "test"):

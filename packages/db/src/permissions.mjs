@@ -15,14 +15,17 @@ export const ACTIONS = Object.freeze([
   'inbox_read',
   'inbox_draft',        // reviewer: default read-only
   'clear_hold',         // operator: default deny
-  'reports_view',
+  'reports_view',       // reports, analytics, meetings: everyone, client viewers included (own workspace)
+  'team_view',          // the team's working data: agents and their chats, routines, campaigns, connectors, capacity,
+                        // credits. Not client viewers, an outside party (bug bounty 2026-10-02 #4; proposal defaulted
+                        // to restrict by Christian's "you have control", acceptance A3)
   'export_pii',         // leads/messages exports
 ]);
 
 const MATRIX = Object.freeze({
   admin:         new Set(ACTIONS),
-  operator:      new Set(['build', 'approve', 'inbox_read', 'inbox_draft', 'reports_view', 'export_pii']),
-  reviewer:      new Set(['approve', 'inbox_read', 'reports_view']),
+  operator:      new Set(['build', 'approve', 'inbox_read', 'inbox_draft', 'reports_view', 'team_view', 'export_pii']),
+  reviewer:      new Set(['approve', 'inbox_read', 'reports_view', 'team_view']),
   client_viewer: new Set(['reports_view']),
 });
 

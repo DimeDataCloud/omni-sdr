@@ -13,6 +13,7 @@ test('no token, a bad token, or an expired token is 401; health is public', asyn
   assert.equal((await api.call('GET', '/v1/me', { token: 'garbage' })).status, 401);
   assert.equal((await api.call('GET', '/v1/me', { token: tokenFor('maya@example.com', { exp: Math.floor(Date.now() / 1000) - 600 }) })).status, 401);
   assert.equal((await api.call('GET', '/healthz', { as: null })).status, 200);
+  assert.deepEqual((await api.call('GET', '/v1/health', { as: null })).body, { ok: true }, 'the health path run.app doesn\'t swallow');
   assert.equal((await api.call('GET', '/v1/nope')).status, 404);
   assert.equal((await api.call('DELETE', '/v1/me')).status, 405);
 });
@@ -150,4 +151,31 @@ test('responses carry no-store and nosniff; JSON-only bodies; errors never leak 
   assert.equal(r2.status, 404);
   assert.doesNotMatch(r2.text, /INSERT|SELECT|constraint|drafts_/i);
   assert.ok(api.logs.every((l) => !/Bearer|eyJ/.test(JSON.stringify(l))), 'tokens must never be logged');
+});
+
+test('client_viewer: reports, analytics and meetings only; the team\'s working data is 403 (bug bounty #4, acceptance A3)', async () => {
+  const c = { as: 'client@example.com' };
+  for (const p of ['analytics', 'meetings']) assert.equal((await api.call('GET', `${api.W}/${p}`, c)).status, 200, p);
+  for (const p of ['agents', 'routines', 'campaigns', 'connectors', 'capacity', 'credits']) {
+    assert.equal((await api.call('GET', `${api.W}/${p}`, c)).status, 403, `client ${p}`);
+  }
+  const agents = (await api.call('GET', `${api.W}/agents`)).body.items;
+  assert.ok(agents.length > 0, 'fixture: the demo has agents');
+  assert.equal((await api.call('GET', `${api.W}/agents/${agents[0].id}/messages`, c)).status, 403, 'client agent chat');
+  // The team still reads them: reviewer and operator.
+  for (const who of ['riley@example.com', 'sam@example.com']) {
+    for (const p of ['agents', 'routines', 'campaigns', 'connectors', 'capacity', 'credits']) {
+      assert.equal((await api.call('GET', `${api.W}/${p}`, { as: who })).status, 200, `${who} ${p}`);
+    }
+  }
+});
+
+test('client_viewer settings: what the screens need, not the agency\'s plan, flags, Trust Dial or postal address', async () => {
+  const s = (await api.call('GET', `${api.W}/settings`, { as: 'client@example.com' })).body;
+  assert.deepEqual(Object.keys(s.workspace).sort(), ['clientApprovalsEnabled', 'id', 'name', 'timezone']);
+  assert.deepEqual(Object.keys(s.org).sort(), ['accountType', 'id', 'name']);
+  assert.equal(s.you.role, 'client_viewer');
+  const admin = (await api.call('GET', `${api.W}/settings`)).body;
+  for (const k of ['subscriptionStatus', 'trialEndsAt', 'featureFlags']) assert.ok(k in admin.org, `admin keeps org.${k}`);
+  for (const k of ['trustLevel', 'postalAddress', 'autoAdjustEnabled']) assert.ok(k in admin.workspace, `admin keeps workspace.${k}`);
 });
