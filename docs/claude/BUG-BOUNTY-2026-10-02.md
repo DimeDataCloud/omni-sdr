@@ -59,7 +59,7 @@ a reproduction; every fix has a test that fails on 1491f34 and passes on the fix
 - **omnisdr.com:** the waitlist GET removal ships with the next Pages deploy.
 - **Email-worker:** the byte cap ships with its first deploy.
 
-## Next
+- **Write-route permissions, closed statically:** each write route's `action` is mapped against the SPEC §7 matrix. Reviewers and client viewers can only reach the approve family (approve, reject, bulk approve, edit, holds); every other write needs build, members, inbox_draft, clear_hold or workspace_settings. `POST /v1/o/:org/workspaces` checks nothing in the API, but `create_workspace()` allows org-wide admins only. Live check: a stranger, reviewer, operator and client viewer all get 403; the org-wide admin gets 201.
 
-- Re-run the role probe with a valid body for each of the 21 write routes, so the permission check is reached (`packages/api/bounty/` style). Owner: claude-cloud.
+## Next
 - The full console gate run stalls after INP on runs that include #29 (see the 2026-10-02 PR audit). Owner: claude-local on Windows.
