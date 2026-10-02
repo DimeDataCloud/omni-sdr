@@ -66,6 +66,15 @@ test('a reply no send matches goes to the fallback mailbox, not the bin', async 
   assert.equal(m2.forwarded, null, 'a recorded reply is not also forwarded');
 });
 
+test('a long non-Latin reply is cut to fit the API body limit, keeping its top (bug bounty 2026-10-02)', async () => {
+  const api = fakeApi();
+  const body = 'Por favor, elimíname de su lista.\n' + '日本語のテキスト'.repeat(20000);
+  await worker.email(message(mime({ body })), env, {}, { fetchImpl: api.fetchImpl, now: () => NOW, log: quiet });
+  const sent = api.calls[0].init.body;
+  assert.ok(Buffer.byteLength(sent) <= 240 * 1024, `payload is ${Buffer.byteLength(sent)} bytes`);
+  assert.match(JSON.parse(sent).body, /^Por favor, elimíname de su lista\./);
+});
+
 test('HTML-only mail: text kept, the quoted thread marked as quoted so the API drops it', () => {
   const t = textOf({ html: '<div>Yes, Thursday at 2.</div><div><br></div><blockquote class="gmail_quote">Hi Tom,<br>Unsubscribe: https://app.omnisdr.com/u/tok</blockquote>' });
   assert.match(t, /^Yes, Thursday at 2\./);

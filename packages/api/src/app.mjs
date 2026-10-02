@@ -62,9 +62,14 @@ export function createApp({ pool, verifyToken, config = {}, model = null, now = 
   }
 
   function clientIp(req) {
-    if (cfg.trustProxy) {
+    // trustProxy = how many proxies in front append to X-Forwarded-For (true = 1, Cloud Run alone). Behind Cloudflare
+    // or a load balancer as well it is 2: the last entry would be that proxy, and every user would share one rate-limit
+    // and sign-in-failure bucket (bug bounty 2026-10-02).
+    const hops = cfg.trustProxy === true ? 1 : Number(cfg.trustProxy) || 0;
+    if (hops > 0) {
       const xff = String(req.headers['x-forwarded-for'] ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-      if (xff.length) return xff[xff.length - 1];
+      if (xff.length >= hops) return xff[xff.length - hops];
+      if (xff.length) return xff[0];
     }
     return req.socket?.remoteAddress ?? 'unknown';
   }
@@ -121,7 +126,8 @@ export function createApp({ pool, verifyToken, config = {}, model = null, now = 
         const m = rt.re.exec(path);
         if (!m) continue;
         if (rt.method !== req.method) { methodMismatch = true; continue; }
-        match = { rt, params: Object.fromEntries(rt.names.map((n, i) => [n, decodeURIComponent(m[i + 1])])) };
+        // Malformed %-encoding is the client's mistake: 404, not a 500 with a stack trace (bug bounty 2026-10-02).
+        try { match = { rt, params: Object.fromEntries(rt.names.map((n, i) => [n, decodeURIComponent(m[i + 1])])) }; } catch { throw notFound(); }
         break;
       }
       if (!match) throw methodMismatch ? new HttpError(405, 'method_not_allowed', 'method not allowed') : notFound();

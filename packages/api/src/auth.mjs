@@ -20,6 +20,7 @@ const b64urlJson = (part) => {
 export function googleKeySource({ fetchImpl = fetch, url = SECURETOKEN_CERTS_URL, now = () => Date.now() } = {}) {
   let cache = { keys: null, expires: 0 };
   let inflight = null;
+  let lastForced = -Infinity; // an unknown kid forces a refresh at most once a minute, so made-up kids can't drive fetches
   async function load() {
     const res = await fetchImpl(url);
     if (!res.ok) throw new AuthError(`signing keys unavailable (${res.status})`);
@@ -35,7 +36,8 @@ export function googleKeySource({ fetchImpl = fetch, url = SECURETOKEN_CERTS_URL
       await inflight;
     }
     let key = cache.keys.get(kid);
-    if (!key) {                       // a key rotated in before our cache expired: refresh once
+    if (!key && now() - lastForced >= 60000) {   // a key rotated in before our cache expired: refresh once
+      lastForced = now();
       inflight ??= load().finally(() => { inflight = null; });
       key = (await inflight).get(kid);
     }

@@ -69,29 +69,6 @@ export async function onRequestPost(context: any) {
   }
 }
 
-export async function onRequestGet(context: any) {
-  try {
-    const url = new URL(context.request.url);
-    const format = url.searchParams.get('format') || 'json';
-
-    const gcsResponse = await fetch(`${GCS_INGEST_URL}?format=${format}`, {
-      method: 'GET'
-    });
-
-    const contentType = gcsResponse.headers.get('content-type') || 'application/json';
-    const body = await gcsResponse.text();
-
-    return new Response(body, {
-      status: gcsResponse.status,
-      headers: {
-        'Content-Type': contentType,
-        ...(format === 'csv' ? { 'Content-Disposition': 'attachment; filename="omnisdr_leads.csv"' } : {})
-      }
-    });
-  } catch (error) {
-    return new Response(JSON.stringify({ error: 'Could not fetch leads from Google Cloud Storage' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
-  }
-}
+// No GET. The ingest service refuses reads (405) because it is public; this proxy for them was how the 2026-09-28
+// P0 leaked every signup, and it would reopen the leak if a read ever came back upstream (bug bounty 2026-10-02).
+// Export from an authenticated machine: gcloud storage cat "gs://omnisdr-leads/leads/*.json"
