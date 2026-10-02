@@ -17,6 +17,7 @@ import { createApp } from './app.mjs';
 import { pgPool } from './pool.mjs';
 import { firebaseVerifier } from './auth.mjs';
 import { offModel, vertexModel } from './services/model.mjs';
+import { offPlaces, googlePlaces } from './services/places.mjs';
 
 const env = process.env;
 const need = (k) => { if (!env[k]) { console.error(`missing ${k}`); process.exit(1); } return env[k]; };
@@ -27,6 +28,8 @@ export async function main() {
     ? vertexModel({ project: need('OMNI_VERTEX_PROJECT'), location: env.OMNI_VERTEX_LOCATION ?? 'us-central1',
       models: { flash_lite: need('OMNI_MODEL_FLASH_LITE'), flash: need('OMNI_MODEL_FLASH'), pro: need('OMNI_MODEL_PRO') } })
     : offModel();
+  // Lead finding by place ships off: OMNI_PLACES=google needs the Places API enabled and a key (Christian's call).
+  const places = env.OMNI_PLACES === 'google' ? googlePlaces({ key: need('OMNI_PLACES_KEY') }) : offPlaces();
   const app = createApp({
     pool,
     verifyToken: firebaseVerifier({ projectId: need('OMNI_FIREBASE_PROJECT') }),
@@ -36,6 +39,7 @@ export async function main() {
       appUrl: env.OMNI_APP_URL ?? 'https://app.omnisdr.com',
       unsubscribeBase: env.OMNI_UNSUBSCRIBE_BASE ?? 'https://app.omnisdr.com',
       inboundSecret: env.OMNI_INBOUND_SECRET || null,
+      places,
       // Number of proxies that append to X-Forwarded-For (see OMNI_TRUST_PROXY above: 1 unless run.app ingress is closed).
       trustProxy: Number(env.OMNI_TRUST_PROXY ?? 0) || false,
     },

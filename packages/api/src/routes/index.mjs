@@ -11,6 +11,7 @@ import { registerGenerate } from './generate.mjs';
 import { registerOnboarding } from './onboarding.mjs';
 import { registerIcp } from './icp.mjs';
 import { registerCompetitors } from './competitors.mjs';
+import { registerLeads } from './leads.mjs';
 
 // Specific paths before parameterized ones within each module; modules don't overlap.
 export function registerAll(r) {
@@ -27,6 +28,7 @@ export function registerAll(r) {
   registerOnboarding(r);
   registerIcp(r);
   registerCompetitors(r);
+  registerLeads(r);
 }
 
 // Tenant route prefix.

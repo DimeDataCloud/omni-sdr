@@ -116,7 +116,17 @@ await step('M5', 'Leads with free checks on every email', async () => {
   if (r.created.some((x) => x.emailStatus === 'valid')) throw new Error('a free check marked an address valid');
   if (r.created[2].emailStatus !== 'invalid') throw new Error(`a malformed address is ${r.created[2].emailStatus}`);
   if (!r.created.some((x) => x.role)) throw new Error('role address not flagged');
-  return partial('"find 50 Nashville dental practices", enrichment/evidence and vendor verification (sprint 4)');
+  // "Find 50 Nashville dental practices": a places search, each business's own site as evidence, a fit score.
+  const f = await call(maya, 'POST', `${T()}/leads/find`, { query: 'dental practices in Nashville', limit: 50 });
+  if (f.status === 404) return partial('"find 50 Nashville dental practices" (lead finding, level F) and vendor verification');
+  if (f.status === 503) return off('lead finding: built (level F), places search off here (OMNI_PLACES; fixtures: OMNI_DEV_FIXTURES=1); vendor verification not built');
+  const found = ok(f, 201, 'find leads');
+  if (found.leads.length > 50) throw new Error(`asked for 50, got ${found.leads.length}`);
+  if (!found.leads.length && !found.skipped.alreadyLeads) throw new Error('the search found nothing');
+  const bare = found.leads.filter((l) => !l.evidenceId && !l.evidence);
+  if (bare.length) throw new Error(`${bare.length} leads with neither evidence nor a "no evidence found" mark`);
+  if (found.leads.some((l) => l.emailStatus === 'valid')) throw new Error('a found address was marked valid without verification');
+  return partial('vendor email verification (Data credits) not built: found and imported addresses stay unverified, so none can be enrolled to send');
 });
 await step('M6', 'Campaign: a 3-step sequence, gated before review', async () => {
   const e = ok(await call(maya, 'POST', `${T()}/campaigns/${M.campaign}/enrollments`, { contactIds: M.contacts }), 201, 'enroll');
