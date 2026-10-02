@@ -57,6 +57,9 @@ export async function seedTenant(db, label, { cap = 5, trust = 1, heat = 1 } = {
   const mailbox = (await one(db,
     `INSERT INTO mailboxes (org_id, workspace_id, provider, address, daily_cap) VALUES ($1, $2, 'gmail', $3, $4) RETURNING id`,
     [org, ws, `sender@${label}.test`, cap])).id;
+  // 0007: a connected mailbox. A syntactically valid sealed value; no test here needs it to open.
+  await db.query(`INSERT INTO mailbox_credentials (org_id, workspace_id, mailbox_id, provider, secret, scopes)
+    VALUES ($1, $2, $3, 'gmail', $4, ARRAY['https://www.googleapis.com/auth/gmail.send'])`, [org, ws, mailbox, `v1.${'A'.repeat(16)}.${'B'.repeat(32)}`]);
   await db.query(`INSERT INTO suppression (scope_org_id, value_hash, kind, reason) VALUES ($1, value_hash('gone@x.test'), 'email', 'unsubscribe')`, [org]);
   await db.query(`INSERT INTO holds (org_id, scope_type, scope_id, reason, set_by) VALUES ($1, 'campaign', gen_random_uuid(), 'seed', 'test')`, [org]);
   await db.query(`INSERT INTO credit_balances (org_id, meter, balance) VALUES ($1, 'media', 100)`, [org]);
@@ -90,6 +93,10 @@ export async function seedTenant(db, label, { cap = 5, trust = 1, heat = 1 } = {
     [org, ws, `guest@${label}.test`])).id;
   await db.query(`INSERT INTO meetings (org_id, workspace_id, contact_id, inbound_message_id, provider, starts_at, ends_at)
     VALUES ($1, $2, $3, $4, 'native', now() + interval '1 day', now() + interval '1 day 30 minutes')`, [org, ws, guest, inbound]);
+  // 0008: one SLA notification per tenant, so the RLS matrix and the FK rule cover the table.
+  await as(db, 'inbox_svc', { org, ws: [ws] }, () => db.query(
+    `INSERT INTO notifications (org_id, workspace_id, inbound_message_id, kind, channel, due_at) VALUES ($1, $2, $3, 'sla_meeting', 'in_app', now())`,
+    [org, ws, inbound]));
   // 0010: a profile row per tenant, so the RLS matrix covers it.
   await db.query(`INSERT INTO workspace_profiles (org_id, workspace_id, offer) VALUES ($1, $2, 'After-hours call answering')`, [org, ws]);
   return { ...t, message, inbound };

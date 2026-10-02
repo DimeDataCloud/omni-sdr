@@ -6,6 +6,7 @@ import { registerInbox } from './inbox.mjs';
 import { registerAgents } from './agents.mjs';
 import { registerProspects } from './prospects.mjs';
 import { registerOps } from './ops.mjs';
+import { registerReports } from './reports.mjs';
 import { registerGenerate } from './generate.mjs';
 import { registerOnboarding } from './onboarding.mjs';
 import { registerIcp } from './icp.mjs';
@@ -20,6 +21,7 @@ export function registerAll(r) {
   registerAgents(r);
   registerProspects(r);
   registerOps(r);
+  registerReports(r);
   registerGenerate(r);
   registerOnboarding(r);
   registerIcp(r);

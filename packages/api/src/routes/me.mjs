@@ -8,8 +8,9 @@ export function registerMe(r) {
     const orgs = new Map();
     for (const x of rows) {
       if (!orgs.has(x.org_id)) {
+        // A client viewer is an outside party: the agency's plan state isn't theirs to see (#43 audit P3).
         orgs.set(x.org_id, { id: x.org_id, name: x.org_name, accountType: x.account_type,
-          subscriptionStatus: x.subscription_status, role: x.role, workspaces: [] });
+          ...(x.role === 'client_viewer' ? {} : { subscriptionStatus: x.subscription_status }), role: x.role, workspaces: [] });
       }
       orgs.get(x.org_id).workspaces.push({ id: x.workspace_id, name: x.workspace_name });
     }
