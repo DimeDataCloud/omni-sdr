@@ -312,7 +312,8 @@ function UserMenu({ onHelp }: { onHelp: () => void }) {
           {isDemo && <Menu.Item className={menuItem} onSelect={() => { resetDemo(); nav('/'); toast.success('Demo data reset.'); }}><RotateCcw className="size-4" aria-hidden />Reset demo data</Menu.Item>}
           <Menu.Separator className="my-1 h-px bg-line" />
           {/* Served by the sign-in Worker, not the app router: a full page load. */}
-          <Menu.Item asChild className={menuItem}><a href="/auth/password"><KeyRound className="size-4" aria-hidden />Change password</a></Menu.Item>
+          {/* The Worker's password exists only in password mode; with the real API, sign-in is an email link (G5). */}
+          {isDemo && <Menu.Item asChild className={menuItem}><a href="/auth/password"><KeyRound className="size-4" aria-hidden />Change password</a></Menu.Item>}
           <form method="post" action="/auth/logout">
             <Menu.Item asChild className={cx(menuItem, 'w-full text-danger')} onSelect={(e) => { e.preventDefault(); if (!isDemo) signOut(); (e.currentTarget as HTMLElement).closest('form')?.requestSubmit(); }}>
               <button type="submit"><LogOut className="size-4" aria-hidden />Sign out</button>
