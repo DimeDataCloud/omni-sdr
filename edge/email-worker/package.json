@@ -1,0 +1,16 @@
+{
+  "name": "@omni/email-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Email Worker for reply.omnisdr.com: parses a reply and posts it, HMAC-signed, to the API's /internal/inbound. Inbound only, stateless, one secret.",
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "postal-mime": "^4.0.2"
+  },
+  "devDependencies": {
+    "wrangler": "^4.146.0"
+  }
+}
