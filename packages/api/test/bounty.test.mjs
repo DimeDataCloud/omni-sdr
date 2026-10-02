@@ -72,3 +72,32 @@ test('a bogus kid can\'t hold the refresh slot against a real rotation; repeatin
   await ok('attacker-1').catch(() => {});
   assert.equal(fetches, 4, 'after 2 minutes the kid may be looked up again');
 });
+
+test('api.omnisdr.com (#52 audit): a signed client IP from the Worker gives each caller its own bucket; forged, stale or unconfigured is ignored', async () => {
+  const { createHmac } = await import('node:crypto');
+  const SECRET = 'edge-test-secret';
+  const mk = (edgeSecret) => {
+    const app = createApp({ pool: { acquire: async () => ({ client: {}, release() {} }) }, verifyToken: async () => { throw new Error('x'); },
+      config: { trustProxy: 1, ...(edgeSecret ? { edgeSecret } : {}) }, log: () => {} });
+    const s = createServer((req, res) => app.handle(req, res));
+    return new Promise((r) => s.listen(0, '127.0.0.1', () => r(s)));
+  };
+  const signed = (ip, { secret = SECRET, ts = Math.floor(Date.now() / 1000) } = {}) => ({ 'x-omni-client-ip': ip, 'x-omni-client-ts': String(ts),
+    'x-omni-client-sig': createHmac('sha256', secret).update(`${ip}.${ts}`).digest('hex') });
+  // Everyone arrives from one Cloudflare egress address (the last X-Forwarded-For hop Google appends).
+  async function untilLimited(server, headersFor) {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    for (let i = 1; i <= 40; i++) {
+      const r = await fetch(`${base}/v1/me`, { headers: { authorization: 'Bearer junk', 'x-forwarded-for': '104.16.0.1', ...headersFor(i) } });
+      if (r.status === 429) return i;
+    }
+    return null;
+  }
+  const on = await mk(SECRET); const off = await mk(null); const forged = await mk(SECRET); const stale = await mk(SECRET);
+  try {
+    assert.equal(await untilLimited(on, (i) => signed(`198.51.100.${i}`)), null, 'signed: each caller has its own bucket');
+    assert.equal(await untilLimited(forged, (i) => signed(`198.51.100.${i}`, { secret: 'guess' })), 31, 'forged signature: the shared egress bucket');
+    assert.equal(await untilLimited(stale, (i) => signed(`198.51.100.${i}`, { ts: Math.floor(Date.now() / 1000) - 120 })), 31, 'stale: ignored');
+    assert.equal(await untilLimited(off, (i) => signed(`198.51.100.${i}`)), 31, 'no secret configured: never trusted');
+  } finally { on.close(); off.close(); forged.close(); stale.close(); }
+});
