@@ -59,3 +59,13 @@ test('limits: no overspend, no free money, a cap per call, a job reference, a te
   assert.match(await refused(asApp(db, a, `UPDATE credit_balances SET balance = 999999 WHERE org_id = $1`, [a.org])) ?? '', /permission denied/);
   assert.match(await refused(asApp(db, a, `INSERT INTO credit_ledger (org_id, meter, delta, kind) VALUES ($1, 'action', 999, 'grant')`, [a.org])) ?? '', /permission denied/);
 });
+
+test('0012: a new org starts its trial with action and data credits, through the ledger; media stays at nothing', async () => {
+  const db = await freshDb();
+  const [{ id: org }] = (await db.query(`INSERT INTO orgs (name, account_type) VALUES ('Trial Co', 'owner') RETURNING id`)).rows;
+  const bal = Object.fromEntries((await db.query(`SELECT meter, balance FROM credit_balances WHERE org_id = $1`, [org])).rows.map((r) => [r.meter, Number(r.balance)]));
+  assert.deepEqual(bal, { action: 100, data: 25 });
+  const ledger = Object.fromEntries((await db.query(`SELECT meter, sum(delta)::int AS s FROM credit_ledger WHERE org_id = $1 GROUP BY meter`, [org])).rows.map((r) => [r.meter, r.s]));
+  assert.deepEqual(ledger, bal, 'balance = sum(ledger)');
+  assert.deepEqual((await db.query(`SELECT DISTINCT kind, ref_type FROM credit_ledger WHERE org_id = $1`, [org])).rows, [{ kind: 'grant', ref_type: 'trial' }]);
+});

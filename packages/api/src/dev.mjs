@@ -6,6 +6,8 @@
 //   OMNI_FIREBASE_PROJECT=<id>           also accept real Identity Platform / Firebase ID tokens
 //   OMNI_CORS_ORIGINS=https://...        extra browser origins (localhost:3000 and :5173 are allowed by default)
 //   OMNI_PGLITE_DIR=./.devdb             keep data between restarts (default: fresh every start)
+//   OMNI_DEV_MODEL=rules                 a deterministic stand-in model (services/devfakes.mjs) instead of none
+//   OMNI_DEV_FIXTURES=1                  research and enrichment read fixture sites instead of the network
 import { createServer } from 'node:http';
 import { PGlite } from '@electric-sql/pglite';
 import { migrate } from '../../db/src/migrate.mjs';
@@ -13,6 +15,7 @@ import { createApp } from './app.mjs';
 import { pglitePool } from './pool.mjs';
 import { devVerifier, firebaseVerifier } from './auth.mjs';
 import { offModel } from './services/model.mjs';
+import { rulesModel, fixtureFetch } from './services/devfakes.mjs';
 import { seedDemo } from './seed-demo.mjs';
 
 const env = process.env;
@@ -34,13 +37,14 @@ const verifyToken = (token) => (fb && token.split('.').length === 3 ? fb(token) 
 const app = createApp({
   pool: pglitePool(db),
   verifyToken,
-  model: offModel(),
+  model: env.OMNI_DEV_MODEL === 'rules' ? rulesModel() : offModel(),
   config: {
     corsOrigins: ['http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:3000', 'http://127.0.0.1:5173',
       ...(env.OMNI_CORS_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean)],
     appUrl: `http://${HOST}:${PORT}`,
     unsubscribeBase: `http://${HOST}:${PORT}`,
     inboundSecret: env.OMNI_INBOUND_SECRET || null,
+    ...(env.OMNI_DEV_FIXTURES === '1' ? { fetchPage: fixtureFetch } : {}),
   },
   log: (e) => { if (e.level === 'error' || env.OMNI_LOG === '1') console.log(JSON.stringify(e)); },
 });
