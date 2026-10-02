@@ -3,6 +3,14 @@
 import { T, camel, audit } from './index.mjs';
 import { v, parse } from '../validate.mjs';
 import { notFound, conflict } from '../errors.mjs';
+import { gateDraft } from '../../../gate/src/apply.mjs';
+
+// A no-show's reschedule note (acceptance step 9). Plain, no facts to cite, so it passes the gate on its own words;
+// it still goes through Approvals like every other draft and is never sent without a person's yes.
+export function rescheduleNote(name) {
+  const first = String(name ?? '').trim().split(/\s+/)[0];
+  return `Hi${first ? ` ${first}` : ''},\n\nLooks like we missed each other for our call. No problem at all. Would another time this week or next work for you? Reply with a time that suits you and I'll send a fresh invite.`;
+}
 
 const affected = (r) => r.affectedRows ?? r.rowCount ?? 0;
 
@@ -67,6 +75,21 @@ export function registerInbox(r) {
     }, { action: 'inbox_draft' });
   });
 
+  // In-app notifications (0008): unread SLA alerts with the reply they're about, newest first.
+  r.get(`${T}/notifications`, (ctx) => ctx.tenant(async (tx) => {
+    const rows = (await tx.query(`SELECT n.id, n.kind, n.channel, n.due_at, n.created_at, n.read_at, n.inbound_message_id,
+        i.sla_due_at, i.handled_at, c.name AS contact_name, c.company AS contact_company
+      FROM notifications n JOIN inbound_messages i ON i.id = n.inbound_message_id LEFT JOIN contacts c ON c.id = i.contact_id
+      WHERE n.channel = 'in_app' AND n.read_at IS NULL ORDER BY n.created_at DESC LIMIT 100`)).rows;
+    return { items: rows.map(camel) };
+  }, { action: 'inbox_read' }));
+
+  r.post(`${T}/notifications/:id/read`, (ctx) => ctx.tenant(async (tx) => {
+    const res = await tx.query(`UPDATE notifications SET read_at = now() WHERE id = $1 AND read_at IS NULL`, [ctx.params.id]);
+    if (!affected(res) && !(await tx.query(`SELECT 1 FROM notifications WHERE id = $1`, [ctx.params.id])).rows.length) throw notFound('notification not found');
+    return { id: ctx.params.id, read: true };
+  }, { action: 'inbox_read' }));
+
   // ?range=upcoming (default) | past | all
   r.get(`${T}/meetings`, (ctx) => {
     const q = parse(v.object({ range: v.optional(v.oneOf(['upcoming', 'past', 'all'])) }), ctx.query);
@@ -91,19 +114,40 @@ export function registerInbox(r) {
     }, { action: 'inbox_draft' });
   });
 
-  r.patch(`${T}/meetings/:id`, (ctx) => {
+  r.patch(`${T}/meetings/:id`, async (ctx) => {
     const b = parse(v.object({
       status: v.optional(v.oneOf(['booked', 'completed', 'no_show', 'canceled'])),
       startsAt: v.optional(v.datetime()), endsAt: v.optional(v.datetime()), meetUrl: v.optional(v.nullable(v.url())),
     }, { atLeastOne: true }), ctx.body);
-    return ctx.tenant(async (tx, m) => {
+    const out = await ctx.tenant(async (tx, m) => {
+      const before = (await tx.query(`SELECT status FROM meetings WHERE id = $1 FOR UPDATE`, [ctx.params.id])).rows[0];
+      if (!before) throw notFound('meeting not found');
       const cols = { status: 'status', startsAt: 'starts_at', endsAt: 'ends_at', meetUrl: 'meet_url' };
       const keys = Object.keys(b);
       const row = (await tx.query(`UPDATE meetings SET ${keys.map((k, i) => `${cols[k]} = $${i + 2}`).join(', ')}
         WHERE id = $1 RETURNING *`, [ctx.params.id, ...keys.map((k) => b[k])])).rows[0];
-      if (!row) throw notFound('meeting not found');
       await audit(tx, m, 'update', 'meeting', row.id);
-      return camel(row);
+      // A booked meeting that becomes a no-show reopens the sequence the booking converted and drafts a reschedule
+      // note into Approvals. Only once: a meeting already marked no_show doesn't draft again.
+      let draftId = null;
+      if (b.status === 'no_show' && before.status === 'booked' && row.contact_id) {
+        const e = (await tx.query(`SELECT e.id, e.step, c.name FROM enrollments e JOIN contacts c ON c.id = e.contact_id
+          WHERE e.contact_id = $1 AND e.state = 'converted' AND e.stop_reason = 'meeting_booked' ORDER BY e.step DESC LIMIT 1`,
+        [row.contact_id])).rows[0];
+        if (e) {
+          await tx.query(`UPDATE enrollments SET state = 'awaiting_approval', stop_reason = NULL WHERE id = $1`, [e.id]);
+          const last = (await tx.query(`SELECT subject, step FROM drafts WHERE enrollment_id = $1 ORDER BY step DESC, created_at DESC LIMIT 1`, [e.id])).rows[0];
+          const subject = last?.subject ? (/^re:/i.test(last.subject) ? last.subject : `Re: ${last.subject}`) : 'Finding another time';
+          draftId = (await tx.query(`INSERT INTO drafts (org_id, workspace_id, enrollment_id, step, channel, subject, body, status)
+            VALUES ($1, $2, $3, $4, 'email', $5, $6, 'gating') RETURNING id`,
+          [m.orgId, m.workspaceId, e.id, Math.max(e.step, last?.step ?? 0) + 1, subject.slice(0, 300), rescheduleNote(e.name)])).rows[0].id;
+          await audit(tx, m, 'reschedule_draft', 'draft', draftId);
+        }
+      }
+      return { meeting: camel(row), draftId };
     }, { action: 'inbox_draft' });
+    if (!out.draftId) return out.meeting;
+    const verdict = await gateDraft(ctx.client, { orgId: ctx.params.org, workspaceId: ctx.params.ws, draftId: out.draftId, now: ctx.now() });
+    return { ...out.meeting, reschedule: { draftId: out.draftId, gate: verdict.outcome } };
   });
 }
