@@ -3,7 +3,9 @@ import { useState } from 'react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { Mail, Calendar, CalendarCheck, Share2, ShoppingBag, Database, Download, Cpu, Flame, MessageSquare, CheckCircle2, Plug, AlertTriangle } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, isDemo, ApiError } from '@/lib/api';
+import { mailboxes, type Mailbox } from '@/lib/api/http';
+import { startGoogleConnect } from './ConnectGoogle';
 import type { Connector } from '@/lib/api/types';
 import { useQuery } from '@/lib/hooks';
 import { useWorkspace } from '@/lib/session';
@@ -14,6 +16,9 @@ const CAT: Record<Connector['category'], { label: string; icon: typeof Mail }> =
   commerce: { label: 'Commerce', icon: ShoppingBag }, crm: { label: 'CRM', icon: Database }, export: { label: 'Export', icon: Download }, mcp: { label: 'MCP', icon: Cpu },
   warmup: { label: 'Warm-up', icon: Flame }, sms: { label: 'SMS', icon: MessageSquare },
 };
+
+// Connectors the real API can connect today. The rest show their status and permissions but no button (no dead buttons).
+const LIVE_CONNECT = new Set(['gmail']);
 
 export default function ConnectionsPage() {
   const { scope, can } = useWorkspace();
@@ -50,9 +55,10 @@ export default function ConnectionsPage() {
                         <ul className="mt-2 space-y-1.5">{c.scopes.map((s) => <li key={s.scope}><code className="rounded bg-sunken px-1 font-mono text-xs">{s.scope}</code><span className="block text-muted">{s.why}</span></li>)}</ul>
                       </details>
                     )}
-                    {can('connections') && c.status !== 'connected' && (
-                      <div className="mt-auto pt-4"><Button size="sm" variant={c.status === 'activates_later' ? 'secondary' : 'primary'} icon={<Plug className="size-4" aria-hidden />} onClick={() => setConnecting(c)}>
-                        {c.status === 'activates_later' ? 'Set up' : 'Connect'}</Button></div>
+                    {c.id === 'gmail' && !isDemo && can('connections') && <GmailAccounts />}
+                    {can('connections') && (isDemo ? c.status !== 'connected' : LIVE_CONNECT.has(c.id)) && (
+                      <div className="mt-auto pt-4"><Button size="sm" variant={c.status === 'not_connected' ? 'primary' : 'secondary'} icon={<Plug className="size-4" aria-hidden />} onClick={() => setConnecting(c)}>
+                        {c.status === 'activates_later' ? 'Set up' : c.status === 'connected' ? 'Connect another' : 'Connect'}</Button></div>
                     )}
                   </article>
                 ))}
@@ -67,13 +73,24 @@ export default function ConnectionsPage() {
 }
 
 function ConnectSheet({ c, onClose }: { c: Connector | null; onClose: () => void }) {
+  const { scope } = useWorkspace();
   const [agree, setAgree] = useState(false);
+  const [busy, setBusy] = useState(false);
   const needsConsent = Boolean(c?.consent?.required);
+  const go = async () => {
+    if (isDemo || !c) { toast('Demo: no account was connected.'); setAgree(false); onClose(); return; }
+    setBusy(true);
+    try { await startGoogleConnect(scope); } catch (e) {   // on success the page is leaving for Google
+      setBusy(false);
+      toast.error(e instanceof ApiError ? e.message : 'Couldn’t start connecting. Try again.');
+    }
+  };
   return (
     <Sheet open={Boolean(c)} onOpenChange={(v) => { if (!v) { setAgree(false); onClose(); } }} title={c ? `Connect ${c.name}` : ''}
-      description="In this demo, connecting stops here. In the live product this opens the provider's own sign-in."
+      description={isDemo ? "In this demo, connecting stops here. In the live product this opens the provider's own sign-in."
+        : `Next is ${c?.name ?? 'the provider'}’s own sign-in. Omni-SDR never sees your password.`}
       footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" disabled={needsConsent && !agree} onClick={() => { toast('Demo: no account was connected.'); setAgree(false); onClose(); }}>Continue to {c?.name}</Button></>}>
+        <Button variant="primary" loading={busy} disabled={needsConsent && !agree} onClick={() => void go()}>Continue to {c?.name}</Button></>}>
       {c && (
         <div className="space-y-3 text-sm">
           {c.scopes.length > 0 && <><p className="font-medium">You&rsquo;ll be asked to allow:</p>
@@ -87,5 +104,31 @@ function ConnectSheet({ c, onClose }: { c: Connector | null; onClose: () => void
         </div>
       )}
     </Sheet>
+  );
+}
+
+/** The connected Gmail addresses, each with its state and a Disconnect. Real API only; never a token. */
+function GmailAccounts() {
+  const { scope } = useWorkspace();
+  const q = useQuery(() => mailboxes.list(scope), [scope.workspaceId]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const gmail = (q.data ?? []).filter((m) => m.provider === 'gmail' && m.connectedAt);
+  if (!gmail.length) return null;
+  const off = async (m: Mailbox) => {
+    setBusy(m.id);
+    try { await mailboxes.disconnect(scope, m.id); toast(`${m.address} disconnected. Nothing more sends from it.`); q.reload(); }
+    catch (e) { toast.error(e instanceof ApiError ? e.message : 'Couldn’t disconnect. Try again.'); }
+    finally { setBusy(null); }
+  };
+  const state = (m: Mailbox) => m.connected ? 'Sending' : m.revokedAt || m.pausedReason === 'disconnected' ? 'Disconnected' : m.pausedReason === 'reconnect' ? 'Needs reconnecting' : 'Paused';
+  return (
+    <ul className="mt-3 space-y-1.5 text-sm" aria-label="Connected Gmail accounts">
+      {gmail.map((m) => (
+        <li key={m.id} className="flex items-center gap-2 rounded-lg bg-sunken p-2.5">
+          <span className="min-w-0 flex-1 truncate">{m.address}<span className="block text-xs text-muted">{state(m)} · up to {m.dailyCap} a day</span></span>
+          {m.connected && <Button size="sm" variant="ghost" loading={busy === m.id} onClick={() => void off(m)}>Disconnect</Button>}
+        </li>
+      ))}
+    </ul>
   );
 }

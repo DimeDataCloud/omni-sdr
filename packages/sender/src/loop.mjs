@@ -7,9 +7,11 @@
 //   - approved email draft with no message yet, in a workspace sender_due_workspaces() lists
 //   - its enrollment isn't stopped, converted, completed, paused or snoozed
 //   - step 0 at once; a later step only after the previous step was sent and WAIT_BUSINESS_DAYS have passed
+//   - a no-show's reschedule note (purpose 'reschedule', 0008) at once, whatever its step: it isn't a sequence step
 //   - now is inside the send window: weekdays, 08:00–17:00 in the workspace's time zone
 import { withService } from '../../db/src/context.mjs';
 import { sendDraft } from './send.mjs';
+import { GMAIL_SEND } from './google.mjs';
 
 export const WAIT_BUSINESS_DAYS = Object.freeze({ 1: 3, 2: 4 }); // INFRASTRUCTURE §13.1: bump after 3, breakup after 4
 export const WINDOW = Object.freeze({ open: 8, close: 17 });
@@ -49,7 +51,7 @@ export function businessDaysBetween(from, to, timeZone) {
 export function notDueReason(d, now) {
   if (INACTIVE.has(d.enrollment_state)) return `enrollment_${d.enrollment_state}`;
   if (!inWindow(now, d.timezone)) return 'outside_window';
-  if (d.step > 0) {
+  if (d.step > 0 && d.purpose !== 'reschedule') {
     if (!d.prev_sent_at) return 'previous_step_not_sent';
     const need = WAIT_BUSINESS_DAYS[d.step] ?? WAIT_BUSINESS_DAYS[2];
     if (businessDaysBetween(new Date(d.prev_sent_at), now, d.timezone) < need) return 'waiting';
@@ -82,7 +84,7 @@ export async function runSendPass(client, { adapterFor, urls, now = () => new Da
     const ctx = { orgId, workspaceId, role: 'sender_svc' };
     const { drafts, mailboxes } = await withService(client, ctx, async (tx) => ({
       drafts: (await tx.query(`
-        SELECT d.id, d.step, e.state AS enrollment_state, w.timezone,
+        SELECT d.id, d.step, d.purpose, e.state AS enrollment_state, w.timezone,
                (SELECT m.sent_at FROM drafts p JOIN messages m ON m.draft_id = p.id
                  WHERE p.enrollment_id = d.enrollment_id AND p.step = d.step - 1 AND m.state = 'sent'
                  ORDER BY m.sent_at DESC LIMIT 1) AS prev_sent_at
@@ -93,7 +95,8 @@ export async function runSendPass(client, { adapterFor, urls, now = () => new Da
         SELECT mb.id, mb.address, mb.provider, mb.daily_cap,
                coalesce((SELECT sc.count FROM send_counters sc WHERE sc.mailbox_id = mb.id AND sc.day = (now() AT TIME ZONE 'UTC')::date), 0) AS used
         FROM mailboxes mb JOIN mailbox_credentials cr ON cr.mailbox_id = mb.id AND cr.revoked_at IS NULL
-        WHERE mb.paused_reason IS NULL AND mb.provider = 'gmail'`)).rows,
+          AND $1 = ANY (cr.scopes)                       -- a grant without send would only fail at Google
+        WHERE mb.paused_reason IS NULL AND mb.provider = 'gmail'`, [GMAIL_SEND])).rows,
     }));
     const room = new Map(mailboxes.map((m) => [m.id, { ...m, left: m.daily_cap - Number(m.used) }]));
     for (const d of drafts) {
@@ -103,7 +106,20 @@ export async function runSendPass(client, { adapterFor, urls, now = () => new Da
       if (why) { skip(why); continue; }
       const mb = [...room.values()].filter((m) => m.left > 0).sort((a, b) => b.left - a.left)[0];
       if (!mb) { skip('no_mailbox_room'); continue; }
-      const r = await sendDraft(client, { orgId, workspaceId, draftId: d.id, mailboxId: mb.id, adapter: adapterFor(mb, { orgId, workspaceId }), urls });
+      const adapter = adapterFor(mb, { orgId, workspaceId });
+      // Get the mailbox ready (an access token) before claiming: a claim consumes the draft for good, so a token
+      // Google refuses must stop here, leaving the draft to send once the mailbox is reconnected.
+      try {
+        await adapter.ready?.();
+      } catch (e) {
+        if (e?.kind === 'auth') {
+          await withService(client, ctx, (tx) => tx.query(`UPDATE mailboxes SET paused_reason = 'reconnect' WHERE id = $1 AND paused_reason IS NULL`, [mb.id]));
+          tally.paused.push(mb.id);
+        }
+        room.delete(mb.id); skip(e?.kind === 'auth' ? 'mailbox_needs_reconnect' : 'mailbox_not_ready');
+        continue;
+      }
+      const r = await sendDraft(client, { orgId, workspaceId, draftId: d.id, mailboxId: mb.id, adapter, urls });
       if (r.outcome === 'sent') {
         tally.sent++; mb.left--;
         if (tally.sent < maxSends) await pause(jitterMs());

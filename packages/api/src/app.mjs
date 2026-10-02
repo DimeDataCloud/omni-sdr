@@ -5,6 +5,7 @@
 // reach tenant data only through ctx.tenant(fn, { action }), which is withTenant() (membership proven from
 // the database, RLS context for that transaction only) plus the SPEC §7 permission check.
 import { randomUUID, createHmac, timingSafeEqual } from 'node:crypto';
+import { isIP } from 'node:net';
 import { withTenant, withoutTenant } from '../../db/src/context.mjs';
 import { can } from '../../db/src/permissions.mjs';
 import { HttpError, toHttp, forbidden, notFound, badRequest } from './errors.mjs';
@@ -61,7 +62,23 @@ export function createApp({ pool, verifyToken, config = {}, model = null, now = 
     return user;
   }
 
+  // The api.omnisdr.com Worker (edge/api-proxy) reaches us from Cloudflare's egress, so without this every user
+  // through that name would share a few rate-limit buckets (#52 audit). It signs the caller's address:
+  // x-omni-client-ip, x-omni-client-ts (unix s), x-omni-client-sig = hex HMAC-SHA256(edgeSecret, `${ip}.${ts}`).
+  // Trusted only with a valid signature from the last 60 s; anything else falls through to the hop-count rule, so a
+  // direct run.app caller can't choose its own bucket.
+  function edgeIp(req) {
+    const ip = req.headers['x-omni-client-ip']; const ts = req.headers['x-omni-client-ts']; const sig = req.headers['x-omni-client-sig'];
+    if (!cfg.edgeSecret || typeof ip !== 'string' || typeof ts !== 'string' || typeof sig !== 'string') return null;
+    if (!/^[0-9a-fA-F:.]{2,45}$/.test(ip) || !isIP(ip) || !/^\d{9,11}$/.test(ts) || !/^[0-9a-f]{64}$/.test(sig)) return null;
+    if (Math.abs(now().getTime() / 1000 - Number(ts)) > 60) return null;
+    const want = Buffer.from(createHmac('sha256', cfg.edgeSecret).update(`${ip}.${ts}`).digest('hex'));
+    return timingSafeEqual(want, Buffer.from(sig)) ? ip : null;
+  }
+
   function clientIp(req) {
+    const edge = edgeIp(req);
+    if (edge) return edge;
     // trustProxy = how many proxies in front append to X-Forwarded-For (true = 1, Cloud Run alone). Behind Cloudflare
     // or a load balancer as well it is 2: the last entry would be that proxy, and every user would share one rate-limit
     // and sign-in-failure bucket (bug bounty 2026-10-02).
