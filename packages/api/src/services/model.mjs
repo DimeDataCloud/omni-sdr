@@ -2,8 +2,10 @@
 // on the model's behalf (INFRA §10 injection containment). Model IDs are [VERIFY] on Vertex and come from
 // config, never from the request.
 //
-// generate({ tier: 'flash_lite'|'flash'|'pro', system, messages: [{ role: 'user'|'model', text }] })
-//   → { text, model, usage: { inputTokens, outputTokens } | null }
+// generate({ tier: 'flash_lite'|'flash'|'pro', system, messages: [{ role: 'user'|'model', text }], grounded? })
+//   → { text, model, usage: { inputTokens, outputTokens } | null, sources?: [{ uri, title }] }
+// `grounded: true` lets the model search Google (competitor discovery only, DECISIONS 2026-09-28); the web pages it
+// used come back as `sources`. Still no tools of ours: the model can search, never act.
 
 export class ModelError extends Error {
   constructor(message) { super(message); this.name = 'ModelError'; }
@@ -45,7 +47,7 @@ export function vertexModel({ project, location = 'us-central1', models, getToke
   if (!project || !models?.flash) throw new Error('vertexModel needs project and models.{flash_lite,flash,pro}');
   return {
     name: 'vertex',
-    async generate({ tier, system, messages }) {
+    async generate({ tier, system, messages, grounded = false }) {
       const model = models[tier] ?? models.flash;
       const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/publishers/google/models/${model}:generateContent`;
       const res = await fetchImpl(url, {
@@ -56,6 +58,9 @@ export function vertexModel({ project, location = 'us-central1', models, getToke
           systemInstruction: { parts: [{ text: system }] },
           contents: messages.map((m) => ({ role: m.role, parts: [{ text: m.text }] })),
           generationConfig: { maxOutputTokens },
+          // [VERIFY] the grounding tool's field name for the configured Gemini model:
+          // https://cloud.google.com/vertex-ai/generative-ai/docs/grounding/grounding-with-google-search
+          ...(grounded ? { tools: [{ googleSearch: {} }] } : {}),
         }),
       });
       if (!res.ok) throw new ModelError(`vertex ${res.status}`);
@@ -63,7 +68,10 @@ export function vertexModel({ project, location = 'us-central1', models, getToke
       const text = (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('').trim();
       if (!text) throw new ModelError('empty response');
       const u = data.usageMetadata;
-      return { text, model, usage: u ? { inputTokens: u.promptTokenCount ?? null, outputTokens: u.candidatesTokenCount ?? null } : null };
+      const sources = (data.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [])
+        .map((c) => c.web).filter((w) => w?.uri).map((w) => ({ uri: String(w.uri).slice(0, 500), title: String(w.title ?? '').slice(0, 200) }));
+      return { text, model, usage: u ? { inputTokens: u.promptTokenCount ?? null, outputTokens: u.candidatesTokenCount ?? null } : null,
+        ...(grounded ? { sources } : {}) };
     },
   };
 }
