@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { CalendarPlus, CheckCircle2, ArrowLeft, Inbox as InboxIcon, Info, Clock3, UserRound, ShieldOff, FileText } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { InboxItem } from '@/lib/api/types';
-import { bumpEdge, useArrivalFocus, useHotkeys, useMedia, useNow, useQuery, useSelection, prefetchQuery, requestArrival } from '@/lib/hooks';
+import { bumpEdge, useArrivalFocus, useFillHeight, useHotkeys, useMedia, useNow, useQuery, useSelection, prefetchQuery, requestArrival } from '@/lib/hooks';
 import { useCommands } from '@/lib/commands';
 import { AskButton } from '@/lib/ask';
 import type { Scope } from '@/lib/api/client';
@@ -24,6 +24,7 @@ export const prefetch = (s: Scope) => prefetchQuery(`inbox:${s.workspaceId}:open
 export default function InboxPage() {
   const { scope, tz } = useWorkspace();
   const [params, setParams] = useSearchParams();
+  const [listFill, listFillVar] = useFillHeight<HTMLDivElement>();
   const status = (params.get('s') as Status) ?? 'open';
   const since = params.get('since'); // from Home: only replies that arrived after this instant
   const inbox = useQuery(() => api.inbox(scope, { status }), [scope.workspaceId, status], { pollMs: 60000, key: `inbox:${scope.workspaceId}:${status}` });
@@ -97,7 +98,7 @@ export default function InboxPage() {
       {inbox.loading ? <div className="grid grid-cols-[minmax(320px,400px)_1fr] gap-5"><SkeletonList rows={5} /><Skeleton className="h-96 rounded-xl" /></div>
         : !items.length ? empty : (
           <div className="grid grid-cols-[minmax(320px,400px)_1fr] items-start gap-5">
-            <div className="sticky top-[72px] max-h-[calc(100dvh-160px)] overflow-y-auto pr-1"><ReplyList items={items} selectedId={selected?.id ?? null} onSelect={(id) => setParam('r', id)} sel={sel} /></div>
+            <div ref={listFill} style={listFillVar} className="sticky top-[72px] max-h-[calc(100dvh-160px)] overflow-y-auto pr-1 lg:max-h-[var(--fill,calc(100dvh-160px))]"><ReplyList items={items} selectedId={selected?.id ?? null} onSelect={(id) => setParam('r', id)} sel={sel} /></div>
             <AnimatePresence mode="wait">{selected && <ReplyDetail key={selected.id} r={selected} onDone={() => { const n = items[idx + 1] ?? items[idx - 1]; if (n && n.id !== selected.id) { requestArrival(); setParam('r', n.id); } else setParam('r', null); }} keyboard />}</AnimatePresence>
           </div>
         )}

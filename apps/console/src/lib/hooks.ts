@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { onInvalidate, ApiError } from './api';
 
 export interface Query<T> { data: T | undefined; error: ApiError | null; loading: boolean; reload: () => void }
@@ -40,6 +40,24 @@ export function useQuery<T>(fn: () => Promise<T>, deps: unknown[], opts: { pollM
     return () => clearInterval(t);
   }, [run, opts.pollMs]);
   return { data, error, loading: loading && data === undefined, reload: run };
+}
+
+/** Height from where `ref`'s parent starts in the page down to the window's bottom edge (macOS split view: list and
+ *  detail panes fill the window and scroll on their own, so a pane's footer actions are always on screen). Exposed as
+ *  the CSS variable --fill, so a breakpoint class decides where it applies: `lg:max-h-[var(--fill)]`. */
+export function useFillHeight<T extends HTMLElement>(gap = 16, min = 360) {
+  const [el, ref] = useState<T | null>(null); // a callback ref: the pane often mounts after the data loads
+  const [h, setH] = useState(0);
+  useEffect(() => {
+    const host = el?.parentElement; // the parent, not the element: a stuck sticky element reports its stuck position
+    if (!host) return;
+    const fit = () => setH(Math.max(min, Math.round(window.innerHeight - (host.getBoundingClientRect().top + window.scrollY) - gap)));
+    fit();
+    const ro = new ResizeObserver(fit); ro.observe(document.documentElement);
+    window.addEventListener('resize', fit);
+    return () => { ro.disconnect(); window.removeEventListener('resize', fit); };
+  }, [el, gap, min]);
+  return [ref, (h ? { '--fill': `${h}px` } : {}) as CSSProperties] as const;
 }
 
 export function useMedia(query: string) {

@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { Check, X, Pencil, SkipForward, ShieldCheck, ShieldAlert, ExternalLink, Mail, BriefcaseBusiness, MessageSquare, CheckCheck, Bot, AlertTriangle, ArrowLeft } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import type { ApprovalCard, DraftStatus } from '@/lib/api/types';
-import { bumpEdge, useArrivalFocus, useHotkeys, useMedia, useQuery, useSelection, prefetchQuery, requestArrival } from '@/lib/hooks';
+import { bumpEdge, useArrivalFocus, useFillHeight, useHotkeys, useMedia, useQuery, useSelection, prefetchQuery, requestArrival } from '@/lib/hooks';
 import { useCommands } from '@/lib/commands';
 import { AskButton } from '@/lib/ask';
 import type { Scope } from '@/lib/api/client';
@@ -64,6 +64,7 @@ export default function ApprovalsPage() {
   // X toggles the open draft (it is open, so it counts as seen for bulk approve).
   useHotkeys({ x: () => { if (selected && tab === 'review') checked.toggle(groupKey(selected)); } }, [selected?.id, tab, checked.toggle], wide);
   const [exiting, setExiting] = useState<'left' | 'right' | null>(null);
+  const [listFill, listFillVar] = useFillHeight<HTMLDivElement>();
 
   const setParam = (k: string, v: string | null) => { const p = new URLSearchParams(params); if (v) p.set(k, v); else p.delete(k); setParams(p, { replace: true }); };
   const select = (id: string | null) => setParam('d', id);
@@ -150,7 +151,7 @@ export default function ApprovalsPage() {
         <div className="grid grid-cols-[minmax(300px,380px)_1fr] gap-5"><SkeletonList rows={6} /><Skeleton className="h-[560px] rounded-xl" /></div>
       ) : items.length === 0 ? empty : (
         <div className="grid grid-cols-[minmax(300px,380px)_1fr] items-start gap-5">
-          <div className="sticky top-[72px] max-h-[calc(100dvh-160px)] overflow-y-auto pr-1">
+          <div ref={listFill} style={listFillVar} className="sticky top-[72px] max-h-[calc(100dvh-160px)] overflow-y-auto pr-1 lg:max-h-[var(--fill,calc(100dvh-160px))]">
             <ListRows items={heads} groups={groups} selectedId={selected?.id ?? null} onSelect={select} checked={checked} />
           </div>
           <AnimatePresence mode="popLayout" custom={exiting} onExitComplete={() => setExiting(null)}>
@@ -227,6 +228,7 @@ const cardVariants = {
 function DecisionCard({ group, initialId, exitDir, onDecided, onSkip, onPrev, keyboard, onMoved, dragProps }: DecisionProps & { dragProps?: Record<string, unknown> }) {
   const { scope, tz, can } = useWorkspace();
   const [activeId, setActiveId] = useState(() => group.find((d) => d.id === initialId)?.id ?? group[0].id);
+  const [cardFill, cardFillVar] = useFillHeight<HTMLElement>();
   const item = group.find((d) => d.id === activeId) ?? group[0];
   const [step, setStep] = useState(item.step);
   const [editing, setEditing] = useState(false);
@@ -286,7 +288,7 @@ function DecisionCard({ group, initialId, exitDir, onDecided, onSkip, onPrev, ke
 
   return (
     <motion.article variants={cardVariants} custom={exitDir} initial="enter" animate="center" exit="exit" transition={{ type: 'spring', bounce: 0, duration: 0.35 }}
-      {...dragProps} aria-label={`Draft to ${item.recipient.name}`} className="card overflow-hidden lg:sticky lg:top-[72px] lg:flex lg:max-h-[calc(100dvh-228px)] lg:flex-col">
+      {...dragProps} aria-label={`Draft to ${item.recipient.name}`} ref={cardFill} style={cardFillVar} className="card overflow-hidden lg:sticky lg:top-[72px] lg:flex lg:max-h-[var(--fill,calc(100dvh-228px))] lg:flex-col">
       {/* Header */}
       <div className="flex shrink-0 items-start gap-4 border-b border-line p-5">
         <div className="min-w-0 flex-1">

@@ -183,7 +183,7 @@ function SectionTabs({ section, items, base, page, count, role }: { section: Sec
   const sec = SECTIONS.find((x) => x.key === section)!;
   return (
     <div className="mx-auto max-w-[1600px] px-3 pt-3 md:px-4">
-      <nav aria-label={`${sec.label} pages`} className="flex max-w-full items-center gap-1 overflow-x-auto border-b border-line">
+      <nav aria-label={`${sec.label} pages`} className="edge-fade flex max-w-full items-center gap-1 overflow-x-auto border-b border-line">
         <span className="mr-2 hidden shrink-0 text-xs font-semibold tracking-wide text-muted uppercase sm:inline">{sec.label}</span>
         {items.map((i) => (
           <NavLink key={i.key} to={`${base}/${i.key}`} viewTransition {...prefetchProps(i.key, scope)} title={i.hint}
