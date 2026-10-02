@@ -90,7 +90,7 @@ test('icp eval harness: a model that cites rows passes 10/10; one that invents f
     const rows = JSON.parse(/<clients>\n([\s\S]*?)\n<\/clients>/.exec(input.messages[0].text)[1]);
     const by = (f) => Object.entries(rows.reduce((m, r) => (r[f] ? { ...m, [r[f]]: [...(m[r[f]] ?? []), r.row] } : m), {}));
     const traits = [...by('industry').map(([v, rs]) => ({ kind: 'industry', value: v, rows: rs })), ...by('title').map(([v, rs]) => ({ kind: 'title', value: v, rows: rs })),
-      ...by('city').map(([v, rs]) => ({ kind: 'region', value: v, rows: rs })), ...by('company').filter(([v]) => /fitness|gym/i.test(v)).map(([, rs]) => ({ kind: 'industry', value: 'Fitness studios', rows: rs }))];
+      ...by('city').map(([v, rs]) => ({ kind: 'region', value: v, rows: rs })), ...by('company').filter(([v]) => /fitness/i.test(v)).map(([, rs]) => ({ kind: 'industry', value: 'Fitness studios', rows: rs }))];
     const notes = /<notes>\n"([^"]*)"/.exec(input.messages[0].text)?.[1];
     if (notes && /vets?\b/i.test(notes)) traits.push({ kind: 'other', value: 'Vet clinics with several vets', notes: true });
     return JSON.stringify({ name: 'x', summary: 'y', traits });
@@ -100,4 +100,17 @@ test('icp eval harness: a model that cites rows passes 10/10; one that invents f
   assert.equal(r.pass, r.total, lines.join('\n'));
   const liar = fakeModel(() => JSON.stringify({ name: 'x', traits: [{ kind: 'industry', value: 'Aerospace', rows: [1] }] }));
   assert.equal((await runIcpEval(liar, { log: () => {} })).pass, 0);
+});
+
+test('a cited row must show the trait (#51 audit P3)', () => {
+  const rows = cleanRows(CLIENTS);
+  const { proposal, problems } = parseIcp(JSON.stringify({ name: 'x', traits: [
+    { kind: 'industry', value: 'Dental practices', rows: [1, 4] },          // row 4 is a roofer
+    { kind: 'industry', value: 'Aerospace suppliers', rows: [1, 2] },       // no row says aerospace
+  ] }), rows);
+  assert.deepEqual(proposal.traits.map((t) => [t.value, t.rows]), [['Dental practices', [1]]]);
+  assert.ok(problems.includes('rows_dont_show:Dental practices') && problems.includes('uncited:Aerospace suppliers'));
+  // A region spanning towns keeps its rows; one no row shows at all is kept but marked weak.
+  const r2 = parseIcp(JSON.stringify({ name: 'x', traits: [{ kind: 'region', value: 'Nashville area', rows: [1, 2, 3] }, { kind: 'region', value: 'Pacific Northwest', rows: [1, 2] }] }), rows);
+  assert.deepEqual(r2.proposal.traits.map((t) => [t.value, t.rows, t.weak]), [['Nashville area', [1, 2, 3], false], ['Pacific Northwest', [1, 2], true]]);
 });
