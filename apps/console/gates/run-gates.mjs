@@ -3,11 +3,12 @@
 //   node gates/run-gates.mjs --url=https://…   browser gates against a deployed copy (needs a session cookie via OMNI_SESSION)
 //   --only=quality (or idle,motion,fonts,inp,tabwalk,visual) runs the Phase 0 quality gates; --update-baselines rewrites the visual baselines
 // Exit code 1 if any gate fails. Screenshots land in gates/out/ for the visual review pass.
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync, statSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
+import { connect } from 'node:net';
 import puppeteer from 'puppeteer-core';
 import { runQuality } from './quality.mjs';
 
@@ -57,8 +58,42 @@ if (want('static') && !REMOTE) {
 }
 
 // ── Build + bundle budget ─────────────────────────────────────────────────────────────────────
-let server;
+let server; let stopping = false;
 let BASE = REMOTE;
+const PORT = 4173;
+const alive = () => server && server.exitCode === null && server.signalCode === null;
+// The preview server is our direct child (no shell in between), so stopping it stops the tree; on Windows taskkill /T
+// also takes anything it started. Runs on normal end, on a throw (the 'exit' event) and on Ctrl+C.
+const stopServer = () => {
+  if (!alive()) return;
+  stopping = true;
+  if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(server.pid), '/t', '/f'], { stdio: 'ignore' });
+  else server.kill('SIGTERM');
+};
+process.on('exit', stopServer);
+for (const [sig, n] of [['SIGINT', 2], ['SIGTERM', 15], ['SIGHUP', 1]]) process.on(sig, () => { stopServer(); process.exit(128 + n); });
+// Who holds a local port: "PID 123 (node.exe)", or null if the lookup fails. Only used for the error message.
+function portOwner(port) {
+  try {
+    if (process.platform === 'win32') {
+      const pid = execFileSync('netstat', ['-ano'], { encoding: 'utf8' }).split(/\r?\n/).map((l) => l.match(new RegExp(`^\\s*TCP\\s+\\S+:${port}\\s+\\S+:0\\s+\\S+\\s+(\\d+)\\s*$`))?.[1]).find(Boolean);
+      if (!pid) return null;
+      const name = execFileSync('tasklist', ['/fi', `PID eq ${pid}`, '/fo', 'csv', '/nh'], { encoding: 'utf8' }).split(',')[0]?.replace(/"/g, '').trim();
+      return `PID ${pid}${name ? ` (${name})` : ''}`;
+    }
+    const pid = execFileSync('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t'], { encoding: 'utf8' }).trim().split('\n')[0];
+    return pid ? `PID ${pid} (${execFileSync('ps', ['-o', 'args=', '-p', pid], { encoding: 'utf8' }).trim().slice(0, 120)})` : null;
+  } catch { return null; }
+}
+const portBusy = (port) => new Promise((res) => { const s = connect({ host: '127.0.0.1', port }); s.once('connect', () => { s.destroy(); res(true); }); s.once('error', () => res(false)); });
+if (!REMOTE && (wantRoutes || wantFlows || wantQuality) && await portBusy(PORT)) {
+  // Testing whatever already answers there (a preview left over from an earlier run, built from other code) is
+  // worse than not testing: every browser gate would pass or fail on the wrong build.
+  const who = portOwner(PORT);
+  const kill = who ? (process.platform === 'win32' ? `taskkill /pid ${who.split(' ')[1]} /t /f` : `kill ${who.split(' ')[1]}`) : 'stop it';
+  console.error(`FAIL  port ${PORT} is already in use by ${who ?? 'a process this script could not identify'}; not testing whatever it serves. ${kill}, then run again.`);
+  process.exit(1);
+}
 if (!REMOTE && (want('bundle') || wantRoutes || wantFlows || wantQuality)) {
   await new Promise((res, rej) => { const p = spawn('npx', ['vite', 'build'], { cwd: ROOT, shell: true, stdio: 'ignore' }); p.on('exit', (c) => (c ? rej(new Error('build failed')) : res())); });
   const html = readFileSync(join(ROOT, 'dist', 'index.html'), 'utf8');
@@ -73,11 +108,25 @@ if (!REMOTE && (want('bundle') || wantRoutes || wantFlows || wantQuality)) {
   const blurRules = [...css.matchAll(/([^{}]+)\{([^{}]*-webkit-backdrop-filter:[^{}]*)\}/g)];
   gate('backdrop blur keeps the unprefixed property after minify', blurRules.filter((m) => !/(^|;)backdrop-filter:/.test(m[2])).map((m) => m[1].trim().slice(0, 60)), blurRules.length);
   if (wantRoutes || wantFlows || wantQuality) {
-    server = spawn('npx', ['vite', 'preview', '--host', '127.0.0.1', '--port', '4173', '--strictPort'], { cwd: ROOT, shell: true, stdio: 'ignore' });
-    BASE = 'http://127.0.0.1:4173';
+    // node + vite.js directly: through `npx` with shell:true the kill only reached the shell, and the vite process kept
+    // 4173 for hours (found 2026-10-01). The --import hook ends the server when our end of its stdin closes, which
+    // covers the cases no handler above sees: this process killed hard, or its terminal closed.
+    const watchdog = "data:text/javascript,process.stdin.on('end',()=>process.exit()).on('error',()=>process.exit()).resume()";
+    server = spawn(process.execPath, [`--import=${watchdog}`, join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js'), 'preview', '--host', '127.0.0.1', '--port', String(PORT), '--strictPort'], { cwd: ROOT, stdio: 'pipe' });
+    // Ready only once vite says it listens on our port: an answer alone could come from whoever took 4173 after the
+    // check above (seen in a test: the gates then ran against that server until a timeout).
+    let out = ''; let ready = false;
+    server.stdout.on('data', (d) => { out = (out + d).slice(-4000); ready ||= new RegExp(`Local:\\s+http://127\\.0\\.0\\.1:${PORT}/`).test(out.replace(/\x1b\[[\d;]*m/g, '')); });
+    server.stderr.on('data', (d) => process.stderr.write(String(d).replace(/^(?=.)/gm, 'preview: ')));
+    const exited = new Promise((r) => server.once('close', (code, sig) => r(`exited (${sig ?? code})`)));
+    exited.then((how) => { if (BASE && !stopping) console.error(`preview server ${how} mid-run`); });
     let up = false;
-    for (let i = 0; i < 80 && !up; i++) { try { up = (await fetch(BASE)).ok; } catch { await new Promise((r) => setTimeout(r, 250)); } }
-    if (!up) throw new Error(`preview server never answered at ${BASE}`);
+    for (let i = 0; i < 80 && !up && alive(); i++) {
+      try { up = ready && (await fetch(`http://127.0.0.1:${PORT}`)).ok; } catch { /* not listening yet */ }
+      if (!up) await Promise.race([exited, new Promise((r) => setTimeout(r, 250))]);
+    }
+    if (!up || !alive()) throw new Error(`preview server at :${PORT} ${alive() ? 'never answered' : `${await exited} before answering (its errors are above)`}${out ? `; its output:\n${out}` : ''}`);
+    BASE = `http://127.0.0.1:${PORT}`;
   }
 }
 
@@ -558,7 +607,7 @@ if ((wantRoutes || wantFlows || wantQuality) && BASE) {
   if (wantQuality) await runQuality({ browser, BASE, ROOT, OUT, gate, want: wantQ, open, settle, REMOTE, ALL });
   await browser.close();
 }
-if (server) { server.kill(); spawn('taskkill', ['/pid', String(server.pid), '/t', '/f'], { shell: true, stdio: 'ignore' }); }
+if (alive()) { const gone = new Promise((r) => server.once('exit', r)); stopServer(); await Promise.race([gone, new Promise((r) => setTimeout(r, 5000))]); }
 
 writeFileSync(join(ROOT, 'gates', 'last-run.json'), JSON.stringify({ at: new Date().toISOString(), base: BASE ?? null, results }, null, 2));
 const failed = results.filter((r) => !r.ok);
