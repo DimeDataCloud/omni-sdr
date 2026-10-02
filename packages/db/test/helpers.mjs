@@ -99,6 +99,12 @@ export async function seedTenant(db, label, { cap = 5, trust = 1, heat = 1 } = {
     [org, ws, inbound]));
   // 0010: a profile row per tenant, so the RLS matrix covers it.
   await db.query(`INSERT INTO workspace_profiles (org_id, workspace_id, offer) VALUES ($1, $2, 'After-hours call answering')`, [org, ws]);
+  // 0011: one competitor, snapshot and battlecard per tenant, so the RLS matrix and the FK rule cover them.
+  const comp = (await one(db, `INSERT INTO competitors (org_id, workspace_id, name, domain) VALUES ($1, $2, 'Rival', $3) RETURNING id`,
+    [org, ws, `rival-${label}.test`])).id;
+  await db.query(`INSERT INTO competitor_snapshots (org_id, workspace_id, competitor_id, url, fetched_at, sha, text)
+    VALUES ($1, $2, $3, 'https://rival.test/', now(), repeat('a', 64), 'Rival answers calls.')`, [org, ws, comp]);
+  await db.query(`INSERT INTO battlecards (org_id, workspace_id, competitor_id, version, doc, source_refs) VALUES ($1, $2, $3, 1, '{}', '[]')`, [org, ws, comp]);
   return { ...t, message, inbound };
 }
 
