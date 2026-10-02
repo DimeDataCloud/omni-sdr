@@ -30,7 +30,7 @@ export function registerOps(r) {
       today: { cap, used, remaining: Math.max(0, cap - used) },
       workspaceOnHold: holds.some((h) => (h.scope_type === 'workspace' && h.scope_id === m.workspaceId) || (h.scope_type === 'org' && h.scope_id === m.orgId)),
     };
-  }, { action: 'reports_view' }));
+  }, { action: 'team_view' }));
 
   // Setting a hold is always the safe direction, so anyone who can build or approve may pull it.
   // The scope must be something in this tenant (checked here; the holds key is global, see PR notes).
@@ -75,7 +75,7 @@ export function registerOps(r) {
   r.get(`${T}/credits`, (ctx) => ctx.tenant(async (tx) => {
     const rows = (await tx.query(`SELECT meter, balance FROM credit_balances ORDER BY meter`)).rows;
     return { balances: Object.fromEntries(rows.map((x) => [x.meter, Number(x.balance)])) };
-  }, { action: 'reports_view' }));
+  }, { action: 'team_view' }));
 
   // ?days=7|30|90
   r.get(`${T}/analytics`, (ctx) => {
@@ -121,7 +121,7 @@ export function registerOps(r) {
     const connected = { gmail: providers.has('gmail'), smtp_imap: providers.has('smtp_imap'), email_routing: providers.size > 0 };
     return { items: CONNECTORS.map((c) => ({ ...c,
       status: c.activation === 'later' ? 'activates_later' : connected[c.id] ? 'connected' : 'not_connected' })) };
-  }, { action: 'reports_view' }));
+  }, { action: 'team_view' }));
 
   r.get(`${T}/activity`, (ctx) => {
     const q = parse(v.object({ limit: v.optional(v.int({ min: 1, max: 200 })) }), ctx.query);
