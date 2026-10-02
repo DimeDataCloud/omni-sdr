@@ -37,6 +37,12 @@ function copied() {
     .map((l) => /^COPY\s+(?!--from)(\S+)\s/.exec(l)?.[1]).filter(Boolean).map((s) => posix(s).replace(/\/$/, ''));
 }
 
+/** Paths the build context lets through: Dockerfile.dockerignore is an allow-list (`**`, then `!path/**` lines). */
+function allowed() {
+  return readFileSync(join(API, 'Dockerfile.dockerignore'), 'utf8').split('\n').map((l) => l.trim())
+    .filter((l) => l.startsWith('!')).map((l) => l.slice(1).replace(/\/\*\*$/, ''));
+}
+
 test('image: everything the API reaches outside packages/api is copied into the image', () => {
   const entries = files(join(API, 'src'));
   const all = new Set();
@@ -46,4 +52,11 @@ test('image: everything the API reaches outside packages/api is copied into the 
   const sources = copied();
   const missing = outside.filter((p) => !sources.some((s) => p === s || p.startsWith(`${s}/`)));
   assert.deepEqual(missing, [], `not in any COPY of packages/api/Dockerfile: ${missing.join(', ')}`);
+});
+
+test('image: every COPY source is let through the build context allow-list (else the build fails)', () => {
+  const allow = allowed();
+  assert.ok(allow.length > 0, 'fixture: the allow-list has entries');
+  const blocked = copied().filter((src) => !allow.some((a) => src === a || src.startsWith(`${a}/`)));
+  assert.deepEqual(blocked, [], `COPY sources not allowed by packages/api/Dockerfile.dockerignore: ${blocked.join(', ')}`);
 });
