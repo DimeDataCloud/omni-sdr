@@ -5,7 +5,10 @@ import { SessionProvider, useSession, WorkspaceProvider, useWorkspace } from '@/
 import { useTheme } from '@/lib/theme';
 import { AppShell } from '@/components/shell/AppShell';
 import { NAV, homeFor, type PageKey } from '@/components/shell/nav';
-import { NoAccess, Page, SkeletonList, TipProvider } from '@/components/ui';
+import { Button, ErrorState, NoAccess, Page, SkeletonList, TipProvider } from '@/components/ui';
+import { isDemo, invalidate } from '@/lib/api';
+import { FINISH_PATH, safeNext, signOut } from '@/lib/auth';
+import { FinishPage, InvitePage, Onboarding, SignInPage } from '@/features/signin/SignIn';
 
 import { screenLoaders } from '@/components/shell/prefetch';
 
@@ -41,11 +44,35 @@ function Root() {
   return <Navigate to={`/w/${first.id}/${homeFor(org.role)}${window.location.search}`} replace />;
 }
 
+// G5: with the real API, nothing below renders until the person is signed in and belongs to an org.
+// The demo is always signed in, so it never reaches these screens.
+function AuthGate({ children }: { children: React.ReactNode }) {
+  const { signedIn, me, loading, meError, reloadMe } = useSession();
+  if (isDemo) return children;
+  const { pathname, search } = window.location;
+  if (pathname === FINISH_PATH) return <FinishPage onDone={(next) => window.location.replace(safeNext(next))} />;
+  if (!signedIn) return <SignInPage next={pathname + search} />;
+  const invite = /^\/invite\/([A-Za-z0-9_-]{16,200})$/.exec(pathname);
+  if (invite) return <InvitePage token={invite[1]} onAccepted={() => { invalidate(); window.location.replace('/'); }} />;
+  if (meError) {
+    return (
+      <Page className="max-w-md pt-16">
+        <ErrorState error={meError} onRetry={reloadMe} />
+        <Button variant="ghost" className="mt-4" onClick={signOut}>Sign out</Button>
+      </Page>
+    );
+  }
+  if (loading || !me) return <Loading />;
+  if (!me.orgs.length) return <Onboarding email={me.user.email} onCreated={() => { invalidate(); window.location.replace('/'); }} />;
+  return children;
+}
+
 export function App() {
   const theme = useTheme();
   return (
     <SessionProvider>
       <TipProvider>
+        <AuthGate>
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Root />} />
@@ -57,6 +84,7 @@ export function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>
+        </AuthGate>
         <Toaster position="bottom-center" theme={theme} offset={{ bottom: 88 }} mobileOffset={{ bottom: 88 }}
           toastOptions={{ classNames: { toast: '!rounded-xl !border-line !shadow-lg !font-sans' } }} />
       </TipProvider>

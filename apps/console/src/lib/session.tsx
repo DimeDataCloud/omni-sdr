@@ -1,17 +1,22 @@
 // Who is signed in, which workspace is open, and what their role lets them do here.
 // can() is the backend's own matrix (packages/db/src/permissions.mjs); the UI hides what it denies (DESIGN §5.3).
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { can as canDo } from '@db/permissions.mjs';
-import { api, invalidate, type Scope } from './api';
+import { api, invalidate, isDemo, type ApiError, type Scope } from './api';
 import type { Me, Role, Settings } from './api/types';
 import { useQuery } from './hooks';
 import { personaEmail, setPersonaEmail, reset as resetDemo } from './api/demo/store';
+import { onAuthChange, signedInEmail } from './auth';
 
 export type Action = 'billing' | 'members' | 'connections' | 'workspace_settings' | 'build' | 'approve' | 'inbox_read' | 'inbox_draft' | 'clear_hold' | 'reports_view' | 'export_pii';
 
 interface SessionValue {
   me: Me | undefined;
   loading: boolean;
+  /** The demo is always signed in; the real API needs an Identity Platform session (G5). */
+  signedIn: boolean;
+  meError: ApiError | null;
+  reloadMe: () => void;
   org: Me['orgs'][number] | undefined;
   persona: string;
   switchPersona: (email: string) => void;
@@ -21,12 +26,16 @@ const SessionCtx = createContext<SessionValue | null>(null);
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [persona, setPersona] = useState(personaEmail);
-  const me = useQuery(() => api.me(), [persona]);
+  const [account, setAccount] = useState(signedInEmail);
+  useEffect(() => onAuthChange(() => setAccount(signedInEmail())), []);
+  const signedIn = isDemo || Boolean(account);
+  const me = useQuery(() => api.me(), [persona, account], { enabled: signedIn });
   const value = useMemo<SessionValue>(() => ({
-    me: me.data, loading: me.loading, org: me.data?.orgs[0], persona,
+    me: signedIn ? me.data : undefined, loading: signedIn && me.loading, org: signedIn ? me.data?.orgs[0] : undefined, persona,
+    signedIn, meError: me.error, reloadMe: me.reload,
     switchPersona: (email) => { setPersonaEmail(email); setPersona(email); invalidate(); },
     resetDemo: () => { resetDemo(); invalidate(); },
-  }), [me.data, me.loading, persona]);
+  }), [me.data, me.loading, me.error, me.reload, persona, signedIn]);
   return <SessionCtx.Provider value={value}>{children}</SessionCtx.Provider>;
 }
 export function useSession() {

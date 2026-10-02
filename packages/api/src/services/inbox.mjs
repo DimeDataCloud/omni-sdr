@@ -7,13 +7,19 @@ import { withoutTenant, withService } from '../../../db/src/context.mjs';
 
 const sha = (s) => createHash('sha256').update(s, 'utf8').digest('hex');
 
-import { classifyReply, cleanReplyBody, addBusinessMinutes, SLA_MINUTES } from './reply-rules.mjs';
+import { classifyReply, cleanReplyBody, addBusinessMinutes, SLA_MINUTES, returnDateFrom, OOO_DEFAULT_SNOOZE_DAYS } from './reply-rules.mjs';
 import { offDecider } from '../../../ai/src/decide.mjs';
 import { REPLY_TRIAGE } from '../../../ai/src/registry.mjs';
 export { classifyReply, cleanReplyBody, addBusinessMinutes, SLA_MINUTES };
 
 
 const TERMINAL = `('stopped', 'converted', 'completed')`;
+
+// SLA escalation (0008): the in-app step is written with the reply; push and email come from escalateSla().
+async function notifyInApp(tx, { orgId, workspaceId, inboundId, at }) {
+  await tx.query(`INSERT INTO notifications (org_id, workspace_id, inbound_message_id, kind, channel, due_at)
+                  VALUES ($1, $2, $3, 'sla_meeting', 'in_app', $4) ON CONFLICT DO NOTHING`, [orgId, workspaceId, inboundId, at]);
+}
 
 /**
  * @param msg { to, from, subject, body, receivedAt: Date, externalId?, channel: 'email' }
@@ -52,13 +58,25 @@ export async function ingestReply(client, msg, { classify = classifyReply } = {}
                         ON CONFLICT DO NOTHING`, [hit.org_id, email, verdict.intent === 'bounce' ? 'bounce' : 'reply_unsubscribe']);
       }
     }
+    let snoozedUntil = null;
     if (verdict.intent !== 'out_of_office') {
       await tx.query(`UPDATE enrollments SET state = 'stopped', stop_reason = $2, next_run_at = NULL
                       WHERE contact_id = $1 AND state NOT IN ${TERMINAL}`, [hit.contact_id, `reply:${verdict.intent}`]);
+    } else {
+      // Snooze to the return date (acceptance step 9), remembering where the sequence was; a paused one stays paused.
+      // An earlier snooze is only ever pushed later, never brought forward.
+      snoozedUntil = returnDateFrom(cleanReplyBody(msg.body ?? ''), msg.receivedAt, tz)
+        ?? new Date(msg.receivedAt.getTime() + OOO_DEFAULT_SNOOZE_DAYS * 86400000);
+      await tx.query(`UPDATE enrollments SET resume_state = state, state = 'snoozed', next_run_at = $2, stop_reason = 'ooo_snooze'
+                      WHERE contact_id = $1 AND state NOT IN ${TERMINAL} AND state NOT IN ('paused', 'snoozed')`, [hit.contact_id, snoozedUntil]);
+      await tx.query(`UPDATE enrollments SET next_run_at = $2 WHERE contact_id = $1 AND state = 'snoozed' AND next_run_at < $2`,
+        [hit.contact_id, snoozedUntil]);
     }
+    if (slaDueAt) await notifyInApp(tx, { orgId: hit.org_id, workspaceId: hit.workspace_id, inboundId: id, at: msg.receivedAt });
     await tx.query(`INSERT INTO outbox (org_id, topic, key, payload) VALUES ($1, 'inbound.received', $2, $3)`,
       [hit.org_id, id, JSON.stringify({ inbound_id: id, intent: verdict.intent, sla_due_at: slaDueAt })]);
-    return { outcome: 'recorded', id, intent: verdict.intent, slaDueAt: slaDueAt?.toISOString() ?? null };
+    return { outcome: 'recorded', id, intent: verdict.intent, slaDueAt: slaDueAt?.toISOString() ?? null,
+      ...(snoozedUntil ? { snoozedUntil: snoozedUntil.toISOString() } : {}) };
   });
 }
 
@@ -111,6 +129,7 @@ export async function refineReply(client, { id, orgId, workspaceId }, { decider 
       // From when the reply arrived, not from when the model got to it.
       slaDueAt = addBusinessMinutes(row.received_at, SLA_MINUTES, tz);
       applied.push('sla');
+      await notifyInApp(tx, { orgId, workspaceId, inboundId: id, at: new Date() });
     }
     const decision = { engine: out.engine, model: out.model, revision: out.revision, registry: REPLY_TRIAGE.version,
       answers: fx.record, applied, input_tokens: out.inputTokens, ms: out.ms };
@@ -134,6 +153,38 @@ export async function refinePending(client, { decider = offDecider(), limit = 50
     if (res.outcome === 'decided') tally.decided++;
     else if (res.outcome === 'decider_failed') { tally.failed++; break; } // a down decider fails every reply; stop and retry later
     else tally.skipped++;
+  }
+  return tally;
+}
+
+// ─── follow-up pass (0008), run by the refine job before the model pass so it never waits on the decider ─────────
+/** Wake snoozed sequences whose return date has come: each goes back to the state it had. */
+export async function wakeSnoozed(client, { now = new Date(), limit = 500 } = {}) {
+  return withoutTenant(client, { role: 'inbox_svc' }, async (tx) =>
+    (await tx.query(`SELECT * FROM inbox_wake_snoozed($1, $2)`, [now, limit])).rows.length);
+}
+
+/**
+ * SLA escalation for unhandled meeting requests: in-app when the SLA starts, push when an hour is left, email at the
+ * breach. Each step once (UNIQUE in 0008). Push and email go out through the outbox (topic notify.sla) for the
+ * notify relay, which delivers to the workspace's admins and operators.
+ */
+export async function escalateSla(client, { now = new Date(), limit = 500 } = {}) {
+  const due = await withoutTenant(client, { role: 'inbox_svc' }, async (tx) =>
+    (await tx.query(`SELECT * FROM inbox_sla_due($1, $2)`, [now, limit])).rows);
+  const tally = { in_app: 0, push: 0, email: 0 };
+  for (const d of due) {
+    await withService(client, { orgId: d.org_id, workspaceId: d.workspace_id, role: 'inbox_svc' }, async (tx) => {
+      const r = await tx.query(`INSERT INTO notifications (org_id, workspace_id, inbound_message_id, kind, channel, due_at)
+        VALUES ($1, $2, $3, 'sla_meeting', $4, $5) ON CONFLICT DO NOTHING RETURNING id`,
+      [d.org_id, d.workspace_id, d.inbound_message_id, d.channel, d.due_at]);
+      if (!r.rows.length) return;   // another run got there first
+      tally[d.channel]++;
+      if (d.channel !== 'in_app') {
+        await tx.query(`INSERT INTO outbox (org_id, topic, key, payload) VALUES ($1, 'notify.sla', $2, $3)`,
+          [d.org_id, `${d.inbound_message_id}:${d.channel}`, JSON.stringify({ inbound_id: d.inbound_message_id, workspace_id: d.workspace_id, channel: d.channel })]);
+      }
+    });
   }
   return tally;
 }

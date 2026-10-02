@@ -49,7 +49,7 @@ export function registerAgents(r) {
       WHERE a.archived_at IS NULL ORDER BY coalesce(last.created_at, a.created_at) DESC`)).rows;
     return { items: rows.map(({ last_body, last_sender, last_at, ...a }) => ({
       ...camel(a), lastMessage: last_at ? { preview: last_body.slice(0, 140), sender: last_sender, at: last_at } : null })) };
-  }, { action: 'reports_view' }));
+  }, { action: 'team_view' }));
 
   r.post(`${T}/agents`, (ctx) => {
     const b = parse(v.object({ ...AGENT_FIELDS, station: v.optional(AGENT_FIELDS.station), badge: v.optional(AGENT_FIELDS.badge),
@@ -95,7 +95,7 @@ export function registerAgents(r) {
         WHERE agent_id = $1 AND ($2::timestamptz IS NULL OR created_at < $2) ORDER BY created_at DESC LIMIT $3`,
       [ctx.params.id, q.before ?? null, q.limit ?? 50])).rows;
       return { items: rows.reverse().map(camel) };
-    }, { action: 'reports_view' });
+    }, { action: 'team_view' });
   });
 
   // Send a message to an agent. Two short transactions around the model call, so a slow model never holds
@@ -138,7 +138,7 @@ export function registerAgents(r) {
     const rows = (await tx.query(`SELECT rt.*, a.name AS agent_name FROM routines rt LEFT JOIN agents a ON a.id = rt.agent_id
       ORDER BY rt.created_at`)).rows;
     return { items: rows.map((x) => ({ ...camel(x), pausedByOps: x.paused_reason !== null })) };
-  }, { action: 'reports_view' }));
+  }, { action: 'team_view' }));
 
   r.post(`${T}/routines`, (ctx) => {
     const b = parse(v.object({ ...ROUTINE_FIELDS, active: v.optional(ROUTINE_FIELDS.active), agentId: v.optional(ROUTINE_FIELDS.agentId) }), ctx.body);
