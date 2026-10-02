@@ -90,6 +90,8 @@ export async function seedTenant(db, label, { cap = 5, trust = 1, heat = 1 } = {
     [org, ws, `guest@${label}.test`])).id;
   await db.query(`INSERT INTO meetings (org_id, workspace_id, contact_id, inbound_message_id, provider, starts_at, ends_at)
     VALUES ($1, $2, $3, $4, 'native', now() + interval '1 day', now() + interval '1 day 30 minutes')`, [org, ws, guest, inbound]);
+  // 0010: a profile row per tenant, so the RLS matrix covers it.
+  await db.query(`INSERT INTO workspace_profiles (org_id, workspace_id, offer) VALUES ($1, $2, 'After-hours call answering')`, [org, ws]);
   return { ...t, message, inbound };
 }
 

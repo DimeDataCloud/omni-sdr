@@ -7,6 +7,7 @@ import { registerAgents } from './agents.mjs';
 import { registerProspects } from './prospects.mjs';
 import { registerOps } from './ops.mjs';
 import { registerGenerate } from './generate.mjs';
+import { registerOnboarding } from './onboarding.mjs';
 
 // Specific paths before parameterized ones within each module; modules don't overlap.
 export function registerAll(r) {
@@ -19,6 +20,7 @@ export function registerAll(r) {
   registerProspects(r);
   registerOps(r);
   registerGenerate(r);
+  registerOnboarding(r);
 }
 
 // Tenant route prefix.
