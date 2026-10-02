@@ -9,6 +9,7 @@ import { Button, ErrorState, NoAccess, Page, SkeletonList, TipProvider } from '@
 import { isDemo, invalidate } from '@/lib/api';
 import { FINISH_PATH, safeNext, signOut } from '@/lib/auth';
 import { FinishPage, InvitePage, Onboarding, SignInPage } from '@/features/signin/SignIn';
+import { CONNECT_PATH, ConnectGooglePage } from '@/features/connections/ConnectGoogle';
 
 import { screenLoaders } from '@/components/shell/prefetch';
 
@@ -51,6 +52,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   if (isDemo) return children;
   const { pathname, search } = window.location;
   if (pathname === FINISH_PATH) return <FinishPage onDone={(next) => window.location.replace(safeNext(next))} />;
+  // Before the sign-in check: Google's code must never ride along in a sign-in link's `next`.
+  if (pathname === CONNECT_PATH) return <ConnectGooglePage signedIn={signedIn} />;
   if (!signedIn) return <SignInPage next={pathname + search} />;
   const invite = /^\/invite\/([A-Za-z0-9_-]{16,200})$/.exec(pathname);
   if (invite) return <InvitePage token={invite[1]} onAccepted={() => { invalidate(); window.location.replace('/'); }} />;
