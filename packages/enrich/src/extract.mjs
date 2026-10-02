@@ -1,7 +1,11 @@
 // Facts from one homepage, deterministically (no model): the same HTML always gives the same facts.
 // Each fact carries `text`, the one sentence a draft may use to cite it, so a claim says exactly what was observed
-// and nothing stronger (the gate checks numbers; meaning is pinned here). Absence is stated as "on the homepage",
-// never as "you don't offer", because a booking page can live elsewhere.
+// and nothing stronger (the gate checks numbers; meaning is pinned here).
+//
+// Only presence is citable. One fetch of server-rendered HTML can't prove something is missing: Wix, Squarespace and
+// most React sites load booking widgets and forms with JavaScript, a vendor may be missing from BOOKING_VENDORS, and a
+// "Book now" link can go anywhere. So "not seen" is recorded as null (unknown) with `text: null`, and a draft has no
+// sentence to cite (PR #39 audit P2). The one negative kept, "loads without HTTPS", is the fetched URL itself.
 
 // Online booking and scheduling vendors, by the hostnames their widgets and links load from.
 export const BOOKING_VENDORS = Object.freeze({
@@ -36,12 +40,11 @@ export function extractFacts(html, finalUrl) {
     site: { url: url.href, https: url.protocol === 'https:', title,
       text: url.protocol === 'https:' ? null : `Your homepage loads without HTTPS (${url.host}).` },
     booking: {
-      online, vendor: vendorHit ? vendorHit[1] : null, book_link_text: bookLink,
+      online: online || null, vendor: vendorHit ? vendorHit[1] : null, book_link_text: bookLink,
       text: online ? `Your homepage offers online booking through ${vendorHit[1]}.`
-        : bookLink ? `Your homepage has a "${bookLink.slice(0, 60)}" link but no online booking widget.`
-          : 'Your homepage has no online booking.',
+        : bookLink ? `Your homepage has a "${bookLink.slice(0, 60)}" link.` : null,
     },
-    contact: { form: contactForm, phone_link: telLink,
-      text: contactForm ? 'Your homepage has a contact form.' : 'Your homepage has no contact form.' },
+    contact: { form: contactForm || null, phone_link: telLink || null,
+      text: contactForm ? 'Your homepage has a contact form.' : null },
   };
 }

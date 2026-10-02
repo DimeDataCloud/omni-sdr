@@ -81,15 +81,55 @@ test('facts: vendor widgets, a book link without a widget, contact form, phone l
   assert.deepEqual([withWidget.booking.online, withWidget.booking.vendor, withWidget.contact.phone_link, withWidget.site.title], [true, 'NexHealth', true, 'Brightline Family Dental']);
   assert.equal(withWidget.booking.text, 'Your homepage offers online booking through NexHealth.');
   const linkOnly = extractFacts('<a href="/contact">Request an Appointment</a><form><input type="email"><textarea></textarea></form>', 'http://harbor.com/');
-  assert.equal(linkOnly.booking.online, false);
-  assert.equal(linkOnly.booking.text, 'Your homepage has a "Request an Appointment" link but no online booking widget.');
+  assert.equal(linkOnly.booking.online, null);
+  assert.equal(linkOnly.booking.text, 'Your homepage has a "Request an Appointment" link.');
   assert.equal(linkOnly.contact.form, true);
   assert.equal(linkOnly.site.https, false);
   assert.equal(linkOnly.site.text, 'Your homepage loads without HTTPS (harbor.com).');
   const bare = extractFacts('<p>Welcome</p>', 'https://quiet.com/');
-  assert.equal(bare.booking.text, 'Your homepage has no online booking.');
-  assert.equal(bare.contact.text, 'Your homepage has no contact form.');
+  assert.deepEqual([bare.booking.online, bare.booking.text, bare.contact.form, bare.contact.phone_link, bare.contact.text], [null, null, null, null, null],
+    'not seen is unknown, never a sentence');
   assert.deepEqual(extractFacts('<p>Welcome</p>', 'https://quiet.com/'), bare, 'deterministic');
+});
+
+test('facts: a JavaScript-rendered shell (Wix-like) yields no absence a draft could cite (PR #39 audit P2)', () => {
+  const shell = '<!doctype html><html><head><title>Harbor Dental</title><script src="https://static.parastorage.com/services/wix-thunderbolt/dist/main.js"></script>'
+    + '<script>window.viewerModel={"siteFeatures":["bookings"]}</script></head><body><div id="SITE_CONTAINER"></div></body></html>';
+  const f = extractFacts(shell, 'https://harbordental.com/');
+  assert.equal(f.site.title, 'Harbor Dental');
+  const sentences = [f.site.text, f.booking.text, f.contact.text].filter(Boolean);
+  assert.deepEqual(sentences, [], 'nothing to cite: the widget and form load client-side');
+  assert.ok(!JSON.stringify(f).includes(' no '), 'no negative claim anywhere in the facts');
+  // And the gate refuses a draft that states one anyway: there is no fact sentence for it to match.
+  const evidence = new Map([['ev-1', { contact_id: 'c-1', facts: f, expires_at: new Date('2026-11-01T00:00:00Z') }]]);
+  const draft = { subject: 'Booking', step: 0, body: 'Hi,\n\nYour homepage has no online booking. Worth a look?',
+    claims: [{ text: 'Your homepage has no online booking.', evidence_id: 'ev-1', fact_key: 'booking.text' }] };
+  assert.equal(checkDraft(draft, { contactId: 'c-1', evidence, now: new Date('2026-10-07T15:00:00Z'), competitors: [] }).passed, false);
+});
+
+test('safeFetch: the 10 s budget is total, not idle; a server dribbling bytes is cut off (PR #39 audit P3)', async () => {
+  let destroyed = null;
+  const request = (opts, cb) => {
+    const req = new EventEmitter();
+    req.destroy = (e) => { destroyed = e; req.emit('error', e); };
+    req.end = () => setImmediate(() => {
+      const res = new Readable({ read() {} });
+      Object.assign(res, { statusCode: 200, headers: { 'content-type': 'text/html' } });
+      cb(res);
+      const drip = setInterval(() => res.push('x'), 5);   // never idle long enough for the idle timer
+      req.on('error', () => clearInterval(drip));
+    });
+    return req;
+  };
+  const started = Date.now();
+  await assert.rejects(safeFetch('https://slow.com/', { lookup: dns({ 'slow.com': ['8.8.8.8'] }), transport: { https: { request }, http: { request } }, timeoutMs: 80 }), /timeout/);
+  assert.ok(Date.now() - started < 1000, 'stopped near the budget');
+  assert.match(String(destroyed), /timeout/);
+});
+
+test('isPublicAddress refuses 6to4 and Teredo, which embed IPv4 (PR #39 audit P3)', () => {
+  for (const ip of ['2002:a00:1::1', '2002:7f00:1::', '2001:0:4136:e378::1', '2001::1', '2001:0000:abcd::1']) assert.equal(isPublicAddress(ip), false, ip);
+  for (const ip of ['2001:4860:4860::8888', '2606:4700::1111', '8.8.8.8']) assert.equal(isPublicAddress(ip), true, ip);
 });
 
 test('websiteFor: the business domain, never a free-mail provider', () => {

@@ -42,6 +42,8 @@ export function isPublicAddress(ip) {
     if ((first & 0xffc0) === 0xfe80) return false;  // link-local fe80::/10
     if ((first & 0xff00) === 0xff00) return false;  // multicast
     if (s.startsWith('64:ff9b:') || s.startsWith('2001:db8:') || s.startsWith('2001:0db8:')) return false; // NAT64, documentation
+    if (first === 0x2002) return false;             // 6to4 2002::/16 (embeds an IPv4 address)
+    if (first === 0x2001 && parseInt(s.split(':')[1] || '0', 16) === 0) return false; // Teredo 2001:0::/32 (embeds one too)
     return (first & 0xe000) === 0x2000;             // only global unicast 2000::/3
   }
   return false;
@@ -73,6 +75,7 @@ export async function safeFetch(raw, { lookup = dnsLookup, transport = { http, h
     const addrs = await lookup(u.hostname, { all: true, verbatim: true });
     if (!addrs.length || addrs.some((a) => !isPublicAddress(a.address))) throw new FetchRefused(`${u.hostname} resolves to a non-public address`);
     const pinned = addrs.find((a) => a.family === 4) ?? addrs[0];   // IPv4 first: Cloud Run's VPC egress and many hosts lack IPv6 routes
+    let total;
     const res = await new Promise((resolve, reject) => {
       const lib = u.protocol === 'https:' ? transport.https : transport.http;
       const req = lib.request({
@@ -90,10 +93,13 @@ export async function safeFetch(raw, { lookup = dnsLookup, transport = { http, h
         r.on('end', () => resolve({ status: r.statusCode, body: Buffer.concat(chunks).toString('utf8'), truncated: false, type }));
         r.on('error', reject);
       });
+      // `timeout` above is only an idle timer: a server sending a byte every few seconds never trips it. This one is the
+      // whole budget, shared across every hop (PR #39 audit P3).
+      total = setTimeout(() => req.destroy(new Error('timeout')), Math.max(1, deadline - Date.now()));
       req.on('timeout', () => { req.destroy(new Error('timeout')); });
       req.on('error', reject);
       req.end();
-    });
+    }).finally(() => clearTimeout(total));
     if (res.redirect) { url = res.redirect; continue; }
     return { url: u.href, status: res.status, body: res.body, truncated: res.truncated, contentType: res.type };
   }
