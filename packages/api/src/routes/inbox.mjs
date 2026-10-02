@@ -138,8 +138,8 @@ export function registerInbox(r) {
           await tx.query(`UPDATE enrollments SET state = 'awaiting_approval', stop_reason = NULL WHERE id = $1`, [e.id]);
           const last = (await tx.query(`SELECT subject, step FROM drafts WHERE enrollment_id = $1 ORDER BY step DESC, created_at DESC LIMIT 1`, [e.id])).rows[0];
           const subject = last?.subject ? (/^re:/i.test(last.subject) ? last.subject : `Re: ${last.subject}`) : 'Finding another time';
-          draftId = (await tx.query(`INSERT INTO drafts (org_id, workspace_id, enrollment_id, step, channel, subject, body, status)
-            VALUES ($1, $2, $3, $4, 'email', $5, $6, 'gating') RETURNING id`,
+          draftId = (await tx.query(`INSERT INTO drafts (org_id, workspace_id, enrollment_id, step, channel, subject, body, status, purpose)
+            VALUES ($1, $2, $3, $4, 'email', $5, $6, 'gating', 'reschedule') RETURNING id`,
           [m.orgId, m.workspaceId, e.id, Math.max(e.step, last?.step ?? 0) + 1, subject.slice(0, 300), rescheduleNote(e.name)])).rows[0].id;
           await audit(tx, m, 'reschedule_draft', 'draft', draftId);
         }

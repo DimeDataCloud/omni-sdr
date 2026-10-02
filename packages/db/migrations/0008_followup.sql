@@ -1,7 +1,14 @@
 -- Omni-SDR 0008: follow-up (SPEC §1 acceptance steps 8–9; Stations 15–16).
 -- 1. An out-of-office reply snoozes the sequence to the return date, and it resumes where it was.
 -- 2. A meeting request's SLA escalates in-app → push → email, once each (the DB makes "once" a constraint).
--- A no-show's reschedule draft needs no schema: it is an ordinary draft, gated and approved like any other.
+-- 3. A draft says what it is for: a sequence step, or a no-show's reschedule note. The send loop holds a sequence
+--    step until its wait has passed; a reschedule note goes once approved (claude-local's #45 audit: as a step>0
+--    draft it waited 3–4 business days, or forever if the earlier step never sent). Either way it is gated and
+--    approved like every draft, and send_guard() still decides.
+
+-- ─── draft purpose ──────────────────────────────────────────────────────────────────────────────────────────────
+ALTER TABLE drafts ADD COLUMN purpose text NOT NULL DEFAULT 'sequence' CHECK (purpose IN ('sequence', 'reschedule'));
+GRANT INSERT (purpose) ON drafts TO app_rw;
 
 -- ─── snooze ─────────────────────────────────────────────────────────────────────────────────────────────────────
 -- Where the sequence was when it snoozed, so waking resumes it instead of restarting it.
@@ -41,7 +48,8 @@ CREATE TABLE notifications (
   created_at          timestamptz NOT NULL DEFAULT now(),
   read_at             timestamptz,
   FOREIGN KEY (org_id, workspace_id) REFERENCES workspaces(org_id, id),
-  FOREIGN KEY (org_id, workspace_id, inbound_message_id) REFERENCES inbound_messages(org_id, workspace_id, id),
+  -- A notification only exists because of its reply: deleting the reply (retention, a test's cleanup) takes it along.
+  FOREIGN KEY (org_id, workspace_id, inbound_message_id) REFERENCES inbound_messages(org_id, workspace_id, id) ON DELETE CASCADE,
   UNIQUE (inbound_message_id, kind, channel)
 );
 CREATE INDEX notifications_ws_unread ON notifications (workspace_id, created_at DESC) WHERE read_at IS NULL;
