@@ -137,8 +137,12 @@ BEGIN
   RETURN inv.org_id;
 END $$;
 
+GRANT CREATE ON SCHEMA public TO tenancy_owner;  -- PG15+: a new owner needs CREATE on the schema (no superuser on Cloud SQL)
 ALTER FUNCTION create_org_with_admin(text, text, text) OWNER TO tenancy_owner;
+REVOKE CREATE ON SCHEMA public FROM tenancy_owner;
+GRANT CREATE ON SCHEMA public TO tenancy_owner;  -- PG15+: a new owner needs CREATE on the schema (no superuser on Cloud SQL)
 ALTER FUNCTION accept_invite(text) OWNER TO tenancy_owner;
+REVOKE CREATE ON SCHEMA public FROM tenancy_owner;
 REVOKE EXECUTE ON FUNCTION create_org_with_admin(text, text, text), accept_invite(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION create_org_with_admin(text, text, text), accept_invite(text) TO app_rw;
 GRANT EXECUTE ON FUNCTION app_user(), app_is_admin(uuid, uuid) TO app_rw, gate_svc, sender_svc, ops, tenancy_owner;

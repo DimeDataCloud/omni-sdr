@@ -1,0 +1,12 @@
+# Build context for packages/api/Dockerfile (BuildKit reads <Dockerfile>.dockerignore): only what the image copies.
+**
+!packages/api/package.json
+!packages/api/package-lock.json
+!packages/api/src/**
+!packages/ai/src/**
+!packages/db/package.json
+!packages/db/package-lock.json
+!packages/db/src/**
+!packages/db/migrations/**
+!packages/gate/src/**
+!packages/sender/src/**

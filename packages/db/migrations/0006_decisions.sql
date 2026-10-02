@@ -39,6 +39,8 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
 $$;
 GRANT SELECT (id, org_id, workspace_id, decided_at, received_at) ON inbound_messages TO inbox_owner;
 CREATE POLICY inbox_all ON inbound_messages TO inbox_owner USING (true);
+GRANT CREATE ON SCHEMA public TO inbox_owner;  -- PG15+: a new owner needs CREATE on the schema (no superuser on Cloud SQL)
 ALTER FUNCTION inbox_undecided(int) OWNER TO inbox_owner;
+REVOKE CREATE ON SCHEMA public FROM inbox_owner;
 REVOKE EXECUTE ON FUNCTION inbox_undecided(int) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION inbox_undecided(int) TO inbox_svc;

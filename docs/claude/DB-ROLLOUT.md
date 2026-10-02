@@ -14,10 +14,10 @@ gaps. None needs an approval to *build*; each needs one to *deploy*.
 
 | # | Gap | Evidence | Owner to build |
 |---|---|---|---|
-| G1 | **No production migration runner.** `packages/db/src/migrate.mjs` exports `migrate(db)`; only `packages/api/src/dev.mjs` calls it, against PGlite | `grep -rn "migrate(" packages` | claude-cloud |
-| G2 | **No API container.** `packages/api` has a `start` script and no Dockerfile; Cloud Run can build it from source, but the base image and Node version aren't pinned | `ls packages/api` | claude-cloud |
+| G1 | ~~No production migration runner~~ **built 2026-10-02:** `packages/db/src/migrate-cli.mjs` (dry run by default, `--apply` under an advisory lock, each file in its own transaction, `--check-login=omni_api`) | tests + a real Postgres 16 run, §5 | claude-cloud |
+| G2 | ~~No API container~~ **built 2026-10-02:** `packages/api/Dockerfile` (Node 22 pinned by digest; the API, the refine job and the migration runner in one image) | built and run against Postgres 16, §5 | claude-cloud |
 | G3 | **No email-worker.** Nothing receives mail for `reply.omnisdr.com` and calls `POST /internal/inbound` | API.md §7 item 4 | claude-cloud builds; Cloudflare deploy via claude-local |
-| G4 | **Nothing calls `decider` in production.** `layaDecider` exists in `packages/ai/src/decide.mjs`, but `server.mjs` never constructs it, and no job runs `refinePending()` | `grep -rn refinePending packages` | claude-cloud |
+| G4 | ~~Nothing calls `decider` in production~~ **built 2026-10-02:** `packages/api/src/jobs/refine.mjs`, a Cloud Run job for Cloud Scheduler to start every 1–2 minutes; exit 1 when the decider is down | `packages/api/test/jobs.test.mjs` | claude-cloud |
 | G5 | **Sign-in.** The API verifies Identity Platform ID tokens (`OMNI_FIREBASE_PROJECT`); per SPEC §2 the Identity Platform API isn't enabled | SPEC §2 table (dated, re-check) | claude-local checks; Christian approves enabling |
 | G6 | **Station 26 acceptance script** isn't written yet | SPEC, Station 26 | either session, after G1–G4 |
 
@@ -49,12 +49,12 @@ values never appear in commands, logs or chat (rails §3.6).
 | 1 | Enable the Cloud SQL Admin API (and Secret Manager if not on) in project `omni-sdr` | `gcloud services list --enabled` lists them |
 | 2 | Create the instance: Postgres 16, `us-central1`, the size from §1.1, backups + PITR on, deletion protection on | `gcloud sql instances describe <instance>` shows `RUNNABLE`, backups enabled |
 | 3 | Create database `omni` | `gcloud sql databases list` |
-| 4 | Create the **migration owner** login (built-in user; password straight into Secret Manager as `omni-db-owner`, never printed) | the secret exists; the value was never echoed |
+| 4 | Create the **migration owner** login (a built-in Cloud SQL user; password straight into Secret Manager as `omni-db-owner`, never printed). It is not a superuser: §5 shows the migrations now run as one | the secret exists; the value was never echoed |
 | 5 | **Backup before the first migration** (on-demand) | `gcloud sql backups list` shows it |
-| 6 | Run migrations 0001–0006 as the owner via the G1 runner (a one-off Cloud Run job using the connector) | `schema_migrations` has 6 rows; the runner prints `ran: 6` |
-| 7 | Create the **API login** `omni_api` (password into Secret Manager as `omni-db-api`) and grant it membership of `app_rw`, `gate_svc`, `sender_svc`, `inbox_svc` **and nothing else** (API.md "Database login") | the role check in §3 passes |
-| 8 | Deploy the API (G2) with `DATABASE_URL` from the secret, `OMNI_MODEL=off`, `OMNI_INBOUND_SECRET` from Secret Manager; ingress internal + the console's front end per INFRASTRUCTURE | `/health` returns 200 through the console's route |
-| 9 | Grant the API's service account `roles/run.invoker` on `decider` (it is IAM-only, internal ingress) and set `OMNI_DECIDER_URL` (G4) | one `refinePending` pass on a test reply logs `decided: 1` |
+| 6 | Run `node packages/db/src/migrate-cli.mjs` (dry run), then `--apply`, as the owner: a one-off Cloud Run job from the G2 image | the runner prints `applied 6 of 6`; a second run prints `nothing pending` |
+| 7 | Create the **API login** `omni_api` **in SQL as the owner** (`CREATE ROLE omni_api LOGIN PASSWORD …`, value from Secret Manager `omni-db-api`), not with `gcloud sql users create`: Cloud SQL makes its built-in users members of `cloudsqlsuperuser` [VERIFY]. Grant `app_rw, gate_svc, sender_svc, inbox_svc` and nothing else | `migrate-cli.mjs --check-login=omni_api` prints PASS |
+| 8 | Deploy the API (G2) with `DATABASE_URL` from the secret, `OMNI_MODEL=off`, `OMNI_INBOUND_SECRET` from Secret Manager; ingress internal + the console's front end per INFRASTRUCTURE | `/healthz` returns `{"ok":true}` through the console's route |
+| 9 | Deploy the refine job (G4) from the G2 image (`node packages/api/src/jobs/refine.mjs`) with `DATABASE_URL` (API login) and `OMNI_DECIDER_URL`; grant its service account `roles/run.invoker` on `decider` (IAM-only, internal ingress); a Cloud Scheduler trigger every 1–2 minutes | an execution logs `{"job":"refine","decided":1,…}` after a test reply |
 | 10 | Deploy the email-worker (G3) for `reply.omnisdr.com` and its MX/DNS (DNS is a deploy: rails §3.1) | a test mail lands in `inbound` with a rules verdict, then a model verdict |
 
 ## 3. Checks before anyone says "live"
@@ -82,7 +82,29 @@ Run against prod, in tenant #0 only (SPEC, Station 26: no dev environment, so pr
   Cloudflare version (claude-local has done the same for the console Worker).
 - **Abandon:** deletion protection stays on. Deleting the instance is Christian's call alone.
 
-## 5. Notes for later stages
+## 5. What was proven locally (2026-10-02, claude-cloud)
+
+On `postgres:16` in Docker, with migrations run as a **non-superuser** owner (`CREATEROLE CREATEDB`, like Cloud SQL's
+built-in user):
+- **Two defects found and fixed, invisible to the PGlite suite** (PGlite runs as superuser, so both checks are skipped):
+  1. `0001` failed at `ALTER FUNCTION send_guard() OWNER TO guard_owner`: "must be able to SET ROLE". Postgres 16 no
+     longer makes a role's creator a member of it. Fix: the runner sets `createrole_self_grant = 'set'` for its session.
+  2. Then "permission denied for schema public": Postgres 15+ requires a function's new owner to hold CREATE on its
+     schema. Fix: each `OWNER TO` in 0001, 0002, 0003, 0005 and 0006 is wrapped in `GRANT CREATE` / `REVOKE CREATE` on
+     `public` in the same transaction. Afterwards no role but the database owner has CREATE on `public`.
+     **This edits migration files: a grants change, so it needs claude-local's audit and Christian's OK (rails §6).**
+- After the fix, on a clean cluster: `applied 6 of 6`, a second run `nothing pending`; 25 of 26 tables have forced
+  RLS (the same two exceptions as PGlite: `users`, `schema_migrations`); security-definer functions are owned by
+  `guard_owner`, `inbox_owner`, `ledger_owner`, `tenancy_owner`, `unsub_owner`.
+- `--check-login=omni_api` prints PASS for exactly the four roles, and FAIL naming `ops` when it is added.
+- The G2 image ran all three roles against that database: migrations, the login check, and the API
+  (`/healthz` 200; a signed `/internal/inbound` 200, a bad signature 401). The refine job ran from the image.
+- Not proven here: the decider call on real Postgres (no tenant data: the demo seed relies on PGlite's superuser and
+  fails on real Postgres with RLS, as it should). Production's tenant #0 comes from the real sign-up flow.
+- Build note: in a sandbox behind a TLS-intercepting proxy, `npm ci` inside the build needs that proxy's CA as a
+  BuildKit secret. Cloud Build doesn't, so the committed Dockerfile has no CA step.
+
+## 6. Notes for later stages
 
 - When `decider` moves to the multilingual checkpoint (LAYA-PLAN L9), `layaDecider` reads
   `health.revisions.english` and fails every call if that key is missing (`packages/ai/src/decide.mjs`). Update it

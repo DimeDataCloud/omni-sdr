@@ -85,6 +85,8 @@ BEGIN
   END LOOP;
 END $$;
 
+GRANT CREATE ON SCHEMA public TO unsub_owner;  -- PG15+: a new owner needs CREATE on the schema (no superuser on Cloud SQL)
 ALTER FUNCTION unsubscribe(text) OWNER TO unsub_owner;
+REVOKE CREATE ON SCHEMA public FROM unsub_owner;
 REVOKE EXECUTE ON FUNCTION unsubscribe(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION unsubscribe(text) TO app_rw;
