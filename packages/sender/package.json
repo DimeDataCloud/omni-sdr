@@ -5,7 +5,7 @@
   "type": "module",
   "description": "The only egress to a person (INFRA 14): claim via send_guard, compose, hand to a provider adapter, record.",
   "scripts": {
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test --test-concurrency=1 test/*.test.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8"
