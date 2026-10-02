@@ -1,17 +1,19 @@
-# Omni-SDR — Agent Rails (shared by Claude and Gemini)
+# Omni-SDR — Agent Rails (shared by the two Claude sessions)
 
-**Rails v1.2 · 2026-09-30 · Changes only with Christian's approval (§11).**
-This file is identical for both agents. It lives at `projects/omni-sdr/AGENT-RAILS.md` and nowhere else.
-`CLAUDE.md`, `GEMINI.md` and `AGENTS.md` point here; never copy these rules into another file.
+**Rails v1.3 · 2026-10-02 · Changes only with Christian's approval (§11).**
+This file is identical for both sessions. It lives at `projects/omni-sdr/AGENT-RAILS.md` and nowhere else.
+`CLAUDE.md` and `AGENTS.md` point here; never copy these rules into another file.
 
 ## 0. Load check
-Start every task report with **`Rails v1.2 loaded`**. If you can't say it truthfully, read this file first.
+Start every task report with **`Rails v1.3 loaded`**. If you can't say it truthfully, read this file first.
 
 ## 1. Who does what
 - **Christian:** the only decision-maker. The only one who approves deploys, spend, cloud changes and changes to decisions or to this file.
-- **Claude** (Claude Code panel, Opus 5.5): **the main worker.** Builds the product end to end by default: schema, safety spine, auth/tenant isolation, backend, the web app, CI, deploy preparation, reconciling specs, auditing Gemini.
-- **Gemini** (Antigravity agent portal, Gemini 3.1 Pro): **exacting tasks.** Christian hands Gemini narrow, precisely specified tasks (an audit or review, a mechanical edit, visual QA in the browser, GCP console reads, `[VERIFY]` research). Gemini does exactly the task, only on the paths the task names, and claims those paths first.
-- The two agents can't see each other. **All coordination goes through files:** the workboard (§5), git, and the task reports. Christian relays when needed.
+- **Two Claude Code sessions do all the work** (DECISIONS 2026-10-02; no Gemini, no other agent). Both build the product end to end: schema, safety spine, auth/tenant isolation, backend, the web app, CI, deploy preparation, reconciling specs. Neither owns a lane the other doesn't; work is split by workboard claims (§5).
+  - **`claude-local`**: the Claude Code session on Christian's Windows machine. It can reach his browser, keys and logged-in tools, so work that needs that machine goes here (deploys Christian approves, visual baselines, production checks behind login).
+  - **`claude-cloud`**: the Claude Code session in the cloud (claude.ai/code). It runs on Linux in a fresh container with no access to Christian's machine or keys.
+- **Each session reviews the other's work** (§5.6, §6): the author is never the auditor.
+- The two sessions can't see each other. **All coordination goes through files:** the workboard (§5), git, and the task reports. Christian relays when needed.
 
 ## 2. Authority (highest first)
 1. `docs/claude/DECISIONS.md`: Christian's decisions. Only Claude writes it, and only to record what Christian said.
@@ -31,29 +33,27 @@ Approval for one action never extends to the next one.
 5. **Expose data:** never build or keep an endpoint that returns signup, prospect, customer or tenant data without auth.
 6. **Secrets:** never put a secret value in chat, docs, code, commits, URLs or logs. Refer to it by name. Never create service-account key files (WIF only). Keys live in `C:\Users\cdsec\.halo-keys\`, never under the Drive-synced Halo folder.
 7. **Tests:** never delete, skip or loosen a test, constraint, RLS policy, grant or guard to make something pass. A failing test is reported, not silenced.
-8. **Other agents' work:** never overwrite, revert or delete a file the other agent owns or has claimed. Never force-push or rewrite shared history.
+8. **The other session's work:** never overwrite, revert or delete a file the other session has claimed. Never force-push or rewrite shared history.
 9. **Decisions:** never write "decided" for something Christian didn't decide. Mark it a proposal.
 
 ## 4. Lanes: who writes where
 | Path | Writer | Required reviewer |
 |---|---|---|
-| `packages/db/**` (migrations, tests, helpers) | Claude | Gemini audits: tries to break it |
-| Safety modules: gate, sender, sequencer, guard, RLS-context helper, credits, auth/session | Claude | Gemini audits |
-| `infra/**`, `.github/workflows/**`, deploy scripts | Claude prepares; **Christian runs or approves** | Christian |
-| `docs/claude/**`, `AGENT-RAILS.md` | Claude (the rails only with Christian's approval) | Christian |
-| Everything else: `apps/**`, `src/**`, API routes and server actions (**through the RLS-context helper**, never raw SQL outside it), `packages/connectors/**`, `packages/ai/prompts/**`, eval cases, `docs/mvp/**`, `functions/**`, `cloud-functions/**`, `dist-pages/**` | Claude by default. Gemini writes the paths of a task Christian assigns it, once it has claimed them | The other agent (§5.6). Every public endpoint gets an audit |
+| `packages/db/**` (migrations, tests, helpers) | Either session | The other session audits: tries to break it |
+| Safety modules: gate, sender, sequencer, guard, RLS-context helper, credits, auth/session | Either session | The other session audits |
+| `infra/**`, `.github/workflows/**`, deploy scripts | Either session prepares; **Christian runs or approves** | Christian |
+| `docs/claude/**`, `AGENT-RAILS.md` | Either session (the rails only with Christian's approval) | Christian |
+| Everything else: `apps/**`, `src/**`, API routes and server actions (**through the RLS-context helper**, never raw SQL outside it), `packages/connectors/**`, `packages/ai/prompts/**`, eval cases, `docs/mvp/**`, `functions/**`, `cloud-functions/**`, `dist-pages/**` | Either session, once it has claimed the paths | The other session (§5.6). Every public endpoint gets an audit |
 | The workboard (§5) | Both, **append-only** | — |
-
-Gemini writing outside the paths its task names: propose the change in the report instead. Claude makes it.
 
 ## 5. One writer per file at a time
 The workboard is `WORKBOARD.md` on `main` of the journal repo (`DimeDataCloud/omni-sdr-journal`, locally `projects/omni-sdr-journal`). It is one copy on one branch, so every claim is visible whatever branch you have checked out. `docs/WORKBOARD.md` in this repo is retired; its last line points there.
 1. Before editing, pull the journal and read the workboard. If an open `CLAIM` overlaps your path, don't edit it; report instead.
-2. Append your claim: `YYYY-MM-DD HH:MM · <claude|gemini> · CLAIM · <paths/globs> · <task>`, then commit and push the journal's `main` straight away.
+2. Append your claim: `YYYY-MM-DD HH:MM · <claude-local|claude-cloud> · CLAIM · <paths/globs> · <task>`, then commit and push the journal's `main` straight away.
 3. Before overwriting any file you didn't write last, re-read it from disk. If it changed since you read it, merge; never clobber.
 4. When finished, append `DONE` (or `REVIEW-REQUEST`) with the same paths and a one-line result. A `DONE` releases the claim.
 5. A claim older than 4 hours without a `DONE` is stale: ask Christian before taking it over.
-6. Once the GitHub repo exists: each agent works on its own branch (`claude/<topic>`, `gemini/<topic>`), and work merges only through a PR that the other agent has reviewed and Christian has approved. `master` is never edited directly.
+6. Once the GitHub repo exists: each session works on its own branch (`claude/<topic>`), and work merges only through a PR that the other session has reviewed and Christian has approved. `master` is never edited directly.
 
 ## 6. Cross-audit (the author is never the auditor)
 - **Author:** runs the tests, writes the task report (§7), appends `REVIEW-REQUEST` to the workboard.
@@ -62,7 +62,7 @@ The workboard is `WORKBOARD.md` on `main` of the journal repo (`DimeDataCloud/om
   - Actively tries to break the change: writes new tests that fail on defects, and checks against SPEC §5 invariants and DECISIONS.
   - Reports each finding with severity (P0–P3), file:line and a reproduction.
   - **Does not fix the author's code** unless Christian says so; the author fixes it.
-- A change to the claims gate, `send_guard`, RLS, grants, credits, auth or any public endpoint needs **both** the other agent's audit **and** Christian's OK.
+- A change to the claims gate, `send_guard`, RLS, grants, credits, auth or any public endpoint needs **both** the other session's audit **and** Christian's OK.
 - "Tests pass" is not an audit. Most of the defects found on 2026-09-28 passed every existing test.
 
 ## 7. Evidence and the task report
@@ -70,7 +70,7 @@ Never claim a thing exists, runs, passes or is deployed without the command and 
 Never invent platform facts (limits, scopes, prices, model IDs); mark them `[VERIFY] <doc URL>`.
 Every task ends with this report:
 ```
-Rails v1.2 loaded
+Rails v1.3 loaded
 Task: <what was asked>
 Read: <files read>
 Changed: <files written, with one line each>
@@ -96,7 +96,7 @@ Next: <the next step, and who owns it>
 ## 9. Stop and ask Christian when
 - a hard rail (§3) is in the way
 - sources conflict (§2), or a decision is missing
-- the task needs paths outside your lane (Gemini: outside the paths the task names)
+- the task needs paths the other session has claimed
 - a fix would change a SPEC §5 invariant
 - you've failed twice at the same step
 
@@ -104,7 +104,7 @@ Ask once, with a recommended default; don't stall silently and don't guess.
 
 ## 10. Talking to Christian
 Lead with the answer. Numbers over adjectives. Put risk first, in one line. No preamble, no flattery. Disagree in one sentence with the reason, then carry on.
-Report the other agent's work only from files you read, never from what it said about itself.
+Report the other session's work only from files you read, never from what it said about itself.
 
 ## 11. Changing these rails
-Either agent may propose a change in its report. Only Christian approves it. Claude edits this file and bumps the version, and both agents confirm the new version in their next report.
+Either session may propose a change in its report. Only Christian approves it. The session he tells edits this file and bumps the version, and both sessions confirm the new version in their next report.

@@ -310,3 +310,11 @@ Christian: "Use laya until jev becomes the most cost effective option."
 - Laya stays the engine. The switch rule is cost: when what Jev would charge for the same decisions is less than what hosting Laya costs us, Jev becomes the engine. This replaces "no Jev, ever" from the entry above; the rest of that entry stands.
 - To make the rule checkable, every decision records its input tokens (already on `inbound_messages.decision`), and the monthly Laya cost comes from the decider's billed Cloud Run usage. The comparison is a report Claude builds; the switch itself is Christian's call when the report says so.
 - Not decided: re-opening the TypeSafe DPA question (JEV-PLAN J2). It comes back only if the report crosses.
+
+## 2026-10-02 — No more Gemini: two Claude sessions only
+Station: all · Decided by: Christian
+Christian: "No more Gemini just this cloud session and my Claude local session"
+- Gemini is retired from Omni-SDR. The work is done by two Claude Code sessions: `claude-local` (on Christian's machine) and `claude-cloud` (claude.ai/code). This replaces the 2026-09-30 entry's split between Claude and Gemini.
+- Review stays two-party: each session reviews the other's work, so the author is never the auditor. Merges need the other session's review and Christian's approval (§5.6); a safety-spine change needs the other session's audit and Christian's OK (§6).
+- Rails v1.3 carries this. Older documents that name Gemini as an auditor or reviewer (SPEC, DESIGN, STUDIO-PLAN and the audits) are history; read "Gemini" there as "the other session".
+- Proposal, not decided: the workboard names `claude-local` and `claude-cloud` (rails §1, §5), so a claim says which session holds it.
