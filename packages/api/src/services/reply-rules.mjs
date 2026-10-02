@@ -3,7 +3,7 @@
 
 // Order matters: the safest reading wins when a reply matches several ("not interested, remove me" → unsubscribe).
 const RULES = [
-  ['unsubscribe', /\b(unsubscribe|remove (me|us)|take (me|us) off|opt[- ]?out|drop (me|us) from|delete my (info|information|contact|details|email|address)|stop(ped)? (emailing|contacting|sending|messaging|reaching out)|(do not|don'?t|never) (contact|email|message|write to|follow up|reach out)|no more (emails?|messages)|qu[ií]t[ae]n?(me|nos)|elim[ií]n[ae]n?(me|nos)|dar(me|nos)? de baja|no me (escriban?|contacten?|env[ií]en))\b|take (this|my) (address|email)\b.{0,80}\boff\b|(ask|request) (that )?you (do not|don'?t|not|stop|never) (email|contact|message|write)|^\s*(stop|remove|unsubscribe)\s*[.!]?\s*$/im],  // m: a line that is just "stop"; without it the anchor sat on the subject and a bare STOP reply was missed (found 2026-10-02)
+  ['unsubscribe', /\b(unsubscribe|remove (me|us)|take (me|us) off|opt[- ]?out|opt (me|us) out|(stop|quit) receiving (these|this|your|any|the)|drop (me|us) from|delete my (info|information|contact|details|email|address)|stop(ped)? (emailing|contacting|sending|messaging|reaching out)|(do not|don'?t|never) (contact|email|message|write to|follow up|reach out)|no more (emails?|messages)|qu[ií]t[ae]n?(me|nos)|elim[ií]n[ae]n?(me|nos)|dar(me|nos)? de baja|no me (escriban?|contacten?|env[ií]en))\b|take (this|my) (address|email)\b.{0,80}\boff\b|(ask|request) (that )?you (do not|don'?t|not|stop|never) (email|contact|message|write)|^\s*(stop|remove|unsubscribe)\s*[.!]?\s*$/im],  // m: a line that is just "stop"; without it the anchor sat on the subject and a bare STOP reply was missed (found 2026-10-02)
   ['bounce', /\b(undeliverable|delivery status notification|mail delivery (failed|subsystem)|address not found|mailbox (unavailable|not found)|recipient address rejected)\b/i],
   ['out_of_office', /\b(out of (the )?office|on (annual |parental )?leave|on vacation|auto(matic)?[- ]?reply|away (until|from)|currently away|limited access to email)\b/i],
   ['wrong_person', /\b(wrong person|not the right (person|contact)|no longer (with|at|work)|left the company)\b/i],
@@ -31,17 +31,23 @@ const DISCLAIMER = /^(confidentiality notice|disclaimer|privileged (and|&) confi
 // to cleaning (found in the 2026-10-02 audit: "Thanks.\n--\nPlease remove me" lost its opt-out).
 // Only a first-person request counts here; boilerplate such as "To unsubscribe from our newsletter" in a signature or
 // disclaimer doesn't, or a meeting request with a corporate disclaimer would read as an opt-out.
-const OPT_OUT_REQUEST = /\b(remove (me|us)|unsubscribe (me|us)|take (me|us) off|opt (me|us) out|drop (me|us) from|delete my (info|information|contact|details|email|address)|stop(ped)? (emailing|contacting|sending|messaging|reaching out)( to)? (me|us)|(do(n'?t| not)|never) (contact|email|message|write to) (me|us)|no more (emails?|messages)|qu[ií]t[ae]n?(me|nos)|elim[ií]n[ae]n?(me|nos)|dar(me|nos)? de baja|no me (escriban?|contacten?|env[ií]en))\b|take (this|my) (address|email)\b.{0,80}\boff\b|(ask|request) (that )?you (do not|don'?t|not|stop|never) (email|contact|message|write)|^\s*(stop|remove|unsubscribe)\s*[.!]?\s*$/im;
+const OPT_OUT_REQUEST = /\b(remove (me|us)|unsubscribe (me|us)|(stop|quit) receiving (these|this|your|any|the)|take (me|us) off|opt (me|us) out|drop (me|us) from|delete my (info|information|contact|details|email|address)|stop(ped)? (emailing|contacting|sending|messaging|reaching out)( to)? (me|us)|(do(n'?t| not)|never) (contact|email|message|write to) (me|us)|no more (emails?|messages)|qu[ií]t[ae]n?(me|nos)|elim[ií]n[ae]n?(me|nos)|dar(me|nos)? de baja|no me (escriban?|contacten?|env[ií]en))\b|take (this|my) (address|email)\b.{0,80}\boff\b|(ask|request) (that )?you (do not|don'?t|not|stop|never) (email|contact|message|write)|^\s*(stop|remove|unsubscribe)\s*[.!]?\s*$/im;
 const optOutIn = (ls) => OPT_OUT_REQUEST.test(ls.filter((l) => !OUR_FOOTER.test(l.trim()) && !/^\s*>/.test(l)).join('\n'));
 
 // The sender's own mailing-list boilerplate is not a request to us (L11, LAYA-DATA-2026-10-02: a meeting request
 // whose signature said "To unsubscribe from our patient newsletter visit …" was suppressed). A line goes only when it
 // names THEIR list ("our newsletter", "our mailing list", "email preferences") and asks nothing in the first person.
-const OWN_LIST_FOOTER = /\b(unsubscribe|opt[- ]?out|stop receiving)\b.*\b(our|this) (\w+ ){0,2}(newsletter|mailing list|list|emails?|updates|marketing)\b|\b(our|this) (\w+ ){0,2}(newsletter|mailing list)\b.*\bunsubscribe\b|\b(manage|update) (your|email) (preferences|subscription)/i;
+// Both are needed (claude-local's #41 audit: "this list", said by a prospect, means OUR list and must stay an opt-out):
+// the line names the sender's own list ("our newsletter") AND reads as boilerplate (to unsubscribe / click / visit / a link).
+const OWN_LIST = /\bour (\w+ ){0,2}(newsletter|mailing list|list|emails?|updates|marketing)\b/i;
+const BOILERPLATE = /\bto (unsubscribe|opt[- ]?out|stop receiving)\b|\bclick\b|\bvisit\b|https?:\/\/|\bwww\.|\b[a-z0-9-]+\.[a-z]{2,}\/\S*|\b(manage|update) (your|email) (preferences|subscription)/i;
+const ownListFooter = (l) => OWN_LIST.test(l) && BOILERPLATE.test(l);
 // Text aimed at a model, not at us: a bracketed note or HTML that names the classifier, an HTML comment, or a
 // hidden element. It is removed before the rules and the decider read the reply, unless it holds a first-person
 // opt-out, which always counts (safe side).
-const MODEL_NOTE = /\[[^\]\n]{0,300}\b(ai|model|classifier|assistant|system|triage|label|llm|bot)\b[^\]\n]{0,300}\]/gi;
+// Only brackets that address a model ("[note to the triage model: …]", "[assistant note: …]", "[ignore previous …]"),
+// not any bracket that happens to say "system" or "bot" ("[We already have a phone system, not interested]" stays).
+const MODEL_NOTE = /\[[^\]\n]{0,300}\b((note|instruction|message)s? (to|for) (the |any )?(triage |automated |reading )?(ai|model|classifier|assistant|bot|llm|system)|(ai|llm|model|assistant|bot|classifier|triage) (note|instruction|reading this)|classif(y|ier)|label (this|it|the reply|as)|ignore (all|any|previous|prior|earlier|your)|you are an? (ai|model|assistant|classifier)|as an ai|system:)[^\]\n]{0,300}\]/gi;
 const HIDDEN_HTML = /<!--[\s\S]*?-->|<(span|div|p)\b[^>]*display\s*:\s*none[^>]*>[\s\S]*?<\/\1>/gi;
 const unlessOptOut = (m) => (OPT_OUT_REQUEST.test(m) ? m : '');
 
@@ -58,7 +64,7 @@ export function cleanReplyBody(body = '') {
   }
   // Quoted lines and the attribution line go wherever they are, so text written below a quote is kept.
   lines = lines.filter((l) => !/^\s*>/.test(l) && !ATTRIBUTION.test(l.trim()) && !OUR_FOOTER.test(l.trim()) && !MOBILE_SIG.test(l.trim())
-    && !(OWN_LIST_FOOTER.test(l) && !OPT_OUT_REQUEST.test(l)));
+    && !(ownListFooter(l) && !OPT_OUT_REQUEST.test(l)));
   // A signature ("-- " on its own line) or a disclaimer runs to the end: cut it when something is left above.
   const sig = lines.findIndex((l, i) => (/^--\s*$/.test(l) || DISCLAIMER.test(l.trim())) && hasText(lines.slice(0, i)) && !optOutIn(lines.slice(i)));
   if (sig > 0) lines = lines.slice(0, sig);
