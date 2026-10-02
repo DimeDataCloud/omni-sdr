@@ -1,0 +1,1648 @@
+{
+ "date": "2026-10-02",
+ "by": "claude-cloud",
+ "harness": "services/decider/bench/score.py --n 400 (seed 7)",
+ "build": "training v2, 121,584 rows",
+ "models": {
+  "english": {
+   "repo": "convaiinnovations/laya",
+   "revision": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+   "thresholds": {
+    "stop": 0.3,
+    "meet": 0.3
+   },
+   "seconds": 1969,
+   "golden": {
+    "reply_triage.jsonl": {
+     "n": 89,
+     "summary": {
+      "raw": {
+       "stop": {
+        "tp": 16,
+        "fp": 4,
+        "fn": 1,
+        "precision": 0.8,
+        "recall": 0.941
+       },
+       "stop_or_rules": {
+        "tp": 16,
+        "fp": 4,
+        "fn": 1,
+        "precision": 0.8,
+        "recall": 0.941
+       },
+       "stop_sweep": {
+        "0.1": {
+         "tp": 17,
+         "fp": 17,
+         "fn": 0,
+         "precision": 0.5,
+         "recall": 1.0
+        },
+        "0.2": {
+         "tp": 17,
+         "fp": 7,
+         "fn": 0,
+         "precision": 0.708,
+         "recall": 1.0
+        },
+        "0.3": {
+         "tp": 16,
+         "fp": 4,
+         "fn": 1,
+         "precision": 0.8,
+         "recall": 0.941
+        },
+        "0.4": {
+         "tp": 16,
+         "fp": 4,
+         "fn": 1,
+         "precision": 0.8,
+         "recall": 0.941
+        },
+        "0.5": {
+         "tp": 16,
+         "fp": 3,
+         "fn": 1,
+         "precision": 0.842,
+         "recall": 0.941
+        },
+        "0.6": {
+         "tp": 16,
+         "fp": 2,
+         "fn": 1,
+         "precision": 0.889,
+         "recall": 0.941
+        },
+        "0.7": {
+         "tp": 15,
+         "fp": 2,
+         "fn": 2,
+         "precision": 0.882,
+         "recall": 0.882
+        }
+       },
+       "meet": {
+        "tp": 13,
+        "fp": 8,
+        "fn": 1,
+        "precision": 0.619,
+        "recall": 0.929
+       },
+       "meet_or_rules": {
+        "tp": 14,
+        "fp": 8,
+        "fn": 0,
+        "precision": 0.636,
+        "recall": 1.0
+       },
+       "meet_sweep": {
+        "0.1": {
+         "tp": 14,
+         "fp": 40,
+         "fn": 0,
+         "precision": 0.259,
+         "recall": 1.0
+        },
+        "0.2": {
+         "tp": 14,
+         "fp": 16,
+         "fn": 0,
+         "precision": 0.467,
+         "recall": 1.0
+        },
+        "0.3": {
+         "tp": 13,
+         "fp": 8,
+         "fn": 1,
+         "precision": 0.619,
+         "recall": 0.929
+        },
+        "0.4": {
+         "tp": 10,
+         "fp": 6,
+         "fn": 4,
+         "precision": 0.625,
+         "recall": 0.714
+        },
+        "0.5": {
+         "tp": 9,
+         "fp": 2,
+         "fn": 5,
+         "precision": 0.818,
+         "recall": 0.643
+        },
+        "0.6": {
+         "tp": 6,
+         "fp": 1,
+         "fn": 8,
+         "precision": 0.857,
+         "recall": 0.429
+        },
+        "0.7": {
+         "tp": 5,
+         "fp": 0,
+         "fn": 9,
+         "precision": 1.0,
+         "recall": 0.357
+        }
+       },
+       "label_acc": 0.551,
+       "tokens_mean": 297.0
+      },
+      "clean": {
+       "stop": {
+        "tp": 16,
+        "fp": 4,
+        "fn": 1,
+        "precision": 0.8,
+        "recall": 0.941
+       },
+       "stop_or_rules": {
+        "tp": 16,
+        "fp": 4,
+        "fn": 1,
+        "precision": 0.8,
+        "recall": 0.941
+       },
+       "stop_sweep": {
+        "0.1": {
+         "tp": 17,
+         "fp": 17,
+         "fn": 0,
+         "precision": 0.5,
+         "recall": 1.0
+        },
+        "0.2": {
+         "tp": 17,
+         "fp": 7,
+         "fn": 0,
+         "precision": 0.708,
+         "recall": 1.0
+        },
+        "0.3": {
+         "tp": 16,
+         "fp": 4,
+         "fn": 1,
+         "precision": 0.8,
+         "recall": 0.941
+        },
+        "0.4": {
+         "tp": 16,
+         "fp": 4,
+         "fn": 1,
+         "precision": 0.8,
+         "recall": 0.941
+        },
+        "0.5": {
+         "tp": 16,
+         "fp": 3,
+         "fn": 1,
+         "precision": 0.842,
+         "recall": 0.941
+        },
+        "0.6": {
+         "tp": 16,
+         "fp": 2,
+         "fn": 1,
+         "precision": 0.889,
+         "recall": 0.941
+        },
+        "0.7": {
+         "tp": 15,
+         "fp": 2,
+         "fn": 2,
+         "precision": 0.882,
+         "recall": 0.882
+        }
+       },
+       "meet": {
+        "tp": 13,
+        "fp": 8,
+        "fn": 1,
+        "precision": 0.619,
+        "recall": 0.929
+       },
+       "meet_or_rules": {
+        "tp": 14,
+        "fp": 8,
+        "fn": 0,
+        "precision": 0.636,
+        "recall": 1.0
+       },
+       "meet_sweep": {
+        "0.1": {
+         "tp": 14,
+         "fp": 40,
+         "fn": 0,
+         "precision": 0.259,
+         "recall": 1.0
+        },
+        "0.2": {
+         "tp": 14,
+         "fp": 16,
+         "fn": 0,
+         "precision": 0.467,
+         "recall": 1.0
+        },
+        "0.3": {
+         "tp": 13,
+         "fp": 8,
+         "fn": 1,
+         "precision": 0.619,
+         "recall": 0.929
+        },
+        "0.4": {
+         "tp": 10,
+         "fp": 6,
+         "fn": 4,
+         "precision": 0.625,
+         "recall": 0.714
+        },
+        "0.5": {
+         "tp": 9,
+         "fp": 2,
+         "fn": 5,
+         "precision": 0.818,
+         "recall": 0.643
+        },
+        "0.6": {
+         "tp": 6,
+         "fp": 1,
+         "fn": 8,
+         "precision": 0.857,
+         "recall": 0.429
+        },
+        "0.7": {
+         "tp": 5,
+         "fp": 0,
+         "fn": 9,
+         "precision": 1.0,
+         "recall": 0.357
+        }
+       },
+       "label_acc": 0.551,
+       "tokens_mean": 297.0
+      },
+      "rules_stop": {
+       "tp": 10,
+       "fp": 0,
+       "fn": 7,
+       "precision": 1.0,
+       "recall": 0.588
+      },
+      "rules_meet": {
+       "tp": 3,
+       "fp": 0,
+       "fn": 11,
+       "precision": 1.0,
+       "recall": 0.214
+      },
+      "rules_label_acc": 0.404
+     }
+    },
+    "reply_triage_mail.jsonl": {
+     "n": 60,
+     "summary": {
+      "raw": {
+       "stop": {
+        "tp": 11,
+        "fp": 28,
+        "fn": 0,
+        "precision": 0.282,
+        "recall": 1.0
+       },
+       "stop_or_rules": {
+        "tp": 11,
+        "fp": 29,
+        "fn": 0,
+        "precision": 0.275,
+        "recall": 1.0
+       },
+       "stop_sweep": {
+        "0.1": {
+         "tp": 11,
+         "fp": 43,
+         "fn": 0,
+         "precision": 0.204,
+         "recall": 1.0
+        },
+        "0.2": {
+         "tp": 11,
+         "fp": 35,
+         "fn": 0,
+         "precision": 0.239,
+         "recall": 1.0
+        },
+        "0.3": {
+         "tp": 11,
+         "fp": 28,
+         "fn": 0,
+         "precision": 0.282,
+         "recall": 1.0
+        },
+        "0.4": {
+         "tp": 11,
+         "fp": 25,
+         "fn": 0,
+         "precision": 0.306,
+         "recall": 1.0
+        },
+        "0.5": {
+         "tp": 10,
+         "fp": 22,
+         "fn": 1,
+         "precision": 0.312,
+         "recall": 0.909
+        },
+        "0.6": {
+         "tp": 10,
+         "fp": 19,
+         "fn": 1,
+         "precision": 0.345,
+         "recall": 0.909
+        },
+        "0.7": {
+         "tp": 10,
+         "fp": 19,
+         "fn": 1,
+         "precision": 0.345,
+         "recall": 0.909
+        }
+       },
+       "meet": {
+        "tp": 8,
+        "fp": 17,
+        "fn": 3,
+        "precision": 0.32,
+        "recall": 0.727
+       },
+       "meet_or_rules": {
+        "tp": 8,
+        "fp": 17,
+        "fn": 3,
+        "precision": 0.32,
+        "recall": 0.727
+       },
+       "meet_sweep": {
+        "0.1": {
+         "tp": 11,
+         "fp": 45,
+         "fn": 0,
+         "precision": 0.196,
+         "recall": 1.0
+        },
+        "0.2": {
+         "tp": 9,
+         "fp": 32,
+         "fn": 2,
+         "precision": 0.22,
+         "recall": 0.818
+        },
+        "0.3": {
+         "tp": 8,
+         "fp": 17,
+         "fn": 3,
+         "precision": 0.32,
+         "recall": 0.727
+        },
+        "0.4": {
+         "tp": 7,
+         "fp": 9,
+         "fn": 4,
+         "precision": 0.438,
+         "recall": 0.636
+        },
+        "0.5": {
+         "tp": 6,
+         "fp": 8,
+         "fn": 5,
+         "precision": 0.429,
+         "recall": 0.545
+        },
+        "0.6": {
+         "tp": 5,
+         "fp": 3,
+         "fn": 6,
+         "precision": 0.625,
+         "recall": 0.455
+        },
+        "0.7": {
+         "tp": 4,
+         "fp": 2,
+         "fn": 7,
+         "precision": 0.667,
+         "recall": 0.364
+        }
+       },
+       "label_acc": 0.3,
+       "tokens_mean": 608.0
+      },
+      "clean": {
+       "stop": {
+        "tp": 11,
+        "fp": 5,
+        "fn": 0,
+        "precision": 0.688,
+        "recall": 1.0
+       },
+       "stop_or_rules": {
+        "tp": 11,
+        "fp": 7,
+        "fn": 0,
+        "precision": 0.611,
+        "recall": 1.0
+       },
+       "stop_sweep": {
+        "0.1": {
+         "tp": 11,
+         "fp": 15,
+         "fn": 0,
+         "precision": 0.423,
+         "recall": 1.0
+        },
+        "0.2": {
+         "tp": 11,
+         "fp": 7,
+         "fn": 0,
+         "precision": 0.611,
+         "recall": 1.0
+        },
+        "0.3": {
+         "tp": 11,
+         "fp": 5,
+         "fn": 0,
+         "precision": 0.688,
+         "recall": 1.0
+        },
+        "0.4": {
+         "tp": 11,
+         "fp": 3,
+         "fn": 0,
+         "precision": 0.786,
+         "recall": 1.0
+        },
+        "0.5": {
+         "tp": 10,
+         "fp": 3,
+         "fn": 1,
+         "precision": 0.769,
+         "recall": 0.909
+        },
+        "0.6": {
+         "tp": 10,
+         "fp": 3,
+         "fn": 1,
+         "precision": 0.769,
+         "recall": 0.909
+        },
+        "0.7": {
+         "tp": 10,
+         "fp": 3,
+         "fn": 1,
+         "precision": 0.769,
+         "recall": 0.909
+        }
+       },
+       "meet": {
+        "tp": 8,
+        "fp": 10,
+        "fn": 3,
+        "precision": 0.444,
+        "recall": 0.727
+       },
+       "meet_or_rules": {
+        "tp": 8,
+        "fp": 10,
+        "fn": 3,
+        "precision": 0.444,
+        "recall": 0.727
+       },
+       "meet_sweep": {
+        "0.1": {
+         "tp": 10,
+         "fp": 36,
+         "fn": 1,
+         "precision": 0.217,
+         "recall": 0.909
+        },
+        "0.2": {
+         "tp": 9,
+         "fp": 18,
+         "fn": 2,
+         "precision": 0.333,
+         "recall": 0.818
+        },
+        "0.3": {
+         "tp": 8,
+         "fp": 10,
+         "fn": 3,
+         "precision": 0.444,
+         "recall": 0.727
+        },
+        "0.4": {
+         "tp": 6,
+         "fp": 7,
+         "fn": 5,
+         "precision": 0.462,
+         "recall": 0.545
+        },
+        "0.5": {
+         "tp": 5,
+         "fp": 6,
+         "fn": 6,
+         "precision": 0.455,
+         "recall": 0.455
+        },
+        "0.6": {
+         "tp": 4,
+         "fp": 3,
+         "fn": 7,
+         "precision": 0.571,
+         "recall": 0.364
+        },
+        "0.7": {
+         "tp": 3,
+         "fp": 3,
+         "fn": 8,
+         "precision": 0.5,
+         "recall": 0.273
+        }
+       },
+       "label_acc": 0.45,
+       "tokens_mean": 371.1
+      },
+      "rules_stop": {
+       "tp": 5,
+       "fp": 3,
+       "fn": 6,
+       "precision": 0.625,
+       "recall": 0.455
+      },
+      "rules_meet": {
+       "tp": 1,
+       "fp": 0,
+       "fn": 10,
+       "precision": 1.0,
+       "recall": 0.091
+      },
+      "rules_label_acc": 0.3
+     }
+    }
+   },
+   "tasks": {
+    "reply_triage@1": {
+     "stop": {
+      "n": 400,
+      "acc": 0.562,
+      "by_source": {
+       "authored:en:auto": 0.788,
+       "authored:en:auto:inject": 0.857,
+       "authored:en:clean": 0.917,
+       "authored:en:clean+quote": 0.219,
+       "authored:en:clean+quote:inject": 0.4,
+       "authored:en:clean:inject": 0.792,
+       "authored:en:raw": 0.846,
+       "authored:en:raw+quote": 0.172,
+       "authored:en:raw+quote:inject": 0.2,
+       "authored:en:raw:inject": 0.818,
+       "authored:es:clean": 0.76,
+       "authored:es:clean+quote": 0.286,
+       "authored:es:clean:inject": 0.5,
+       "authored:es:raw": 0.6,
+       "authored:es:raw+quote": 0.214,
+       "authored:es:raw+quote:inject": 0.5,
+       "authored:es:raw:inject": 0.5
+      },
+      "recall_by_label": {
+       "false": 0.477,
+       "true": 0.922
+      }
+     },
+     "meet": {
+      "n": 400,
+      "acc": 0.89,
+      "by_source": {
+       "authored:en:auto": 1.0,
+       "authored:en:auto:inject": 0.929,
+       "authored:en:clean": 0.967,
+       "authored:en:clean+quote": 0.906,
+       "authored:en:clean+quote:inject": 0.8,
+       "authored:en:clean:inject": 0.792,
+       "authored:en:raw": 0.821,
+       "authored:en:raw+quote": 0.906,
+       "authored:en:raw+quote:inject": 0.92,
+       "authored:en:raw:inject": 0.818,
+       "authored:es:clean": 0.8,
+       "authored:es:clean+quote": 0.857,
+       "authored:es:clean:inject": 0.5,
+       "authored:es:raw": 0.88,
+       "authored:es:raw+quote": 0.857,
+       "authored:es:raw+quote:inject": 1.0,
+       "authored:es:raw:inject": 1.0
+      },
+      "recall_by_label": {
+       "false": 0.929,
+       "true": 0.683
+      }
+     },
+     "label": {
+      "n": 400,
+      "acc": 0.375,
+      "by_source": {
+       "authored:en:auto": 0.848,
+       "authored:en:auto:inject": 0.5,
+       "authored:en:clean": 0.5,
+       "authored:en:clean+quote": 0.25,
+       "authored:en:clean+quote:inject": 0.4,
+       "authored:en:clean:inject": 0.417,
+       "authored:en:raw": 0.385,
+       "authored:en:raw+quote": 0.203,
+       "authored:en:raw+quote:inject": 0.2,
+       "authored:en:raw:inject": 0.545,
+       "authored:es:clean": 0.36,
+       "authored:es:clean+quote": 0.429,
+       "authored:es:clean:inject": 0.0,
+       "authored:es:raw": 0.28,
+       "authored:es:raw+quote": 0.214,
+       "authored:es:raw+quote:inject": 0.5,
+       "authored:es:raw:inject": 0.0
+      },
+      "recall_by_label": {
+       "meeting_request": 0.349,
+       "not_interested": 0.216,
+       "objection_price": 0.13,
+       "objection_timing": 0.022,
+       "other": 0.323,
+       "out_of_office": 0.745,
+       "question": 0.0,
+       "referral": 0.0,
+       "unsubscribe": 0.883
+      }
+     }
+    },
+    "booking@1": {
+     "action": {
+      "n": 400,
+      "acc": 0.713,
+      "by_source": {
+       "authored:en": 0.9,
+       "clinc150": 0.775,
+       "massive": 0.675,
+       "massive:de-DE": 0.525,
+       "massive:es-ES": 0.625,
+       "massive:fr-FR": 0.55,
+       "massive:it-IT": 0.625,
+       "massive:pt-PT": 0.525,
+       "snips": 0.975,
+       "taskmaster1": 0.95
+      },
+      "recall_by_label": {
+       "availability": 0.524,
+       "book": 0.73,
+       "cancel": 0.862,
+       "confirm": 0.75,
+       "none": 0.701,
+       "reschedule": 0.846
+      }
+     },
+     "wants_time": {
+      "n": 400,
+      "acc": 0.785,
+      "by_source": {
+       "authored:en": 0.775,
+       "clinc150": 0.65,
+       "massive": 0.775,
+       "massive:de-DE": 0.8,
+       "massive:es-ES": 0.8,
+       "massive:fr-FR": 0.775,
+       "massive:it-IT": 0.75,
+       "massive:pt-PT": 0.6,
+       "snips": 0.95,
+       "taskmaster1": 0.975
+      },
+      "recall_by_label": {
+       "false": 0.854,
+       "true": 0.713
+      }
+     }
+    },
+    "ivr_route@1": {
+     "department": {
+      "n": 400,
+      "acc": 0.703,
+      "by_source": {
+       "authored:en": 0.848,
+       "banking77": 0.632,
+       "bitext": 0.672,
+       "clinc150": 0.552,
+       "minds14": 0.561,
+       "taskmaster1": 0.955
+      },
+      "recall_by_label": {
+       "account": 0.333,
+       "billing": 0.829,
+       "cancel": 0.923,
+       "other": 0.71,
+       "sales": 0.368,
+       "scheduling": 0.989,
+       "support": 0.553
+      }
+     },
+     "human": {
+      "n": 400,
+      "acc": 0.953,
+      "by_source": {
+       "authored:en": 0.924,
+       "banking77": 1.0,
+       "bitext": 0.94,
+       "clinc150": 1.0,
+       "minds14": 1.0,
+       "taskmaster1": 0.848
+      },
+      "recall_by_label": {
+       "false": 0.973,
+       "true": 0.743
+      }
+     }
+    },
+    "icp_department@1": {
+     "department": {
+      "n": 400,
+      "acc": 0.63,
+      "by_source": {
+       "authored:en": 0.808,
+       "onet": 0.444,
+       "onet_reported": 0.669
+      },
+      "recall_by_label": {
+       "admin": 0.2,
+       "clinical": 0.35,
+       "executive": 0.889,
+       "finance": 0.769,
+       "hr": 0.375,
+       "it_engineering": 0.875,
+       "marketing": 0.904,
+       "operations": 0.161,
+       "other": 0.738,
+       "sales": 0.231,
+       "trades": 0.509
+      }
+     }
+    },
+    "icp_industry@1": {
+     "industry": {
+      "n": 400,
+      "acc": 0.613,
+      "by_source": {
+       "naics": 0.613
+      },
+      "recall_by_label": {
+       "accommodation and food services": 0.625,
+       "administrative, staffing, cleaning and waste services": 0.0,
+       "agriculture, forestry, fishing and hunting": 0.524,
+       "arts, entertainment and recreation": 0.4,
+       "construction and the trades": 0.846,
+       "educational services": 1.0,
+       "finance and insurance": 0.895,
+       "health care and social assistance": 0.733,
+       "information, media and software publishing": 0.409,
+       "management of companies": null,
+       "manufacturing": 0.933,
+       "mining, quarrying, and oil and gas extraction": 0.941,
+       "other": 0.532,
+       "professional, scientific and technical services": 0.368,
+       "public administration": 0.412,
+       "real estate, rental and leasing": 0.667,
+       "repair, personal care and other services": 0.385,
+       "retail trade": 0.722,
+       "transportation and warehousing": 0.588,
+       "utilities": 1.0,
+       "wholesale trade": 0.952
+      }
+     }
+    }
+   }
+  },
+  "multilingual": {
+   "repo": "convaiinnovations/laya-multilingual",
+   "revision": "e4e9ddf21a7b1903b7acffd8814ad4307bf63a67",
+   "thresholds": {
+    "stop": 0.3,
+    "meet": 0.3
+   },
+   "seconds": 763,
+   "golden": {
+    "reply_triage.jsonl": {
+     "n": 89,
+     "summary": {
+      "raw": {
+       "stop": {
+        "tp": 13,
+        "fp": 4,
+        "fn": 4,
+        "precision": 0.765,
+        "recall": 0.765
+       },
+       "stop_or_rules": {
+        "tp": 15,
+        "fp": 4,
+        "fn": 2,
+        "precision": 0.789,
+        "recall": 0.882
+       },
+       "stop_sweep": {
+        "0.1": {
+         "tp": 14,
+         "fp": 6,
+         "fn": 3,
+         "precision": 0.7,
+         "recall": 0.824
+        },
+        "0.2": {
+         "tp": 13,
+         "fp": 5,
+         "fn": 4,
+         "precision": 0.722,
+         "recall": 0.765
+        },
+        "0.3": {
+         "tp": 13,
+         "fp": 4,
+         "fn": 4,
+         "precision": 0.765,
+         "recall": 0.765
+        },
+        "0.4": {
+         "tp": 13,
+         "fp": 4,
+         "fn": 4,
+         "precision": 0.765,
+         "recall": 0.765
+        },
+        "0.5": {
+         "tp": 13,
+         "fp": 2,
+         "fn": 4,
+         "precision": 0.867,
+         "recall": 0.765
+        },
+        "0.6": {
+         "tp": 12,
+         "fp": 1,
+         "fn": 5,
+         "precision": 0.923,
+         "recall": 0.706
+        },
+        "0.7": {
+         "tp": 12,
+         "fp": 1,
+         "fn": 5,
+         "precision": 0.923,
+         "recall": 0.706
+        }
+       },
+       "meet": {
+        "tp": 8,
+        "fp": 4,
+        "fn": 6,
+        "precision": 0.667,
+        "recall": 0.571
+       },
+       "meet_or_rules": {
+        "tp": 9,
+        "fp": 4,
+        "fn": 5,
+        "precision": 0.692,
+        "recall": 0.643
+       },
+       "meet_sweep": {
+        "0.1": {
+         "tp": 11,
+         "fp": 8,
+         "fn": 3,
+         "precision": 0.579,
+         "recall": 0.786
+        },
+        "0.2": {
+         "tp": 8,
+         "fp": 5,
+         "fn": 6,
+         "precision": 0.615,
+         "recall": 0.571
+        },
+        "0.3": {
+         "tp": 8,
+         "fp": 4,
+         "fn": 6,
+         "precision": 0.667,
+         "recall": 0.571
+        },
+        "0.4": {
+         "tp": 7,
+         "fp": 2,
+         "fn": 7,
+         "precision": 0.778,
+         "recall": 0.5
+        },
+        "0.5": {
+         "tp": 5,
+         "fp": 1,
+         "fn": 9,
+         "precision": 0.833,
+         "recall": 0.357
+        },
+        "0.6": {
+         "tp": 5,
+         "fp": 1,
+         "fn": 9,
+         "precision": 0.833,
+         "recall": 0.357
+        },
+        "0.7": {
+         "tp": 3,
+         "fp": 1,
+         "fn": 11,
+         "precision": 0.75,
+         "recall": 0.214
+        }
+       },
+       "label_acc": 0.292,
+       "tokens_mean": 291.5
+      },
+      "clean": {
+       "stop": {
+        "tp": 13,
+        "fp": 4,
+        "fn": 4,
+        "precision": 0.765,
+        "recall": 0.765
+       },
+       "stop_or_rules": {
+        "tp": 15,
+        "fp": 4,
+        "fn": 2,
+        "precision": 0.789,
+        "recall": 0.882
+       },
+       "stop_sweep": {
+        "0.1": {
+         "tp": 14,
+         "fp": 6,
+         "fn": 3,
+         "precision": 0.7,
+         "recall": 0.824
+        },
+        "0.2": {
+         "tp": 13,
+         "fp": 5,
+         "fn": 4,
+         "precision": 0.722,
+         "recall": 0.765
+        },
+        "0.3": {
+         "tp": 13,
+         "fp": 4,
+         "fn": 4,
+         "precision": 0.765,
+         "recall": 0.765
+        },
+        "0.4": {
+         "tp": 13,
+         "fp": 4,
+         "fn": 4,
+         "precision": 0.765,
+         "recall": 0.765
+        },
+        "0.5": {
+         "tp": 13,
+         "fp": 2,
+         "fn": 4,
+         "precision": 0.867,
+         "recall": 0.765
+        },
+        "0.6": {
+         "tp": 12,
+         "fp": 1,
+         "fn": 5,
+         "precision": 0.923,
+         "recall": 0.706
+        },
+        "0.7": {
+         "tp": 12,
+         "fp": 1,
+         "fn": 5,
+         "precision": 0.923,
+         "recall": 0.706
+        }
+       },
+       "meet": {
+        "tp": 8,
+        "fp": 4,
+        "fn": 6,
+        "precision": 0.667,
+        "recall": 0.571
+       },
+       "meet_or_rules": {
+        "tp": 9,
+        "fp": 4,
+        "fn": 5,
+        "precision": 0.692,
+        "recall": 0.643
+       },
+       "meet_sweep": {
+        "0.1": {
+         "tp": 11,
+         "fp": 8,
+         "fn": 3,
+         "precision": 0.579,
+         "recall": 0.786
+        },
+        "0.2": {
+         "tp": 8,
+         "fp": 5,
+         "fn": 6,
+         "precision": 0.615,
+         "recall": 0.571
+        },
+        "0.3": {
+         "tp": 8,
+         "fp": 4,
+         "fn": 6,
+         "precision": 0.667,
+         "recall": 0.571
+        },
+        "0.4": {
+         "tp": 7,
+         "fp": 2,
+         "fn": 7,
+         "precision": 0.778,
+         "recall": 0.5
+        },
+        "0.5": {
+         "tp": 5,
+         "fp": 1,
+         "fn": 9,
+         "precision": 0.833,
+         "recall": 0.357
+        },
+        "0.6": {
+         "tp": 5,
+         "fp": 1,
+         "fn": 9,
+         "precision": 0.833,
+         "recall": 0.357
+        },
+        "0.7": {
+         "tp": 3,
+         "fp": 1,
+         "fn": 11,
+         "precision": 0.75,
+         "recall": 0.214
+        }
+       },
+       "label_acc": 0.292,
+       "tokens_mean": 291.5
+      },
+      "rules_stop": {
+       "tp": 10,
+       "fp": 0,
+       "fn": 7,
+       "precision": 1.0,
+       "recall": 0.588
+      },
+      "rules_meet": {
+       "tp": 3,
+       "fp": 0,
+       "fn": 11,
+       "precision": 1.0,
+       "recall": 0.214
+      },
+      "rules_label_acc": 0.404
+     }
+    },
+    "reply_triage_mail.jsonl": {
+     "n": 60,
+     "summary": {
+      "raw": {
+       "stop": {
+        "tp": 10,
+        "fp": 11,
+        "fn": 1,
+        "precision": 0.476,
+        "recall": 0.909
+       },
+       "stop_or_rules": {
+        "tp": 10,
+        "fp": 13,
+        "fn": 1,
+        "precision": 0.435,
+        "recall": 0.909
+       },
+       "stop_sweep": {
+        "0.1": {
+         "tp": 10,
+         "fp": 21,
+         "fn": 1,
+         "precision": 0.323,
+         "recall": 0.909
+        },
+        "0.2": {
+         "tp": 10,
+         "fp": 12,
+         "fn": 1,
+         "precision": 0.455,
+         "recall": 0.909
+        },
+        "0.3": {
+         "tp": 10,
+         "fp": 11,
+         "fn": 1,
+         "precision": 0.476,
+         "recall": 0.909
+        },
+        "0.4": {
+         "tp": 9,
+         "fp": 11,
+         "fn": 2,
+         "precision": 0.45,
+         "recall": 0.818
+        },
+        "0.5": {
+         "tp": 9,
+         "fp": 9,
+         "fn": 2,
+         "precision": 0.5,
+         "recall": 0.818
+        },
+        "0.6": {
+         "tp": 9,
+         "fp": 9,
+         "fn": 2,
+         "precision": 0.5,
+         "recall": 0.818
+        },
+        "0.7": {
+         "tp": 9,
+         "fp": 8,
+         "fn": 2,
+         "precision": 0.529,
+         "recall": 0.818
+        }
+       },
+       "meet": {
+        "tp": 2,
+        "fp": 4,
+        "fn": 9,
+        "precision": 0.333,
+        "recall": 0.182
+       },
+       "meet_or_rules": {
+        "tp": 3,
+        "fp": 4,
+        "fn": 8,
+        "precision": 0.429,
+        "recall": 0.273
+       },
+       "meet_sweep": {
+        "0.1": {
+         "tp": 7,
+         "fp": 13,
+         "fn": 4,
+         "precision": 0.35,
+         "recall": 0.636
+        },
+        "0.2": {
+         "tp": 3,
+         "fp": 5,
+         "fn": 8,
+         "precision": 0.375,
+         "recall": 0.273
+        },
+        "0.3": {
+         "tp": 2,
+         "fp": 4,
+         "fn": 9,
+         "precision": 0.333,
+         "recall": 0.182
+        },
+        "0.4": {
+         "tp": 2,
+         "fp": 4,
+         "fn": 9,
+         "precision": 0.333,
+         "recall": 0.182
+        },
+        "0.5": {
+         "tp": 1,
+         "fp": 2,
+         "fn": 10,
+         "precision": 0.333,
+         "recall": 0.091
+        },
+        "0.6": {
+         "tp": 0,
+         "fp": 1,
+         "fn": 11,
+         "precision": 0.0,
+         "recall": 0.0
+        },
+        "0.7": {
+         "tp": 0,
+         "fp": 0,
+         "fn": 11,
+         "precision": null,
+         "recall": 0.0
+        }
+       },
+       "label_acc": 0.183,
+       "tokens_mean": 612.1
+      },
+      "clean": {
+       "stop": {
+        "tp": 10,
+        "fp": 2,
+        "fn": 1,
+        "precision": 0.833,
+        "recall": 0.909
+       },
+       "stop_or_rules": {
+        "tp": 11,
+        "fp": 4,
+        "fn": 0,
+        "precision": 0.733,
+        "recall": 1.0
+       },
+       "stop_sweep": {
+        "0.1": {
+         "tp": 10,
+         "fp": 9,
+         "fn": 1,
+         "precision": 0.526,
+         "recall": 0.909
+        },
+        "0.2": {
+         "tp": 10,
+         "fp": 3,
+         "fn": 1,
+         "precision": 0.769,
+         "recall": 0.909
+        },
+        "0.3": {
+         "tp": 10,
+         "fp": 2,
+         "fn": 1,
+         "precision": 0.833,
+         "recall": 0.909
+        },
+        "0.4": {
+         "tp": 10,
+         "fp": 2,
+         "fn": 1,
+         "precision": 0.833,
+         "recall": 0.909
+        },
+        "0.5": {
+         "tp": 10,
+         "fp": 1,
+         "fn": 1,
+         "precision": 0.909,
+         "recall": 0.909
+        },
+        "0.6": {
+         "tp": 10,
+         "fp": 1,
+         "fn": 1,
+         "precision": 0.909,
+         "recall": 0.909
+        },
+        "0.7": {
+         "tp": 10,
+         "fp": 1,
+         "fn": 1,
+         "precision": 0.909,
+         "recall": 0.909
+        }
+       },
+       "meet": {
+        "tp": 1,
+        "fp": 1,
+        "fn": 10,
+        "precision": 0.5,
+        "recall": 0.091
+       },
+       "meet_or_rules": {
+        "tp": 2,
+        "fp": 1,
+        "fn": 9,
+        "precision": 0.667,
+        "recall": 0.182
+       },
+       "meet_sweep": {
+        "0.1": {
+         "tp": 3,
+         "fp": 5,
+         "fn": 8,
+         "precision": 0.375,
+         "recall": 0.273
+        },
+        "0.2": {
+         "tp": 1,
+         "fp": 2,
+         "fn": 10,
+         "precision": 0.333,
+         "recall": 0.091
+        },
+        "0.3": {
+         "tp": 1,
+         "fp": 1,
+         "fn": 10,
+         "precision": 0.5,
+         "recall": 0.091
+        },
+        "0.4": {
+         "tp": 0,
+         "fp": 1,
+         "fn": 11,
+         "precision": 0.0,
+         "recall": 0.0
+        },
+        "0.5": {
+         "tp": 0,
+         "fp": 0,
+         "fn": 11,
+         "precision": null,
+         "recall": 0.0
+        },
+        "0.6": {
+         "tp": 0,
+         "fp": 0,
+         "fn": 11,
+         "precision": null,
+         "recall": 0.0
+        },
+        "0.7": {
+         "tp": 0,
+         "fp": 0,
+         "fn": 11,
+         "precision": null,
+         "recall": 0.0
+        }
+       },
+       "label_acc": 0.233,
+       "tokens_mean": 366.6
+      },
+      "rules_stop": {
+       "tp": 5,
+       "fp": 3,
+       "fn": 6,
+       "precision": 0.625,
+       "recall": 0.455
+      },
+      "rules_meet": {
+       "tp": 1,
+       "fp": 0,
+       "fn": 10,
+       "precision": 1.0,
+       "recall": 0.091
+      },
+      "rules_label_acc": 0.3
+     }
+    }
+   },
+   "tasks": {
+    "reply_triage@1": {
+     "stop": {
+      "n": 400,
+      "acc": 0.72,
+      "by_source": {
+       "authored:en:auto": 0.939,
+       "authored:en:auto:inject": 0.5,
+       "authored:en:clean": 1.0,
+       "authored:en:clean+quote": 0.438,
+       "authored:en:clean+quote:inject": 0.4,
+       "authored:en:clean:inject": 0.958,
+       "authored:en:raw": 0.795,
+       "authored:en:raw+quote": 0.578,
+       "authored:en:raw+quote:inject": 0.28,
+       "authored:en:raw:inject": 0.818,
+       "authored:es:clean": 1.0,
+       "authored:es:clean+quote": 0.571,
+       "authored:es:clean:inject": 0.5,
+       "authored:es:raw": 0.84,
+       "authored:es:raw+quote": 0.464,
+       "authored:es:raw+quote:inject": 0.5,
+       "authored:es:raw:inject": 0.5
+      },
+      "recall_by_label": {
+       "false": 0.666,
+       "true": 0.948
+      }
+     },
+     "meet": {
+      "n": 400,
+      "acc": 0.825,
+      "by_source": {
+       "authored:en:auto": 0.939,
+       "authored:en:auto:inject": 1.0,
+       "authored:en:clean": 0.9,
+       "authored:en:clean+quote": 0.844,
+       "authored:en:clean+quote:inject": 0.6,
+       "authored:en:clean:inject": 0.958,
+       "authored:en:raw": 0.846,
+       "authored:en:raw+quote": 0.656,
+       "authored:en:raw+quote:inject": 0.52,
+       "authored:en:raw:inject": 0.818,
+       "authored:es:clean": 0.96,
+       "authored:es:clean+quote": 0.857,
+       "authored:es:clean:inject": 1.0,
+       "authored:es:raw": 0.84,
+       "authored:es:raw+quote": 0.821,
+       "authored:es:raw+quote:inject": 0.5,
+       "authored:es:raw:inject": 1.0
+      },
+      "recall_by_label": {
+       "false": 0.881,
+       "true": 0.524
+      }
+     },
+     "label": {
+      "n": 400,
+      "acc": 0.278,
+      "by_source": {
+       "authored:en:auto": 0.97,
+       "authored:en:auto:inject": 1.0,
+       "authored:en:clean": 0.25,
+       "authored:en:clean+quote": 0.031,
+       "authored:en:clean+quote:inject": 0.2,
+       "authored:en:clean:inject": 0.333,
+       "authored:en:raw": 0.179,
+       "authored:en:raw+quote": 0.078,
+       "authored:en:raw+quote:inject": 0.04,
+       "authored:en:raw:inject": 0.273,
+       "authored:es:clean": 0.24,
+       "authored:es:clean+quote": 0.143,
+       "authored:es:clean:inject": 0.0,
+       "authored:es:raw": 0.44,
+       "authored:es:raw+quote": 0.107,
+       "authored:es:raw+quote:inject": 0.5,
+       "authored:es:raw:inject": 1.0
+      },
+      "recall_by_label": {
+       "meeting_request": 0.0,
+       "not_interested": 0.51,
+       "objection_price": 0.522,
+       "objection_timing": 0.0,
+       "other": 0.0,
+       "out_of_office": 0.979,
+       "question": 0.041,
+       "referral": 0.154,
+       "unsubscribe": 0.299
+      }
+     }
+    },
+    "booking@1": {
+     "action": {
+      "n": 400,
+      "acc": 0.552,
+      "by_source": {
+       "authored:en": 0.65,
+       "clinc150": 0.6,
+       "massive": 0.4,
+       "massive:de-DE": 0.4,
+       "massive:es-ES": 0.425,
+       "massive:fr-FR": 0.525,
+       "massive:it-IT": 0.4,
+       "massive:pt-PT": 0.525,
+       "snips": 0.875,
+       "taskmaster1": 0.725
+      },
+      "recall_by_label": {
+       "availability": 0.524,
+       "book": 0.534,
+       "cancel": 0.724,
+       "confirm": 0.0,
+       "none": 0.575,
+       "reschedule": 0.462
+      }
+     },
+     "wants_time": {
+      "n": 400,
+      "acc": 0.635,
+      "by_source": {
+       "authored:en": 0.425,
+       "clinc150": 0.6,
+       "massive": 0.65,
+       "massive:de-DE": 0.775,
+       "massive:es-ES": 0.8,
+       "massive:fr-FR": 0.625,
+       "massive:it-IT": 0.675,
+       "massive:pt-PT": 0.7,
+       "snips": 0.45,
+       "taskmaster1": 0.65
+      },
+      "recall_by_label": {
+       "false": 0.961,
+       "true": 0.292
+      }
+     }
+    },
+    "ivr_route@1": {
+     "department": {
+      "n": 400,
+      "acc": 0.657,
+      "by_source": {
+       "authored:en": 0.667,
+       "banking77": 0.662,
+       "bitext": 0.597,
+       "clinc150": 0.582,
+       "minds14": 0.53,
+       "taskmaster1": 0.909
+      },
+      "recall_by_label": {
+       "account": 0.588,
+       "billing": 0.776,
+       "cancel": 0.846,
+       "other": 0.377,
+       "sales": 0.474,
+       "scheduling": 0.931,
+       "support": 0.553
+      }
+     },
+     "human": {
+      "n": 400,
+      "acc": 0.868,
+      "by_source": {
+       "authored:en": 0.712,
+       "banking77": 0.985,
+       "bitext": 0.925,
+       "clinc150": 0.985,
+       "minds14": 0.833,
+       "taskmaster1": 0.758
+      },
+      "recall_by_label": {
+       "false": 0.912,
+       "true": 0.4
+      }
+     }
+    },
+    "icp_department@1": {
+     "department": {
+      "n": 400,
+      "acc": 0.463,
+      "by_source": {
+       "authored:en": 0.625,
+       "onet": 0.417,
+       "onet_reported": 0.368
+      },
+      "recall_by_label": {
+       "admin": 0.6,
+       "clinical": 0.45,
+       "executive": 1.0,
+       "finance": 0.538,
+       "hr": 0.438,
+       "it_engineering": 0.75,
+       "marketing": 0.711,
+       "operations": 0.258,
+       "other": 0.365,
+       "sales": 0.385,
+       "trades": 0.208
+      }
+     }
+    },
+    "icp_industry@1": {
+     "industry": {
+      "n": 400,
+      "acc": 0.61,
+      "by_source": {
+       "naics": 0.61
+      },
+      "recall_by_label": {
+       "accommodation and food services": 0.75,
+       "administrative, staffing, cleaning and waste services": 0.28,
+       "agriculture, forestry, fishing and hunting": 0.619,
+       "arts, entertainment and recreation": 0.44,
+       "construction and the trades": 0.654,
+       "educational services": 1.0,
+       "finance and insurance": 0.895,
+       "health care and social assistance": 0.467,
+       "information, media and software publishing": 0.5,
+       "management of companies": null,
+       "manufacturing": 0.867,
+       "mining, quarrying, and oil and gas extraction": 1.0,
+       "other": 0.468,
+       "professional, scientific and technical services": 0.526,
+       "public administration": 0.353,
+       "real estate, rental and leasing": 0.833,
+       "repair, personal care and other services": 0.538,
+       "retail trade": 0.389,
+       "transportation and warehousing": 0.588,
+       "utilities": 1.0,
+       "wholesale trade": 0.952
+      }
+     }
+    }
+   }
+  }
+ }
+}

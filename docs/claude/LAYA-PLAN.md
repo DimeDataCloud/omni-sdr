@@ -126,4 +126,7 @@ One image (`--build-arg TORCH_INDEX=…/cu130`), same API, so callers don't chan
 | L6 | Project CPU quota is 20 vCPU per region; `decider` at max 8 x 2 vCPU takes 16 of it. Raise the quota before more services deploy | Christian |
 | L8 | Clean replies (`clean_email_body` or an equivalent in the state builder) before they reach the decider: 5x CPU and 3 wrong answers on real-shaped mail | Claude |
 | L9 | Fine-tune laya-multilingual and move `decider` to it (3x less CPU per decision) once it matches the English checkpoint on the held-out sets | Claude; GPU access needs Christian |
+| L10 | Mail-shaped golden set (60, `training/golden/reply_triage_mail.jsonl`) is in the release check: cleaned-mail stop precision is 0.69 zero-shot (raw 0.28); no checkpoint or threshold change ships if it drops (LAYA-DATA-2026-10-02.md) | Claude |
+| L11 | reply-rules.mjs reads a signature's newsletter "unsubscribe" line as an opt-out (suppresses a meeting request; P2); fix with the mail golden cases as tests | claude-cloud writes, claude-local audits, Christian OKs |
+| L12 | Training data v2 built: 121,584 rows incl. 9,121 reply-triage rows (v1 had 0), booking reschedule/confirm, 5 more languages. L3's golden set exists (149 replies); L4/L9 now wait only on a GPU | Christian (GPU) |
 | L7 | Checkpoint warning seen at load: temperatures for choice questions with 11+ options are clamped and "uncalibrated". The live path has no choice question; keep any future choice under 11 options or treat its confidence as raw | Claude |

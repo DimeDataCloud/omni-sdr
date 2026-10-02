@@ -25,7 +25,15 @@ SOURCES = {
     "onet": [("db_31_0_text.zip", "https://www.onetcenter.org/dl_files/database/db_31_0_text.zip")],
     "naics": [("2022_NAICS_Index_File.xlsx", "https://www.census.gov/naics/2022NAICS/2022_NAICS_Index_File.xlsx"),
               ("2022_NAICS_Descriptions.xlsx", "https://www.census.gov/naics/2022NAICS/2022_NAICS_Descriptions.xlsx")],
+    # Added 2026-10-02 (LAYA-DATA-2026-10-02.md). Taskmaster-1, CC BY 4.0: crowd-written and Wizard-of-Oz role-play
+    # dialogs (restaurant tables, auto-repair appointments), so booking/confirm turns written by people, not mail.
+    "taskmaster": [(f"{n}.json", f"https://raw.githubusercontent.com/google-research-datasets/Taskmaster/master/TM-1-2019/{n}.json")
+                   for n in ("self-dialogs", "woz-dialogs")],
+    # MInDS-14, CC BY 4.0: spoken banking intents from crowd workers, English locales. Only the transcripts are kept:
+    # the audio is deleted straight after download (no voices on disk).
+    "minds14": [(f"{loc}.parquet", HF.format(repo="PolyAI/minds14", config=loc, split="train")) for loc in ("en-US", "en-GB", "en-AU")],
 }
+TEXT_ONLY = {"minds14": ["transcription", "intent_class", "lang_id"]}
 UA = {"User-Agent": "omni-sdr-training/1.0 (dimedatateam@gmail.com)"}
 
 
@@ -54,7 +62,8 @@ def main():
         for name, url in files:
             path = os.path.join(raw, source, name)
             key = f"{source}/{name}"
-            if os.path.exists(path) and manifest.get(key, {}).get("sha256") == sha256(path):
+            have = manifest.get(key, {})
+            if os.path.exists(path) and sha256(path) in (have.get("sha256"), have.get("text_only_sha256")):
                 print(f"have  {key}")
                 continue
             req = urllib.request.Request(url, headers=UA)
@@ -65,6 +74,11 @@ def main():
                 f.write(data)
             os.replace(tmp, path)
             manifest[key] = {"url": url, "bytes": len(data), "sha256": sha256(path)}
+            if source in TEXT_ONLY:
+                # Keep the listed columns only, in place; the manifest keeps the hash of what was downloaded.
+                import pandas as pd
+                pd.read_parquet(path, columns=TEXT_ONLY[source]).to_parquet(path)
+                manifest[key]["text_only_sha256"] = sha256(path)
             print(f"got   {key}  {len(data) / 1e6:.1f} MB")
             if name.endswith(".tar.gz"):
                 with tarfile.open(path) as t:
