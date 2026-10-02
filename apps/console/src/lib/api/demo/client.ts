@@ -309,7 +309,7 @@ export const demoClient: Client = {
     return meetingOut(w, x);
   }),
 
-  agents: (s) => read((w) => { tenant(w, s, 'reports_view'); return w.agents.filter((a) => a.ws === s.workspaceId && !a.archivedAt).map((a) => agentOut(w, a)); }),
+  agents: (s) => read((w) => { tenant(w, s, 'team_view'); return w.agents.filter((a) => a.ws === s.workspaceId && !a.archivedAt).map((a) => agentOut(w, a)); }),
   createAgent: (s, body) => write((w) => {
     const { m } = tenant(w, s, 'build');
     if (!body.name?.trim() || body.name.length > 60) throw new ApiError(400, 'bad_request', 'name: 1 to 60 characters');
@@ -342,7 +342,7 @@ export const demoClient: Client = {
     audit(w, s.workspaceId, m.userId, 'archive', 'agent', id);
   }),
   messages: (s, agentId) => read((w) => {
-    tenant(w, s, 'reports_view');
+    tenant(w, s, 'team_view');
     if (!w.agents.some((a) => a.id === agentId && a.ws === s.workspaceId)) throw nf('agent');
     return w.chat.filter((m) => m.agentId === agentId).map(chatOut);
   }),
@@ -368,7 +368,7 @@ export const demoClient: Client = {
     return { userMessage: chatOut(user), reply: chatOut(reply) };
   },
 
-  routines: (s) => read((w) => { tenant(w, s, 'reports_view'); return w.routines.filter((r) => r.ws === s.workspaceId).map((r) => routineOut(w, r)); }),
+  routines: (s) => read((w) => { tenant(w, s, 'team_view'); return w.routines.filter((r) => r.ws === s.workspaceId).map((r) => routineOut(w, r)); }),
   createRoutine: (s, body) => write((w) => {
     const { m } = tenant(w, s, 'build');
     if (!body.name.trim()) throw new ApiError(400, 'bad_request', 'name: required');
@@ -389,7 +389,7 @@ export const demoClient: Client = {
   }),
 
   capacity: (s) => read((w) => {
-    tenant(w, s, 'reports_view');
+    tenant(w, s, 'team_view');
     const today = new Date().toISOString().slice(0, 10);
     const mailboxes = w.mailboxes.filter((x) => x.ws === s.workspaceId).map((x) => ({ id: x.id, provider: x.provider, address: x.address, dailyCap: x.dailyCap,
       pausedReason: x.pausedReason, sentToday: w.sent.filter((y) => y.mailboxId === x.id && y.sentAt.slice(0, 10) === today).length }));
@@ -428,7 +428,7 @@ export const demoClient: Client = {
     if (!w.suppression.includes(e)) w.suppression.push(e);
     audit(w, s.workspaceId, m.userId, 'suppress', 'email', 'hash');
   }),
-  credits: (s) => read((w) => { tenant(w, s, 'reports_view'); return { balances: { ...w.credits } }; }),
+  credits: (s) => read((w) => { tenant(w, s, 'team_view'); return { balances: { ...w.credits } }; }),
   analytics: (s, days) => read((w): Analytics => {
     const { ws } = tenant(w, s, 'reports_view');
     const tz = ws.timezone;
@@ -491,7 +491,7 @@ export const demoClient: Client = {
     };
   }),
   connectors: (s) => read((w) => {
-    tenant(w, s, 'reports_view');
+    tenant(w, s, 'team_view');
     const providers = new Set(w.mailboxes.filter((x) => x.ws === s.workspaceId && !x.pausedReason).map((x) => x.provider));
     const connected: Record<string, boolean> = { gmail: providers.has('gmail'), smtp_imap: providers.has('smtp_imap'), email_routing: providers.size > 0 };
     return CONNECTORS.map((c) => ({ ...c, scopes: [...c.scopes], status: c.activation === 'later' ? 'activates_later' as const : connected[c.id] ? 'connected' as const : 'not_connected' as const }));

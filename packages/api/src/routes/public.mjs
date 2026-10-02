@@ -13,6 +13,9 @@ const UNSUB_TOKEN = /^[A-Za-z0-9_-]{16,64}$/;
 
 export function registerPublic(r) {
   r.get('/healthz', { auth: 'none', publicLimit: 120 }, () => ({ ok: true }));
+  // Google's front end answers /healthz itself on *.run.app (404, verified by claude-local 2026-10-02), so uptime
+  // checks and the deploy smoke test use this path.
+  r.get('/v1/health', { auth: 'none', publicLimit: 120 }, () => ({ ok: true }));
 
   // GET never unsubscribes: link scanners prefetch GETs. One page, one button (CAN-SPAM allows one page visit).
   r.get('/u/:token', { auth: 'none' }, (ctx) => ({

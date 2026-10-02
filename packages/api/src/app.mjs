@@ -87,9 +87,11 @@ export function createApp({ pool, verifyToken, config = {}, model = null, now = 
 
   function send(res, status, body, headers = {}) {
     const isHtml = typeof body === 'string' && headers['content-type']?.startsWith('text/html');
-    const payload = body === undefined || status === 204 ? '' : isHtml ? body : JSON.stringify(body);
+    // A file the handler built itself (a CSV export): sent as is, with its own type and disposition.
+    const isFile = typeof body === 'string' && !isHtml && Boolean(headers['content-type']) && !headers['content-type'].startsWith('application/json');
+    const payload = body === undefined || status === 204 ? '' : isHtml || isFile ? body : JSON.stringify(body);
     res.writeHead(status, {
-      'content-type': isHtml ? 'text/html; charset=utf-8' : 'application/json; charset=utf-8',
+      'content-type': isHtml ? 'text/html; charset=utf-8' : isFile ? headers['content-type'] : 'application/json; charset=utf-8',
       'cache-control': 'no-store',
       'x-content-type-options': 'nosniff',
       'referrer-policy': 'no-referrer',
@@ -181,9 +183,11 @@ export function createApp({ pool, verifyToken, config = {}, model = null, now = 
 
       // A handler returns data (→ 200) or an explicit { status, body?, html?, headers? } envelope.
       const res0 = out && typeof out === 'object' && typeof out.status === 'number'
-        && Object.keys(out).every((k) => ['status', 'body', 'html', 'headers'].includes(k)) ? out : { status: 200, body: out };
+        && Object.keys(out).every((k) => ['status', 'body', 'html', 'headers', 'file'].includes(k)) ? out : { status: 200, body: out };
       status = res0.status;
       if (res0.html !== undefined) return send(res, status, res0.html, { 'content-type': 'text/html; charset=utf-8', ...cors });
+      if (res0.file !== undefined) return send(res, status, res0.file.content, { 'content-type': res0.file.type,
+        'content-disposition': `attachment; filename="${res0.file.name.replace(/[^A-Za-z0-9._-]/g, '_')}"`, ...cors });
       return send(res, status, res0.body, { ...cors, ...(res0.headers ?? {}) });
     } catch (err) {
       const h = toHttp(err);
