@@ -48,3 +48,22 @@ test('refuses to run with no or a non-run.app origin; an unreachable API is a cl
     assert.doesNotMatch(await r.text(), /run\.app/, 'the origin is not named to callers');
   });
 });
+
+test('signs the caller\'s own address for the API (#55) and drops any client-IP headers the caller sent', () => withFetch(
+  async () => new Response('{}', { status: 200 }),
+  async (calls) => {
+    const { createHmac } = await import('node:crypto');
+    const SECRET = 'test-edge-secret-not-real';
+    const req = new Request('https://api.omnisdr.com/v1/me', { headers: { 'cf-connecting-ip': '203.0.113.7',
+      'x-omni-client-ip': '198.51.100.1', 'x-omni-client-ts': '1', 'x-omni-client-sig': 'f'.repeat(64) } });
+    await worker.fetch(req, { ORIGIN, EDGE_SECRET: SECRET });
+    const h = calls[0].init.headers;
+    assert.equal(h.get('x-omni-client-ip'), '203.0.113.7', 'the connecting address, not the forged one');
+    const ts = h.get('x-omni-client-ts');
+    assert.ok(Math.abs(Number(ts) - Date.now() / 1000) < 5);
+    assert.equal(h.get('x-omni-client-sig'), createHmac('sha256', SECRET).update(`203.0.113.7.${ts}`).digest('hex'), 'the format app.mjs edgeIp verifies');
+    // Without the secret nothing is signed, and the forged headers still never reach the API.
+    await worker.fetch(req, { ORIGIN });
+    const h2 = calls[1].init.headers;
+    assert.deepEqual([h2.get('x-omni-client-ip'), h2.get('x-omni-client-ts'), h2.get('x-omni-client-sig')], [null, null, null]);
+  }));
