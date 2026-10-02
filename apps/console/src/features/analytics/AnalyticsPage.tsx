@@ -71,7 +71,7 @@ export default function AnalyticsPage() {
                 ) : <p className="px-5 pb-5 text-sm text-muted">Nothing sent in this period yet.</p>}
               </Card>
             </motion.div>
-            {!client && can('reports_view') && (
+            {!client && can('team_view') && (
               <motion.div variants={listItem}>
                 <Card className="p-5">
                   <h2 className="mb-3 flex items-center gap-2 text-base font-semibold"><Coins className="size-4" aria-hidden />Credits</h2>
