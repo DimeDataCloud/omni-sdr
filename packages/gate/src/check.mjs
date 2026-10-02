@@ -71,7 +71,8 @@ export function checkDraft(draft, ctx) {
     if (ev.contact_id !== ctx.contactId) { add('evidence_wrong_contact', `${at} evidence belongs to another contact`); continue; }
     if (!(new Date(ev.expires_at) > ctx.now)) { add('evidence_expired', `${at} evidence expired ${ev.expires_at}`); continue; }
     const value = factAt(ev.facts, c.fact_key);
-    if (value === undefined) { add('fact_missing', `${at} fact_key ${c.fact_key} not on evidence`); continue; }
+    // null is "not observed" (an enricher could not tell), so it backs nothing, same as a missing key.
+    if (value === undefined || value === null) { add('fact_missing', `${at} fact_key ${c.fact_key} not on evidence`); continue; }
     const have = factNumbers(value);
     const wrong = numbersIn(c.text).filter((n) => !have.includes(n));
     if (wrong.length) { add('number_mismatch', `${at} ${wrong.join(', ')} not in fact ${c.fact_key}=${JSON.stringify(value)}`); continue; }
