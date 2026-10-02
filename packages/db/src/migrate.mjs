@@ -8,9 +8,9 @@ const MIGRATIONS_DIR = fileURLToPath(new URL('../migrations/', import.meta.url))
 
 /** Migration files not yet recorded in schema_migrations, in the order they would run. */
 export async function pending(db, dir = MIGRATIONS_DIR) {
-  await db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
-    name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())`);
-  const applied = new Set((await db.query('SELECT name FROM schema_migrations')).rows.map((r) => r.name));
+  // Read-only: a dry run against prod must not write, so a missing bookkeeping table means nothing is applied yet.
+  const exists = (await db.query(`SELECT to_regclass('public.schema_migrations') IS NOT NULL AS e`)).rows[0].e;
+  const applied = new Set(exists ? (await db.query('SELECT name FROM schema_migrations')).rows.map((r) => r.name) : []);
   const files = (await readdir(dir)).filter((f) => f.endsWith('.sql')).sort();
   return { total: files.length, names: files.filter((f) => !applied.has(f)) };
 }

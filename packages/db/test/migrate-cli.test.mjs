@@ -12,7 +12,7 @@ test('dry run lists every migration and applies nothing', async () => {
   const res = await run(db);
   assert.ok(res.total >= 6);
   assert.equal(res.pending.length, res.total);
-  assert.equal((await db.query('SELECT count(*)::int AS n FROM schema_migrations')).rows[0].n, 0);
+  assert.equal((await db.query(`SELECT to_regclass('public.schema_migrations') AS t`)).rows[0].t, null, 'a dry run writes nothing, not even its bookkeeping table');
   assert.equal((await db.query(`SELECT to_regclass('public.orgs') AS t`)).rows[0].t, null);
 });
 
