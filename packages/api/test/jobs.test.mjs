@@ -31,7 +31,8 @@ test('refine job: missing config exits 2 and touches nothing', async () => {
 });
 
 test('refine job: a down decider exits 1 and leaves replies for the next pass; a working one decides them', async () => {
-  await reply('daniel@northgate-dental.example', 'I never asked for this. Do not write to me again.');
+  // The rules must miss it for the decider to matter (they learned "do not write to me" in L11).
+  await reply('daniel@northgate-dental.example', 'I never asked for this. One more and I report you as spam again.');
   const before = await undecided();
   assert.ok(before >= 1);
   const logs = [];

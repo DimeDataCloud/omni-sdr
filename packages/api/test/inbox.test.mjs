@@ -179,7 +179,7 @@ const noulAns = (p) => ({ type: 'noul', noul: p, answer_confidence: Math.max(p, 
 // Answers taken from the 2026-10-01 bench: what laya said about texts like these.
 const benchLike = fakeDecider((state) => {
   const b = state.body.toLowerCase();
-  if (b.includes('write to me again')) return { stop: noulAns(0.65), meet: noulAns(0.05) };
+  if (b.includes('reporting you as spam')) return { stop: noulAns(0.65), meet: noulAns(0.05) };
   if (b.includes('out of the office')) return { stop: noulAns(0.13), meet: noulAns(0.08) };
   if (b.includes('send over a few times')) return { stop: noulAns(0.09), meet: noulAns(0.80) };
   return { stop: noulAns(0.0), meet: noulAns(0.1) };
@@ -200,7 +200,9 @@ async function replyFrom(email, body) {
 
 test('model pass: an opt-out the rules missed is suppressed and recorded with the revision that decided it', async () => {
   const email = 'daniel@northgate-dental.example';
-  const ref = await replyFrom(email, 'I never signed up for this. How did you get my address? Don\'t write to me again.');
+  // An implied opt-out the rules can't read (golden rt-066); "don't write to me again" was the fixture until the
+  // rules learned it (L11, 2026-10-02).
+  const ref = await replyFrom(email, 'I never signed up for this. If I get one more of these I\'m reporting you as spam.');
   const [ruled] = await api.q(`SELECT intent FROM inbound_messages WHERE id = $1`, [ref.id]);
   assert.notEqual(ruled.intent, 'unsubscribe', 'fixture: the rules must miss this one for the test to mean anything');
   const out = await refineReply(api.db, ref, { decider: benchLike });
