@@ -10,3 +10,4 @@
 !packages/db/migrations/**
 !packages/gate/src/**
 !packages/sender/src/**
+!packages/enrich/src/**

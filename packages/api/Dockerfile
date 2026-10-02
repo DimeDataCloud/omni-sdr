@@ -1,5 +1,5 @@
 # The API, the reply refine job and the migration runner, in one image (docs/claude/DB-ROLLOUT.md, gap G2).
-# Build from the repo root (the API imports ai, db, gate and sender by relative path):
+# Build from the repo root (the API imports ai, db, enrich, gate and sender by relative path):
 #   docker build -f packages/api/Dockerfile -t omni-api .
 # Run:  API          (default command)        PORT, DATABASE_URL, OMNI_* per src/server.mjs
 #       refine job   node packages/api/src/jobs/refine.mjs
@@ -24,6 +24,7 @@ COPY packages/db/src packages/db/src
 COPY packages/db/migrations packages/db/migrations
 COPY packages/gate/src packages/gate/src
 COPY packages/sender/src packages/sender/src
+COPY packages/enrich/src packages/enrich/src
 USER node
 EXPOSE 8080
 CMD ["node", "packages/api/src/server.mjs"]

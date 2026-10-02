@@ -4,9 +4,14 @@
 // and the gate trusts it. Letting a person type evidence would let them "prove" any claim.
 import { T, camel, audit } from './index.mjs';
 import { v, parse } from '../validate.mjs';
-import { notFound } from '../errors.mjs';
+import { notFound, HttpError } from '../errors.mjs';
 import { freeEmailChecks } from '../services/catalog.mjs';
 import { gateDraft } from '../../../gate/src/apply.mjs';
+import { enrichContact, websiteFor } from '../../../enrich/src/enrich.mjs';
+import { safeFetch } from '../../../enrich/src/fetch.mjs';
+
+// Homepage lookups per org per minute: each is an outbound fetch from our IP, so a script can't turn it into a crawler.
+const ENRICH_PER_MINUTE = 30;
 
 const CONTACT = {
   name: v.optional(v.nullable(v.string({ max: 200 }))),
@@ -61,6 +66,33 @@ export function registerProspects(r) {
       FROM enrollments e JOIN campaigns cp ON cp.id = e.campaign_id WHERE e.contact_id = $1`, [c.id])).rows;
     return { ...camel(c), evidence: evidence.map(camel), enrollments: enrollments.map(camel) };
   }, { action: 'build' }));
+
+  // Research one contact: fetch their company homepage (SSRF-guarded, packages/enrich) and keep what it shows as
+  // evidence the gate can cite. The fetch runs between two short transactions, so a slow site never holds one open.
+  // Refusal reasons stay server-side: telling a caller "resolves to a non-public address" would map internal DNS.
+  r.post(`${T}/contacts/:id/enrich`, async (ctx) => {
+    const c = await ctx.tenant(async (tx, m) => {
+      const row = (await tx.query(`SELECT email FROM contacts WHERE id = $1`, [ctx.params.id])).rows[0];
+      if (!row) throw notFound('contact not found');
+      return { orgId: m.orgId, email: row.email };
+    }, { action: 'build' });
+    if (!ctx.allow(`enrich:${c.orgId}`, ENRICH_PER_MINUTE, 60000, ctx.now().getTime())) throw new HttpError(429, 'rate_limited', 'too many lookups; try again in a minute');
+    const site = websiteFor(c.email);
+    if (!site) return { status: 200, body: { enriched: false, reason: 'no_business_domain' } };
+    let page;
+    try {
+      page = await (ctx.config.fetchPage ?? safeFetch)(site);
+    } catch {
+      return { status: 200, body: { enriched: false, reason: 'site_unreachable' } };
+    }
+    const r2 = await ctx.tenant(async (tx, m) => {
+      const out = await enrichContact(tx, { orgId: m.orgId, workspaceId: m.workspaceId, contactId: ctx.params.id, now: ctx.now(), fetchPage: async () => page });
+      if (out.evidenceId) await audit(tx, m, 'enrich', 'contact', ctx.params.id);
+      return out;
+    }, { action: 'build' });
+    if (!r2.evidenceId) return { status: 200, body: { enriched: false, reason: /^http_/.test(r2.skipped ?? '') ? 'site_unreachable' : r2.skipped } };
+    return { status: 201, body: { enriched: true, evidenceId: r2.evidenceId, url: r2.url, facts: r2.facts } };
+  });
 
   // Latest version of each ICP lineage.
   r.get(`${T}/icps`, (ctx) => ctx.tenant(async (tx) => {
