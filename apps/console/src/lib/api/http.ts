@@ -137,3 +137,17 @@ export const account = {
     write<{ orgId: string; workspaceId: string }>('POST', '/v1/orgs', body),
   acceptInvite: (token: string) => write<{ orgId: string }>('POST', '/v1/invites/accept', { token }),
 };
+
+/** A connected sending mailbox (GET …/mailboxes). The API never returns a token. */
+export interface Mailbox {
+  id: string; provider: 'gmail' | 'graph' | 'smtp_imap' | 'bridge'; address: string; dailyCap: number; pausedReason: string | null;
+  connectedAt: string | null; revokedAt: string | null; connected: boolean;
+}
+
+/** Gmail connect (send-only). Real API only: the demo has no mailboxes to connect. */
+export const mailboxes = {
+  list: (s: Scope) => items<Mailbox>(`${t(s)}/mailboxes`),
+  startGoogle: (s: Scope) => req<{ url: string }>('POST', `${t(s)}/mailboxes/google/start`),
+  finishGoogle: (s: Scope, body: { code: string; state: string }) => write<Mailbox>('POST', `${t(s)}/mailboxes/google/finish`, body),
+  disconnect: (s: Scope, id: string) => write<void>('DELETE', `${t(s)}/mailboxes/${enc(id)}`),
+};
