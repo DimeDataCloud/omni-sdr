@@ -41,8 +41,22 @@ export function parseIcp(text, rows, { hasNotes = false } = {}) {
     const real = cited.filter((n) => valid.has(n));
     if (real.length < cited.length) problems.push(`unknown_rows:${value.slice(0, 30)}`);
     const fromNotes = t.notes === true && hasNotes;
-    if (!real.length && !fromNotes) { problems.push(`uncited:${value.slice(0, 30)}`); continue; }   // no support: dropped
-    traits.push({ kind: t.kind, value, rows: real.sort((a, b) => a - b), notes: fromNotes, weak: real.length <= 1 && !fromNotes ? true : t.weak === true });
+    // A cited row must show the trait (#51 audit P3): at least one row has a field sharing a meaningful word with it.
+    // Rows that don't are dropped from the citation; a trait left with none is unsupported.
+    const words = value.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? [];
+    const shows = (n) => { const r = rows.find((x) => x.row === n); const hay = Object.values(r ?? {}).join(' ').toLowerCase(); return words.some((w) => hay.includes(w)); };
+    // Strict for concrete traits (industry, title): rows that don't show it leave the citation. Abstractions (a region
+    // that spans towns, a size band) can't be word-matched: they keep their rows and are marked weak if none shows it.
+    const concrete = t.kind === 'industry' || t.kind === 'title';
+    const backed = real.filter(shows);
+    let weakened = false;
+    if (backed.length < real.length) problems.push(`rows_dont_show:${value.slice(0, 30)}`);
+    if (!real.length && !fromNotes) { problems.push(`uncited:${value.slice(0, 30)}`); continue; }        // no real rows: dropped
+    if (concrete) {
+      if (!backed.length && !fromNotes) { problems.push(`uncited:${value.slice(0, 30)}`); continue; }   // rows don't show it: dropped
+      real.splice(0, real.length, ...backed);
+    } else if (real.length && !backed.length) weakened = true;
+    traits.push({ kind: t.kind, value, rows: real.sort((a, b) => a - b), notes: fromNotes, weak: (real.length <= 1 && !fromNotes) || weakened ? true : t.weak === true });
   }
   if (!traits.length) return { proposal: null, problems: [...problems, 'no_supported_traits'] };
   return { proposal: { name: typeof d.name === 'string' && d.name.trim() ? d.name.trim().slice(0, 120) : 'Ideal customer',
