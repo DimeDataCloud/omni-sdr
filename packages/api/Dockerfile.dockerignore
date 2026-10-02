@@ -4,6 +4,8 @@
 !packages/api/package-lock.json
 !packages/api/src/**
 !packages/ai/src/**
+!packages/ai/prompts/**
+!packages/ai/evals/**
 !packages/db/package.json
 !packages/db/package-lock.json
 !packages/db/src/**
