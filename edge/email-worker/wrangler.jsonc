@@ -1,0 +1,18 @@
+// The Email Worker for reply.omnisdr.com (src/index.mjs). Deploying it, and the Email Routing rule that sends the
+// domain's mail to it, is Christian's call (rails §3.1); claude-local runs it (docs/claude/DEPLOY-HANDOFF.md).
+// Secret, never in this file: INBOUND_SECRET (`wrangler secret put INBOUND_SECRET`, the same value as the API's
+// OMNI_INBOUND_SECRET in Secret Manager).
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "omnisdr-email-worker",
+  "main": "src/index.mjs",
+  "compatibility_date": "2026-09-01",
+  "workers_dev": false,
+  "preview_urls": false,
+  "vars": {
+    "API_URL": "https://api.omnisdr.com",
+    "REPLY_DOMAIN": "reply.omnisdr.com"
+    // FALLBACK_TO: set to a verified Email Routing destination address once one exists (see the handoff).
+  },
+  "observability": { "enabled": true }
+}

@@ -20,7 +20,8 @@ const TERMINAL = `('stopped', 'converted', 'completed')`;
  * @returns { outcome: 'recorded'|'duplicate'|'unmatched', id?, intent?, slaDueAt? }
  */
 export async function ingestReply(client, msg, { classify = classifyReply } = {}) {
-  const token = /^r\+([A-Za-z0-9_-]{16,64})@/i.exec(String(msg.to ?? '').trim())?.[1];
+  // Lower-cased: reply tokens are lowercase hex, and a mail server on the way may have changed the case (send.mjs).
+  const token = /^r\+([A-Za-z0-9_-]{16,64})@/i.exec(String(msg.to ?? '').trim())?.[1]?.toLowerCase();
   if (!token) return { outcome: 'unmatched' };
   const hit = await withoutTenant(client, { role: 'inbox_svc' }, async (tx) =>
     (await tx.query(`SELECT * FROM inbox_resolve_reply($1)`, [sha(token)])).rows[0]);
