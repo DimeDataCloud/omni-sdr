@@ -14,6 +14,9 @@ import { appCsp } from './csp.ts';
 interface Kv { get(k: string): Promise<string | null>; put(k: string, v: string): Promise<void> }
 interface Env {
   ASSETS: Fetcher;
+  /** `identity`: the app signs people in with Identity Platform and the API checks every request (G5), so this Worker
+   *  serves the app to anyone, with its security headers, and the password pages retire. Unset: the password gate. */
+  APP_AUTH?: string;
   LOGIN_EMAIL?: string;
   PASSWORD_HASH?: string;
   SESSION_SECRET?: string;
@@ -158,6 +161,13 @@ export default {
       const r = await env.ASSETS.fetch(new Request(new URL(path.replace('/auth', ''), url.origin)));
       return respond(r.body, { status: r.status, headers: { 'content-type': 'image/svg+xml', 'cache-control': 'public, max-age=86400' } });
     }
+    // G5: identity mode. The static app holds no data (the gates check the bundle for secrets); every read and write
+    // goes to the API with an ID token. /auth/* only clears the old cookie and sends people to the app's own sign-in.
+    const open = env.APP_AUTH === 'identity';
+    if (open && path.startsWith('/auth/')) {
+      return redirect('/', path === '/auth/logout' ? { 'set-cookie': `${COOKIE}=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0` } : {});
+    }
+
     if (path === '/auth/login' && req.method === 'GET') {
       const nonce = randomB64url();
       return html(page(nonce, {
@@ -228,8 +238,8 @@ export default {
       return redirect('/?password=changed', { 'set-cookie': sessionCookie(await newSession(env.SESSION_SECRET, ver)) });
     }
 
-    // Everything else needs a session.
-    if (!signedIn) {
+    // Everything else needs a session, unless the app does its own sign-in (identity mode).
+    if (!signedIn && !open) {
       const wantsPage = req.method === 'GET' && (req.headers.get('accept') ?? '').includes('text/html');
       return wantsPage ? redirect(`/auth/login${path !== '/' ? `?next=${encodeURIComponent(path + url.search)}` : ''}`) : respond('Sign in required', { status: 401, headers: { 'cache-control': 'no-store' } });
     }
@@ -237,7 +247,7 @@ export default {
     const r = await env.ASSETS.fetch(req);
     const ct = r.headers.get('content-type') ?? '';
     const res = respond(r.body, { status: r.status, html: ct.includes('text/html'), headers: r.headers });
-    // Hashed build assets can be cached by this browser only (they sit behind the sign-in).
+    // Hashed build assets: cached by this browser only (behind the gate in password mode; harmless in identity mode).
     if (path.startsWith('/assets/')) res.headers.set('Cache-Control', 'private, max-age=31536000, immutable');
     return res;
   },

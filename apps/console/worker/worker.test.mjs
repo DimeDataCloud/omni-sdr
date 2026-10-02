@@ -175,3 +175,29 @@ test('cross-site posts are refused however the origin is hidden', async () => {
 test('pages keep the origin on same-site posts (never no-referrer)', async () => {
   assert.equal((await get('/auth/login')).headers.get('referrer-policy'), 'same-origin');
 });
+
+test('identity mode (G5): the app is served without the password gate, with every security header; /auth/* retires', async () => {
+  const idEnv = { ...env, APP_AUTH: 'identity' };
+  const page = await worker.fetch(new Request(`${O}/w/x/approvals`, { headers: { accept: 'text/html' } }), idEnv);
+  assert.equal(page.status, 200);
+  assert.match(page.headers.get('content-security-policy') ?? '', /default-src 'self'/);
+  assert.match(page.headers.get('content-security-policy') ?? '', /connect-src [^;]*https:\/\/identitytoolkit\.googleapis\.com/);
+  assert.equal(page.headers.get('x-frame-options'), 'DENY');
+  assert.equal(page.headers.get('strict-transport-security'), 'max-age=63072000; includeSubDomains');
+  const asset = await worker.fetch(new Request(`${O}/assets/index.js`), idEnv);
+  assert.equal(asset.status, 200);
+  for (const p of ['/auth/login', '/auth/password']) {
+    const r = await worker.fetch(new Request(O + p, { headers: { accept: 'text/html' } }), idEnv);
+    assert.deepEqual([r.status, r.headers.get('location')], [303, '/'], p);
+  }
+  // A password post can't sign anyone in any more, and logout clears the old cookie.
+  const post = await worker.fetch(new Request(`${O}/auth/login`, { method: 'POST', headers: { origin: O, 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ email: 'owner@example.com', password: PASSWORD }) }), idEnv);
+  assert.equal(post.headers.get('set-cookie'), null);
+  const out = await worker.fetch(new Request(`${O}/auth/logout`, { method: 'POST', headers: { origin: O } }), idEnv);
+  assert.match(out.headers.get('set-cookie') ?? '', /Max-Age=0/);
+  // Writes to the app's own origin are still refused: the Worker serves files only.
+  assert.equal((await worker.fetch(new Request(`${O}/w/x`, { method: 'POST' }), idEnv)).status, 405);
+  // Without the flag, nothing changed: the gate still holds.
+  assert.equal((await get('/w/x/approvals')).status, 303);
+});

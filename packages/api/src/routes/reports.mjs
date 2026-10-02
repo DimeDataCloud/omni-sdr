@@ -25,7 +25,12 @@ export async function campaignReport(tx, campaignId) {
            (SELECT count(*) FROM r WHERE intent IN ${POSITIVE})::int AS positive,
            (SELECT count(*) FROM r WHERE intent = 'unsubscribe')::int AS unsubscribes,
            (SELECT count(*) FROM r WHERE intent = 'bounce')::int AS bounces,
-           (SELECT count(*) FROM meetings mt WHERE mt.status <> 'canceled' AND mt.contact_id IN (SELECT contact_id FROM e))::int AS meetings`);
+           -- A meeting counts for this campaign when the reply it was booked from answered this campaign's email; one
+           -- booked without a reply counts only when the contact is in no other campaign (#46 audit P3).
+           (SELECT count(*) FROM meetings mt WHERE mt.status <> 'canceled' AND (
+              mt.inbound_message_id IN (SELECT i.id FROM inbound_messages i WHERE i.message_id IN (SELECT id FROM m))
+              OR (mt.inbound_message_id IS NULL AND mt.contact_id IN (SELECT contact_id FROM e)
+                  AND NOT EXISTS (SELECT 1 FROM enrollments o WHERE o.contact_id = mt.contact_id AND o.campaign_id <> $1))))::int AS meetings`);
   const byStep = await q(`
     SELECT d.step, count(DISTINCT x.id)::int AS sent,
            count(DISTINCT i.message_id) FILTER (WHERE i.intent NOT IN ('bounce', 'out_of_office'))::int AS replied

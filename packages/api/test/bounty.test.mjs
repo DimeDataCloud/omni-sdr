@@ -66,6 +66,9 @@ test('a bogus kid can\'t hold the refresh slot against a real rotation; repeatin
   clock += 10_000;
   await ok('k2');                                      // waits 10 s at most, not a minute
   assert.equal(fetches, 3);
-  for (let i = 0; i < 20; i++) { clock += 10_000; await ok('attacker-1').catch(() => {}); }
-  assert.equal(fetches, 3, 'a kid already found missing is not fetched again for 10 minutes');
+  for (let i = 0; i < 10; i++) { clock += 10_000; await ok('attacker-1').catch(() => {}); }   // to 110 s after it was marked
+  assert.equal(fetches, 3, 'a kid already found missing is not fetched again for 2 minutes');
+  clock += 15_000;   // past the 2-minute window: a kid Google publishes late is locked out no longer than this
+  await ok('attacker-1').catch(() => {});
+  assert.equal(fetches, 4, 'after 2 minutes the kid may be looked up again');
 });
