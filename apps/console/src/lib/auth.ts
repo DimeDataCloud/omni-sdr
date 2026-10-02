@@ -10,6 +10,9 @@
 // The refresh token lives in localStorage, as the Firebase SDK keeps it in IndexedDB: the CSP allows scripts from
 // 'self' only, so no third-party script can read it. Signing out forgets it on this device.
 
+import { safeNext } from './safe-next';
+export { safeNext };
+
 const KEY = import.meta.env.VITE_OMNI_IDP_KEY as string | undefined;
 const IDT = 'https://identitytoolkit.googleapis.com/v1/accounts';
 const STS = 'https://securetoken.googleapis.com/v1/token';
@@ -85,10 +88,6 @@ export function linkParams(href: string) {
   return u.searchParams.get('mode') === 'signIn' && oobCode ? { oobCode, next: safeNext(u.searchParams.get('next')) } : null;
 }
 
-/** Only a path on this origin, so a crafted link can't send a signed-in person elsewhere. */
-export function safeNext(n: string | null) {
-  return n && n.startsWith('/') && !n.startsWith('//') && !n.startsWith('/\\') ? n : '/';
-}
 
 export async function finish(email: string, oobCode: string) {
   const r = await call<{ idToken: string; refreshToken: string; expiresIn: string; email: string }>(`${IDT}:signInWithEmailLink`, { email, oobCode });
