@@ -8,6 +8,7 @@ import { v, parse } from '../validate.mjs';
 import { notFound, HttpError } from '../errors.mjs';
 import { gateDraft } from '../../../gate/src/apply.mjs';
 import { citableFacts, buildRequest, parseSequence, PROMPT_ID, PROMPT_SHA, TIER, CREDITS_PER_LEAD } from '../services/generate.mjs';
+import { missingContext } from './onboarding.mjs';
 
 // Synchronous for the MVP: ~10 Flash calls fit well inside Cloud Run's default 300 s request timeout.
 const MAX_PER_RUN = 10;
@@ -22,22 +23,28 @@ async function candidates(tx, campaignId, limit, now) {
   return rows.map((r) => ({ ...r, facts: citableFacts(ev.filter((x) => x.contact_id === r.contact_id)) }));
 }
 
+// What the business told the composer (0010) goes in with the campaign; a missing answer is simply absent, and the
+// response lists it so the screen can say what the drafts were written without.
 async function offerFor(tx, campaignId, brief) {
-  const c = (await tx.query(`SELECT c.name, i.name AS icp_name, i.data AS icp, w.name AS workspace FROM campaigns c
-    LEFT JOIN icps i ON i.id = c.icp_id JOIN workspaces w ON w.id = c.workspace_id WHERE c.id = $1`, [campaignId])).rows[0];
+  const c = (await tx.query(`SELECT c.name, i.name AS icp_name, i.data AS icp, w.name AS workspace, p.offer, p.website, p.voice_sample
+    FROM campaigns c LEFT JOIN icps i ON i.id = c.icp_id JOIN workspaces w ON w.id = c.workspace_id
+    LEFT JOIN workspace_profiles p ON p.workspace_id = c.workspace_id WHERE c.id = $1`, [campaignId])).rows[0];
   if (!c) return null;
-  return { business: c.workspace, campaign: c.name, brief: brief ?? null, ideal_customer: c.icp_name ? { name: c.icp_name, ...c.icp } : null };
+  return { business: c.workspace, campaign: c.name, brief: brief ?? null, offer: c.offer ?? null, website: c.website ?? null,
+    voice_sample: c.voice_sample ? c.voice_sample.slice(0, 1500) : null,
+    ideal_customer: c.icp_name ? { name: c.icp_name, ...c.icp } : null };
 }
 
 export function registerGenerate(r) {
   r.get(`${T}/campaigns/:id/generate/estimate`, (ctx) => {
     const q = parse(v.object({ limit: v.optional(v.int({ min: 1, max: MAX_PER_RUN })) }), ctx.query);
-    return ctx.tenant(async (tx) => {
+    return ctx.tenant(async (tx, m) => {
       if (!(await tx.query(`SELECT 1 FROM campaigns WHERE id = $1`, [ctx.params.id])).rows.length) throw notFound('campaign not found');
       const list = await candidates(tx, ctx.params.id, q.limit ?? MAX_PER_RUN, ctx.now());
       const ready = list.filter((x) => x.facts.length > 0).length;
       const bal = (await tx.query(`SELECT balance FROM credit_balances WHERE meter = 'action'`)).rows[0];
       return { leads: list.length, ready, missingEvidence: list.length - ready, credits: { action: ready * CREDITS_PER_LEAD },
+        missingContext: await missingContext(tx, m.workspaceId),
         balance: { action: bal ? Number(bal.balance) : 0 }, available: ctx.model.name !== 'off', tier: TIER, prompt: PROMPT_ID };
     }, { action: 'build' });
   });
@@ -56,7 +63,7 @@ export function registerGenerate(r) {
     // The press: claim the leads and reserve their credits in one transaction. Claiming (waiting -> drafting) is what
     // stops a second press, from another tab or person, from charging and drafting the same leads again: candidates()
     // only picks `waiting` (#47 audit P2-2).
-    const { leads, claimed, offer } = await ctx.tenant(async (tx, m) => {
+    const { leads, claimed, offer, missing } = await ctx.tenant(async (tx, m) => {
       const offer0 = await offerFor(tx, ctx.params.id, b.brief);
       if (!offer0) throw notFound('campaign not found');
       const all = await candidates(tx, ctx.params.id, b.limit ?? MAX_PER_RUN, ctx.now());
@@ -75,7 +82,7 @@ export function registerGenerate(r) {
         }
       }
       await audit(tx, m, 'generate', 'campaign', ctx.params.id);
-      return { leads: all.filter((x) => !x.facts.length || got.has(x.id)), claimed: mine, offer: offer0 };
+      return { leads: all.filter((x) => !x.facts.length || got.has(x.id)), claimed: mine, offer: offer0, missing: await missingContext(tx, m.workspaceId) };
     }, { action: 'build' });
 
     const generated = []; const skipped = []; const done = new Set();
@@ -125,6 +132,6 @@ export function registerGenerate(r) {
       }, { action: 'build' });
     }
     const charged = done.size;
-    return { status: 201, body: { job, generated, skipped, credits: { action: charged * CREDITS_PER_LEAD } } };
+    return { status: 201, body: { job, generated, skipped, credits: { action: charged * CREDITS_PER_LEAD }, missingContext: missing } };
   });
 }

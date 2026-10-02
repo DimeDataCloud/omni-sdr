@@ -97,6 +97,8 @@ export async function seedTenant(db, label, { cap = 5, trust = 1, heat = 1 } = {
   await as(db, 'inbox_svc', { org, ws: [ws] }, () => db.query(
     `INSERT INTO notifications (org_id, workspace_id, inbound_message_id, kind, channel, due_at) VALUES ($1, $2, $3, 'sla_meeting', 'in_app', now())`,
     [org, ws, inbound]));
+  // 0010: a profile row per tenant, so the RLS matrix covers it.
+  await db.query(`INSERT INTO workspace_profiles (org_id, workspace_id, offer) VALUES ($1, $2, 'After-hours call answering')`, [org, ws]);
   return { ...t, message, inbound };
 }
 
