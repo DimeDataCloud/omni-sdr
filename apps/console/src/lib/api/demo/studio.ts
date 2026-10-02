@@ -290,3 +290,16 @@ export function studioDemo({ tenant, read, write, audit }: Helpers): Pick<Client
     }),
   };
 }
+
+/** Sizes of the Studio datasets for Setup → Data: products, brand kits (project ingredients) and the media library. */
+export function mediaCounts(w: World, ws: string) {
+  const m = load(w);
+  const latest = (xs: string[]) => xs.sort().at(-1) ?? null;
+  const assets = m.assets.filter((a) => a.ws === ws && !a.archivedAt);
+  const brand = m.projects.filter((p) => p.ws === ws).flatMap((p) => p.ingredients.filter((i) => i.kind !== 'product').map(() => p.createdAt));
+  return {
+    products: { count: m.products.filter((p) => p.ws === ws).length, updatedAt: null as string | null },
+    brand: { count: brand.length, updatedAt: latest(brand) },
+    media: { count: assets.length, updatedAt: latest(assets.map((a) => a.updatedAt)) },
+  };
+}

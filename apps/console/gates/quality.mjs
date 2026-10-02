@@ -167,7 +167,15 @@ export async function runQuality({ browser, BASE, ROOT, OUT, gate, want, open, s
       try { await fn(); } catch (e) { failsRun.push(`${name}: ${e.message.split('\n')[0]}`); }
       await sleep(450);
     };
-    const nav = (k) => act(`nav ${k}`, () => page.click(`nav[aria-label=Main] a[href="/w/${ws}/${k}"]`));
+    // Pages sit in sections (WORKSPACE-PLAN.md): a page's own link is in the top bar or its section's tabs. When it
+    // isn't on screen, the person opens its section first, then the tab, and both interactions are measured.
+    const SECTION = { home: 'home', approvals: 'outbound', leads: 'outbound', inbox: 'inbound', meetings: 'inbound', analytics: 'results' };
+    const nav = (k) => act(`nav ${k}`, async () => {
+      const link = `nav a[href="/w/${ws}/${k}"]`;
+      if (!(await page.$(link))) { await page.click(`nav[aria-label=Main] a[data-section="${SECTION[k]}"]`); await page.waitForSelector(link, { timeout: 3000 }); await sleep(450); }
+      if (!(await page.$(link))) return; // the section link already landed on the page
+      if (!(await page.evaluate((h) => location.pathname === h, `/w/${ws}/${k}`))) await page.click(link);
+    });
     const key = (k, label = k) => act(`key ${label}`, () => page.keyboard.press(k));
     const tab = (re) => act(`tab ${re}`, () => page.evaluate((s) => [...document.querySelectorAll('[role=tab]')].find((t) => new RegExp(s).test(t.textContent)).click(), re));
     await nav('approvals'); await key('j'); await key('j'); await key('k');

@@ -14,6 +14,7 @@ export const screenLoaders: Record<PageKey, () => Promise<ScreenModule>> = {
   analytics: () => import('@/features/analytics/AnalyticsPage'),
   studio: () => import('@/features/studio/StudioPage'),
   agents: () => import('@/features/agents/AgentsPage'),
+  data: () => import('@/features/data/DataPage'),
   connections: () => import('@/features/connections/ConnectionsPage'),
   settings: () => import('@/features/settings/SettingsPage'),
 };

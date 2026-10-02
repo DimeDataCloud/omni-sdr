@@ -99,7 +99,7 @@ export function CreateView({ caps, onOpen, projectId: initialProject }: { caps: 
   const frameSrc = renderUrl({ shape: product?.shape ?? null, hue: product?.hue ?? 200, scene: 'studio', seed: 5, label: product?.name ?? null, backdrop: 'scene' }, '16:9');
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,480px)_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,480px)_minmax(0,1fr)]">
       <form className="card space-y-5 p-4 md:p-5 xl:sticky xl:top-20 xl:self-start" onSubmit={(e) => { e.preventDefault(); void go(); }} aria-label="Create media">
         <div role="radiogroup" aria-label="What to make" className="grid grid-cols-2 gap-2">
           {modes.map((m, i) => (

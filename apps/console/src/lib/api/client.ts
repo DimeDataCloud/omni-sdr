@@ -3,6 +3,7 @@
 import type {
   Me, Settings, Members, ApprovalsList, ApprovalCard, InboxItem, Meeting, Agent, ChatMessage, Routine, Capacity,
   Analytics, Credits, Connector, Contact, ContactDetail, Role, ModelTier, DraftStatus, Id, About, AskMode, Pipeline,
+  Autonomy, AgentStats, Dataset,
   Asset, AssetKind, AssetStatus, Aspect, Edits, GenMode, Ingredient, MotionKey, Product, Project, Scene, SequenceClip, StudioCaps,
 } from './types';
 
@@ -47,7 +48,11 @@ export interface Client {
 
   agents(s: Scope): Promise<Agent[]>;
   createAgent(s: Scope, body: Partial<Pick<Agent, 'name' | 'station' | 'badge' | 'modelTier' | 'systemPrompt' | 'contextSources' | 'autonomousMode'>> & { name: string }): Promise<Agent>;
-  patchAgent(s: Scope, id: Id, patch: Partial<Pick<Agent, 'name' | 'station' | 'badge' | 'modelTier' | 'systemPrompt' | 'contextSources' | 'autonomousMode'>>): Promise<Agent>;
+  patchAgent(s: Scope, id: Id, patch: Partial<Pick<Agent, 'name' | 'station' | 'badge' | 'modelTier' | 'systemPrompt' | 'contextSources' | 'autonomousMode'>> & { autonomy?: Autonomy }): Promise<Agent>;
+  /** PROPOSED (WORKSPACE-PLAN.md): an agent's last N days of drafts and the corrections people made. */
+  agentStats(s: Scope, id: Id, days?: number): Promise<AgentStats>;
+  /** PROPOSED (WORKSPACE-PLAN.md): every dataset agents can read, with size, freshness and readers. */
+  datasets(s: Scope): Promise<Dataset[]>;
   archiveAgent(s: Scope, id: Id): Promise<void>;
   messages(s: Scope, agentId: Id): Promise<ChatMessage[]>;
   sendMessage(s: Scope, agentId: Id, body: string, modelTier?: ModelTier, opts?: { about?: About | null; mode?: AskMode }): Promise<{ userMessage: ChatMessage; reply: ChatMessage }>;
