@@ -8,7 +8,7 @@ registry, golden sets, version on the row, the station ranking) carries over unc
 ## 1. What runs now
 | Piece | Where | What it does |
 |---|---|---|
-| `decider` | Cloud Run, project omni-sdr, us-central1 (`services/decider`) | `laya-serve` with the `convaiinnovations/laya` checkpoint baked in at reviewed SHA `55cf4c4…`. CPU only, gen2, 8 vCPU / 4 GiB, concurrency 1, min 0 / max 2, IAM-only, internal ingress, startup CPU boost |
+| `decider` | Cloud Run, project omni-sdr, us-central1 (`services/decider`) | `laya-serve` with the `convaiinnovations/laya` checkpoint baked in at reviewed SHA `55cf4c4…`. CPU only, gen2, **2 vCPU / 4 GiB, 2 threads** (was 8 vCPU; section 2a), concurrency 1, min 0 / max 8, IAM-only, internal ingress, startup CPU boost |
 | `decide()` | `packages/ai/src/decide.mjs` | Engine adapter: `layaDecider` (metadata identity token, reads the resident revision from `/health` once, fails closed), `offDecider` (default), `fakeDecider` (tests) |
 | Registry | `packages/ai/src/registry.mjs` | `REPLY_TRIAGE@1`: two safety questions on the live path, the 9-way label in shadow only |
 | Model pass | `packages/api/src/services/inbox.mjs` | `refineReply` / `refinePending`: after the rules have recorded a reply, ask the decider and apply only additions (suppress, stop, SLA). The decider call runs outside any transaction |
@@ -41,6 +41,34 @@ stop (an out-of-office); meet caught 3/3 with one false.
 per vCPU-second and memory $0.0000025 per GiB-second while a request runs; free tier 180,000 vCPU-seconds and 360,000
 GiB-seconds a month per billing account. L4 GPU $0.0001867/s without zonal redundancy, $0.0002909/s with.
 
+## 2a. CPU per decision (2026-10-01, evening)
+`services/decider/bench/cpu.py`, run as a Cloud Run job on the production CPU; the two safety questions, 22 cases.
+vCPU-seconds per decision = threads x time.
+
+| Engine | 1 thread | 2 | 4 | 8 | Answers vs fp32 |
+|---|---|---|---|---|---|
+| torch fp32 (shipped) | **1.48** | 1.95 | 2.45 | 3.37 | baseline (42/44) |
+| ONNX fp32 | **1.33** | 1.45 | 1.83 | 2.46 | identical, 0 flips |
+| torch INT8 (encoder) | 0.84 | 1.01 | 1.32 | 1.94 | 15 flips: rejected |
+| ONNX INT8 (per-tensor) | 0.72 | 0.91 | 1.13 | 1.81 | 24 flips: rejected |
+| laya-multilingual fp32 | **0.50** | 0.69 | 0.90 | 1.38 | 5 flips, 39/44 zero-shot |
+
+- **Fewer threads is cheaper per decision**; extra threads buy latency, not efficiency.
+- **Quantisation is out**: both INT8 paths are cheaper and wrong.
+- **The big lever is the smaller checkpoint** (3x), once fine-tuning brings its accuracy back (training/SOURCES.md).
+- **Input cleaning matters more than any engine on real mail**: a reply with its quoted thread, signature and
+  disclaimer was 847 tokens and 13.5 vCPU-s; `laya.clean_email_body` brought it to 154 tokens and 2.6 vCPU-s and
+  fixed 3 of 8 wrong answers. The production state builder must clean before it calls the decider.
+
+On real Cloud Run instances (not threads on a big box) memory is part of the bill, which moves the optimum:
+| `decider` size | Inference p50 | Per decision | vs Jev |
+|---|---|---|---|
+| 8 vCPU / 4 GiB | 0.63 s | $0.000127 | 20x |
+| 1 vCPU / 4 GiB | 2.16 s | $0.0000734 | 12x |
+| **2 vCPU / 4 GiB (now)** | **1.25 s** | **$0.0000724** | **11x** |
+
+A cold start at 1–2 vCPU is ~37 s and costs ~$0.001–0.002, against $0.0078 at 8 vCPU.
+
 ## 3. Cold start
 | Image | Size | Container start to ready |
 |---|---|---|
@@ -62,14 +90,16 @@ and no new instance started. Cloud Run doesn't promise that, so the ping runs ev
 Per decision, no: CPU Laya is ~20x Jev at every volume. In dollars per month, yes, until the free tier runs out,
 because the MVP has one live decision (reply triage) and it is small.
 
-| Scale (5% reply rate, 5,000 sends per customer per month: an assumption) | Replies/mo | Laya on `decider` | Jev |
+| Scale (5% reply rate, 5,000 sends per customer per month: an assumption) | Replies/mo | Laya on `decider` (2 vCPU, 2.5 vCPU-s and 5 GiB-s per reply) | Jev |
 |---|---|---|---|
-| Pilot, 5 customers | 1,250 | **$0** (6,300 vCPU-s, inside the free tier) | $0.01 |
-| 100 customers | 25,000 | **$0** (126,000 vCPU-s) | $0.16 |
-| ~140 customers | ~36,000 | free tier used up (if nothing else uses it) | $0.23 |
-| 1,000 customers | 250,000 | ~$27 | $1.58 |
+| Pilot, 5 customers | 1,250 | **$0** (inside the free tier) | $0.01 |
+| 100 customers | 25,000 | **$0** | $0.16 |
+| ~290 customers | ~72,000 | free tier used up (if nothing else uses it) | $0.45 |
+| 1,000 customers | 250,000 | ~$13 | $1.58 |
 
-So "cheaper than Jev" holds for reply triage through roughly 140 customers, and after that the absolute gap is
+(At 8 vCPU the free tier ran out at ~36,000 replies and 1,000 customers cost ~$27; the resize doubled the headroom.)
+
+So "cheaper than Jev" holds for reply triage through roughly 290 customers, and after that the absolute gap is
 small (tens of dollars). It does **not** hold for the decisions JEV-PLAN wants next: the gate's semantic layer
 (about 7 questions per draft) and lead priority would put millions of decisions a month through the decider at
 100+ customers, ~20x what Jev would charge. Those need the GPU tier.
@@ -93,5 +123,7 @@ One image (`--build-arg TORCH_INDEX=…/cu130`), same API, so callers don't chan
 | L3 | Golden set: 100 labelled replies, then fit `stop` and `meet` thresholds; re-fit on any checkpoint change | Claude |
 | L4 | Fine-tune for the 9-way label (vendor: 0.362 → 0.766 on their benchmark) before the label leaves shadow | Claude, after L3 |
 | L5 | GPU quota request (L4, us-central1, no zonal redundancy) when gate or lead-scoring volume is in sight | Christian |
-| L6 | Project CPU quota is 20 vCPU per region; `decider` at max 2 x 8 vCPU takes 16 of it. Raise the quota before more services deploy | Christian |
+| L6 | Project CPU quota is 20 vCPU per region; `decider` at max 8 x 2 vCPU takes 16 of it. Raise the quota before more services deploy | Christian |
+| L8 | Clean replies (`clean_email_body` or an equivalent in the state builder) before they reach the decider: 5x CPU and 3 wrong answers on real-shaped mail | Claude |
+| L9 | Fine-tune laya-multilingual and move `decider` to it (3x less CPU per decision) once it matches the English checkpoint on the held-out sets | Claude; GPU access needs Christian |
 | L7 | Checkpoint warning seen at load: temperatures for choice questions with 11+ options are clamped and "uncalibrated". The live path has no choice question; keep any future choice under 11 options or treat its confidence as raw | Claude |
