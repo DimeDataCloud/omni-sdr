@@ -123,3 +123,88 @@ test('money and roles: credits per competitor, refunded when a site is unreachab
   assert.equal((await api.call('GET', `${api.W}/competitors/gap-map`, { as: 'riley@example.com' })).status, 200, 'reviewers read it');
   assert.equal((await api.call('POST', `${api.W}/competitors`, { body: { url: 'localhost' } })).status, 400);
 });
+
+test('a statement\'s numbers must be in its own quote: a real quote can\'t carry an invented price or term (#54 audit P2-1)', () => {
+  const t = pageText(SITES['https://rival-answering.com/pricing']) + ' Simple pricing for every team.';
+  const snaps = [{ ref: 'S1', id: 'a', url: 'u', text: t, sha: 'x' }];
+  const v = validateCard(JSON.stringify({
+    pricing: [
+      { text: 'They charge $499 a month and lock you into a 2-year contract.', cite: 'S1', quote: 'Simple pricing for every team' },  // claude-local's repro
+      { text: 'Starter is $199 a month for 200 calls', cite: 'S1', quote: 'Starter plan: $199 per month for 200 calls' },
+      { text: 'Starter is $149 a month', cite: 'S1', quote: 'Starter plan: $199 per month for 200 calls' },
+      { text: 'Overage costs extra', cite: 'S1', quote: 'Overage is billed per call' },
+    ],
+    objection_handlers: [
+      { objection: 'Rival is cheaper', answer: 'Their overage runs 40% over plan.', cite: 'S1', quote: 'Overage is billed per call' },
+      { objection: 'Rival is cheaper', answer: 'Their plan covers 200 calls, then bills each call.', cite: 'S1', quote: 'Starter plan: $199 per month for 200 calls' },
+    ],
+  }), snaps);
+  assert.deepEqual(v.doc.pricing.map((x) => x.text), ['Starter is $199 a month for 200 calls', 'Overage costs extra']);
+  assert.deepEqual(v.doc.objection_handlers.map((x) => x.answer), ['Their plan covers 200 calls, then bills each call.']);
+  assert.deepEqual([v.kept, v.dropped], [3, 3]);
+});
+
+test('research claims its competitors: one another run holds is skipped and not charged; a stale claim is taken over (#54 audit P2-2)', async () => {
+  reply = honestCard;
+  const bal = async () => Number((await api.q(`SELECT balance FROM credit_balances WHERE org_id = $1 AND meter = 'action'`, [api.demo.org]))[0].balance);
+  const ledger = async (job) => (await api.q(`SELECT kind, delta::int AS d FROM credit_ledger WHERE ref_type = 'battlecard' AND ref_id = $1 ORDER BY id`, [job])).map((x) => [x.kind, x.d]);
+  const a = (await api.call('POST', `${api.W}/competitors`, { body: { url: 'rival-answering.com' } })).body;
+  const b = (await api.call('POST', `${api.W}/competitors`, { body: { url: 'gone-away-co.com', name: 'Gone' } })).body;
+  // Another run holds `a` (its model call is in flight; the test harness serializes requests, so its claim stands in for it).
+  await api.q(`UPDATE competitors SET research_job = gen_random_uuid(), research_at = now() WHERE id = $1`, [a.id]);
+  const b0 = await bal();
+  const only = await api.call('POST', `${api.W}/competitors/research`, { as: 'sam@example.com', body: { ids: [a.id] } });
+  assert.deepEqual([only.status, only.body.error], [409, 'conflict'], JSON.stringify(only.body));
+  assert.equal(await bal(), b0, 'nothing reserved');
+  const both = await api.call('POST', `${api.W}/competitors/research`, { as: 'sam@example.com', body: { ids: [a.id, b.id] } });
+  assert.equal(both.status, 201, JSON.stringify(both.body));
+  assert.deepEqual(Object.fromEntries(both.body.results.map((x) => [x.competitorId, x.outcome])), { [a.id]: 'already_running', [b.id]: 'site_unreachable' });
+  assert.equal(await bal(), b0, 'b reserved then refunded; a never charged');
+  assert.deepEqual(await ledger(both.body.job), [['reserve', -2], ['release', 2]]);
+  assert.equal((await api.q(`SELECT research_job FROM competitors WHERE id = $1`, [b.id]))[0].research_job, null, 'its own claim let go');
+  assert.notEqual((await api.q(`SELECT research_job FROM competitors WHERE id = $1`, [a.id]))[0].research_job, null, 'the other run\'s claim untouched');
+  // The other run crashed and never let go: past the lease, a new run takes it over, gets a card, and settles.
+  await api.q(`UPDATE competitors SET research_at = now() - interval '16 minutes' WHERE id = $1`, [a.id]);
+  const late = await api.call('POST', `${api.W}/competitors/research`, { as: 'sam@example.com', body: { ids: [a.id] } });
+  assert.equal(late.body.results[0].outcome, 'ok', JSON.stringify(late.body));
+  assert.deepEqual(await ledger(late.body.job), [['reserve', -2], ['settle', 0]]);
+  assert.equal(await bal(), b0 - 2);
+});
+
+test('a research run that dies mid-way refunds what it didn\'t deliver, settles the rest and lets go of its claims (#54 audit P2-2)', async () => {
+  reply = honestCard;
+  const bal = async () => Number((await api.q(`SELECT balance FROM credit_balances WHERE org_id = $1 AND meter = 'action'`, [api.demo.org]))[0].balance);
+  const ids = [];
+  for (const url of ['rival-answering.com', 'second-rival.com']) ids.push((await api.call('POST', `${api.W}/competitors`, { body: { url } })).body.id);
+  for (const page of ['', 'pricing', 'about']) SITES[`https://second-rival.com/${page}`] = SITES[`https://rival-answering.com/${page}`];
+  await api.q(`UPDATE competitors SET research_job = NULL, research_at = NULL WHERE id = ANY ($1::uuid[])`, [ids]);
+  // The second card can't be written (a lost connection, a constraint): the request fails after the first was saved.
+  await api.q(`CREATE FUNCTION p22_boom() RETURNS trigger LANGUAGE plpgsql AS $f$
+    BEGIN IF NEW.competitor_id = '${ids[1]}' THEN RAISE EXCEPTION 'p22 boom'; END IF; RETURN NEW; END $f$`);
+  await api.q(`CREATE TRIGGER p22_boom BEFORE INSERT ON battlecards FOR EACH ROW EXECUTE FUNCTION p22_boom()`);
+  const b0 = await bal();
+  try {
+    const r = await api.call('POST', `${api.W}/competitors/research`, { as: 'sam@example.com', body: { ids } });
+    assert.ok(r.status >= 400, JSON.stringify(r.body));
+  } finally {
+    await api.q(`DROP TRIGGER p22_boom ON battlecards`); await api.q(`DROP FUNCTION p22_boom()`); for (const page of ['', 'pricing', 'about']) delete SITES[`https://second-rival.com/${page}`];
+  }
+  assert.equal(await bal(), b0 - 2, 'one card delivered, one refunded');
+  const job = (await api.q(`SELECT ref_id FROM credit_ledger WHERE ref_type = 'battlecard' AND kind = 'reserve' ORDER BY id DESC LIMIT 1`))[0].ref_id;
+  assert.deepEqual((await api.q(`SELECT kind, delta::int AS d FROM credit_ledger WHERE ref_id = $1 ORDER BY id`, [job])).map((x) => [x.kind, x.d]),
+    [['reserve', -4], ['release', 2], ['settle', 0]]);
+  assert.equal((await api.q(`SELECT count(*)::int AS n FROM competitors WHERE id = ANY ($1::uuid[]) AND research_job IS NOT NULL`, [ids]))[0].n, 0);
+});
+
+test('suggest: a search that came back settles its credit; one that failed gives it back', async () => {
+  const kinds = async () => {
+    const job = (await api.q(`SELECT ref_id FROM credit_ledger WHERE ref_type = 'competitor_suggest' ORDER BY id DESC LIMIT 1`))[0].ref_id;
+    return (await api.q(`SELECT kind FROM credit_ledger WHERE ref_id = $1 ORDER BY id`, [job])).map((x) => x.kind);
+  };
+  reply = () => JSON.stringify({ suggestions: [] });
+  assert.equal((await api.call('POST', `${api.W}/competitors/suggest`, { as: 'sam@example.com', body: {} })).status, 201);
+  assert.deepEqual(await kinds(), ['reserve', 'settle']);
+  reply = () => { throw new Error('vertex 500'); };
+  assert.equal((await api.call('POST', `${api.W}/competitors/suggest`, { as: 'sam@example.com', body: {} })).status, 502);
+  assert.deepEqual(await kinds(), ['reserve', 'release']);
+});

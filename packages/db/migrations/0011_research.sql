@@ -15,9 +15,14 @@ CREATE TABLE competitors (
   source        text NOT NULL DEFAULT 'user' CHECK (source IN ('user', 'suggested')),
   reason        text CHECK (reason IS NULL OR length(reason) <= 500),
   suggested_sources jsonb CHECK (suggested_sources IS NULL OR (jsonb_typeof(suggested_sources) = 'array' AND jsonb_array_length(suggested_sources) <= 10)),
+  -- The research run that holds this competitor (#54 audit P2-2): a second press skips it instead of charging for it
+  -- again. A run clears its claim when it ends; a claim older than the lease (a crashed run) may be taken over.
+  research_job  uuid,
+  research_at   timestamptz,
   created_at    timestamptz NOT NULL DEFAULT now(),
   FOREIGN KEY (org_id, workspace_id) REFERENCES workspaces(org_id, id),
   UNIQUE (workspace_id, domain),
+  CHECK ((research_job IS NULL) = (research_at IS NULL)),
   UNIQUE (org_id, workspace_id, id),
   CHECK (source = 'user' OR reason IS NOT NULL)   -- a suggestion always says why
 );
@@ -63,5 +68,6 @@ BEGIN
     EXECUTE format('GRANT SELECT, INSERT ON %I TO app_rw', t);
   END LOOP;
 END $$;
--- Only a competitor's status and name move; snapshots and battlecards have no UPDATE or DELETE for the app (S8).
-GRANT UPDATE (status, name) ON competitors TO app_rw;
+-- Only a competitor's status, name and research claim move; snapshots and battlecards have no UPDATE or DELETE for
+-- the app (S8).
+GRANT UPDATE (status, name, research_job, research_at) ON competitors TO app_rw;

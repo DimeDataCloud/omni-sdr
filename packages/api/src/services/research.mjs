@@ -3,6 +3,7 @@
 // that doesn't is dropped here, so nothing uncited reaches a person (the station's guardrail).
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { numbersIn } from '../../../gate/src/check.mjs';
 
 const prompt = (id) => readFileSync(new URL(`../../../ai/prompts/${id}.md`, import.meta.url), 'utf8');
 const sha16 = (s) => createHash('sha256').update(s, 'utf8').digest('hex').slice(0, 16);
@@ -82,10 +83,14 @@ export function validateCard(text, snapshots) {
   let d; try { d = json(text); } catch { return { doc: null, kept: 0, dropped: 0, refs: [] }; }
   const byRef = new Map(snapshots.map((s) => [s.ref, { ...s, ntext: norm(s.text) }]));
   let kept = 0; let dropped = 0; const used = new Set();
-  const check = (x) => {
+  // `said` is what the card will assert. Its numbers (prices, terms, counts) must be in the quote itself: a quote that
+  // is on the page but says something else can't carry "$499 a month, 2-year contract" (#54 audit P2-1).
+  const check = (x, said) => {
     const snap = byRef.get(x?.cite);
     const quote = typeof x?.quote === 'string' ? x.quote.trim() : '';
     if (!snap || quote.length < 8 || quote.length > 300 || !snap.ntext.includes(norm(quote))) { dropped++; return null; }
+    const inQuote = new Set(numbersIn(quote));
+    if (numbersIn(said).some((n) => !inQuote.has(n))) { dropped++; return null; }
     kept++; used.add(snap.ref);
     return { cite: snap.ref, snapshotId: snap.id, url: snap.url, quote: quote.slice(0, 300) };
   };
@@ -94,7 +99,7 @@ export function validateCard(text, snapshots) {
     doc[sec] = [];
     for (const x of Array.isArray(d?.[sec]) ? d[sec].slice(0, 12) : []) {
       const t = typeof x?.text === 'string' ? x.text.trim().slice(0, 300) : '';
-      const c = t ? check(x) : (dropped++, null);
+      const c = t ? check(x, t) : (dropped++, null);
       if (c) doc[sec].push({ text: t, ...c });
     }
   }
@@ -102,7 +107,7 @@ export function validateCard(text, snapshots) {
   for (const x of Array.isArray(d?.objection_handlers) ? d.objection_handlers.slice(0, 8) : []) {
     const o = typeof x?.objection === 'string' ? x.objection.trim().slice(0, 200) : '';
     const a = typeof x?.answer === 'string' ? x.answer.trim().slice(0, 400) : '';
-    const c = o && a ? check(x) : (dropped++, null);
+    const c = o && a ? check(x, a) : (dropped++, null);
     if (c) doc.objection_handlers.push({ objection: o, answer: a, ...c });
   }
   return { doc, kept, dropped, refs: snapshots.filter((s) => used.has(s.ref)).map((s) => ({ ref: s.ref, snapshotId: s.id, url: s.url, sha: s.sha, fetchedAt: s.fetchedAt })) };
