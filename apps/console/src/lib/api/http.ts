@@ -137,3 +137,55 @@ export const account = {
     write<{ orgId: string; workspaceId: string }>('POST', '/v1/orgs', body),
   acceptInvite: (token: string) => write<{ orgId: string }>('POST', '/v1/invites/accept', { token }),
 };
+
+/** A connected sending mailbox (GET …/mailboxes). The API never returns a token. */
+export interface Mailbox {
+  id: string; provider: 'gmail' | 'graph' | 'smtp_imap' | 'bridge'; address: string; dailyCap: number; pausedReason: string | null;
+  connectedAt: string | null; revokedAt: string | null; connected: boolean;
+}
+
+/** Gmail connect (send-only). Real API only: the demo has no mailboxes to connect. */
+export const mailboxes = {
+  list: (s: Scope) => items<Mailbox>(`${t(s)}/mailboxes`),
+  startGoogle: (s: Scope) => req<{ url: string }>('POST', `${t(s)}/mailboxes/google/start`),
+  finishGoogle: (s: Scope, body: { code: string; state: string }) => write<Mailbox>('POST', `${t(s)}/mailboxes/google/finish`, body),
+  disconnect: (s: Scope, id: string) => write<void>('DELETE', `${t(s)}/mailboxes/${enc(id)}`),
+};
+
+/** A file the API builds (a report page or a CSV): fetched with the bearer, then saved by the browser. */
+async function fetchFile(path: string, retried = false): Promise<Blob> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, { headers: { authorization: `Bearer ${await bearer(retried)}` }, credentials: 'omit' });
+  } catch {
+    throw new ApiError(0, 'network', 'Couldn’t reach Omni-SDR. Check your connection and try again.');
+  }
+  if (res.status === 401 && !retried && !DEV_AS) return fetchFile(path, true);
+  if (!res.ok) {
+    const out = await res.json().catch(() => null);
+    if (res.status === 401) signOut();
+    throw new ApiError(res.status, out?.error ?? 'error', out?.message ?? `Download failed (${res.status}).`, out?.details);
+  }
+  return res.blob();
+}
+
+function save(blob: Blob, name: string) {
+  const url = URL.createObjectURL(blob);
+  const a = Object.assign(document.createElement('a'), { href: url, download: name });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+const day = () => new Date().toISOString().slice(0, 10);
+const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'campaign';
+
+/**
+ * Reports and exports (API: routes/reports.mjs). The report is a self-contained page saved as a file, not opened in a
+ * tab: a blob page would inherit this app's CSP, which blocks the report's own inline styles. Real API only.
+ */
+export const files = {
+  campaignReport: async (s: Scope, id: string, name: string) =>
+    save(await fetchFile(`${t(s)}/reports/campaigns/${enc(id)}?format=html`), `${slug(name)}-report-${day()}.html`),
+  contactsCsv: async (s: Scope) => save(await fetchFile(`${t(s)}/exports/contacts.csv`), `contacts-${day()}.csv`),
+  meetingsCsv: async (s: Scope) => save(await fetchFile(`${t(s)}/exports/meetings.csv`), `meetings-${day()}.csv`),
+};

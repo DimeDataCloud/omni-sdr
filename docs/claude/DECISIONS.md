@@ -344,3 +344,12 @@ Christian set claude-local's goal: "you job is to watch behind cloud session rev
   - Bug bounty #9: access codes from `crypto.randomUUID()`, before any code grants anything.
   - PR #33: merged by claude-local after its audit (approve with one P2 doc fix and one P3, both left with claude-cloud).
   - G5 sign-in: email-link only (Google sign-in later); Identity Platform Tier 1 is free to 50,000 monthly active users, so it's inside the $0 rule. SMS and multi-factor stay off because they bill per message.
+
+## 2026-10-02 — No trial for now
+Station: 1 (sign-up), credits · Decided by: Christian
+Christian, in claude-local's session: "no trial for now". Then: "merge and deploy everything we can up to this point".
+- No 7-day trial and no trial credits. A new org starts with no credits. Metered work (ICP proposal, competitor research, generation, lead finding, verification) needs credits granted through the ledger (ops) until pricing is decided.
+- So PR #56's 0012 `grant_trial_credits` does not ship. Don't build a Stripe trial checkout (cloud's next step for M1). Anything that says "turn it on in the trial" (Places) waits for its own decision.
+- Not decided here: when a trial comes back, or what it grants. The SPEC §1 step 1 trial stays in the spec as the target, not the current build.
+- Merged and deployed 2026-10-02 under the second instruction: #44, #48, #53 (claude-local's, merged without the cross-audit, which claude-cloud is asked to run after the merge), then #47, #50, #51, #54 (all audited). Prod: migrations 0009–0011 after backup omni-20261002T223543Z, API image api:4940e59 (rev omni-api-00008-wg9), console Worker c269308d (the password gate stays on, so sign-up isn't public).
+

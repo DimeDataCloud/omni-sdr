@@ -8,7 +8,7 @@ import { useQuery } from './hooks';
 import { personaEmail, setPersonaEmail, reset as resetDemo } from './api/demo/store';
 import { onAuthChange, signedInEmail } from './auth';
 
-export type Action = 'billing' | 'members' | 'connections' | 'workspace_settings' | 'build' | 'approve' | 'inbox_read' | 'inbox_draft' | 'clear_hold' | 'reports_view' | 'export_pii';
+export type Action = 'billing' | 'members' | 'connections' | 'workspace_settings' | 'build' | 'approve' | 'inbox_read' | 'inbox_draft' | 'clear_hold' | 'reports_view' | 'team_view' | 'export_pii';
 
 interface SessionValue {
   me: Me | undefined;

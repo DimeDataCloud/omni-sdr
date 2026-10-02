@@ -1,4 +1,4 @@
--- Omni-SDR 0013: lead finding (SPEC §1 acceptance step 5; Station 11). "Find 50 Nashville dental practices" asks a
+-- Omni-SDR 0012: lead finding (SPEC §1 acceptance step 5; Station 11). "Find 50 Nashville dental practices" asks a
 -- places search for businesses, then reads each one's own homepage for evidence and a contact address.
 --
 -- What is kept from the places search is its place id and nothing else it returned (INFRASTRUCTURE §9 and §11:

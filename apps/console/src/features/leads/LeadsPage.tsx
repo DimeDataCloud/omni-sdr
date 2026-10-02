@@ -3,8 +3,9 @@ import { Fragment, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { AnimatePresence, motion } from 'motion/react';
 import { toast } from 'sonner';
-import { Upload, Search, ExternalLink, Plus, Target, Megaphone, Users, History, ChevronRight } from 'lucide-react';
-import { api, type Campaign, type Icp } from '@/lib/api';
+import { Upload, Search, ExternalLink, Plus, Target, Megaphone, Users, History, ChevronRight, Download, FileText } from 'lucide-react';
+import { api, isDemo, type Campaign, type Icp } from '@/lib/api';
+import { files } from '@/lib/api/http';
 import { useHotkeys, useQuery, useSelection, prefetchQuery } from '@/lib/hooks';
 import type { Scope } from '@/lib/api/client';
 import { useWorkspace } from '@/lib/session';
@@ -234,7 +235,12 @@ function EnrollSheet({ open, onOpenChange, ids, onDone }: { open: boolean; onOpe
 // ── Campaigns ─────────────────────────────────────────────────────────────────────────────────
 const CAMP_TONE: Record<Campaign['status'], 'neutral' | 'success' | 'warning'> = { draft: 'neutral', active: 'success', paused: 'warning', archived: 'neutral' };
 function Campaigns() {
-  const { scope } = useWorkspace();
+  const { scope, can } = useWorkspace();
+  const [busy, setBusy] = useState<string | null>(null);
+  const run = async (key: string, f: () => Promise<void>) => {
+    setBusy(key);
+    try { await f(); } catch (e) { toast.error((e as Error).message); } finally { setBusy(null); }
+  };
   const camps = useQuery(() => api.campaigns(scope), [scope.workspaceId]);
   const icps = useQuery(() => api.icps(scope), [scope.workspaceId]);
   const [creating, setCreating] = useState(false);
@@ -246,7 +252,11 @@ function Campaigns() {
   };
   return (
     <>
-      <div className="mb-4 flex justify-end"><Button variant="primary" icon={<Plus className="size-4" aria-hidden />} onClick={() => setCreating(true)}>New campaign</Button></div>
+      <div className="mb-4 flex justify-end gap-2">
+        {!isDemo && can('export_pii') && <>
+          <Button variant="ghost" loading={busy === 'contacts'} icon={<Download className="size-4" aria-hidden />} onClick={() => void run('contacts', () => files.contactsCsv(scope))}>Contacts CSV</Button>
+          <Button variant="ghost" loading={busy === 'meetings'} icon={<Download className="size-4" aria-hidden />} onClick={() => void run('meetings', () => files.meetingsCsv(scope))}>Meetings CSV</Button></>}
+        <Button variant="primary" icon={<Plus className="size-4" aria-hidden />} onClick={() => setCreating(true)}>New campaign</Button></div>
       <ErrorState error={camps.error} onRetry={camps.reload} />
       {camps.loading ? <SkeletonList rows={3} /> : !camps.data?.length ? <EmptyState icon={<Megaphone className="size-5" aria-hidden />} title="No campaigns yet" body="A campaign pairs an ICP with the people you want to reach." /> : (
         <motion.ul variants={listStagger} initial="hidden" animate="show" className="grid gap-3 md:grid-cols-2">
@@ -256,6 +266,10 @@ function Campaigns() {
                 <div className="min-w-0 flex-1"><h2 className="truncate text-base font-semibold">{c.name}</h2><p className="text-sm text-muted">{icpName(c.icpId)}</p></div>
                 <Badge tone={CAMP_TONE[c.status]}>{c.status[0].toUpperCase() + c.status.slice(1)}</Badge>
               </div>
+              {!isDemo && can('reports_view') && (
+                <Button size="sm" variant="ghost" className="mt-2" loading={busy === c.id} icon={<FileText className="size-4" aria-hidden />}
+                  onClick={() => void run(c.id, () => files.campaignReport(scope, c.id, c.name))}>Download report</Button>
+              )}
               <div className="mt-4 flex items-end gap-6">
                 <div><p className="tabular text-2xl font-semibold">{c.enrolled}</p><p className="text-xs text-muted">enrolled</p></div>
                 <div><p className="tabular text-2xl font-semibold">{c.live}</p><p className="text-xs text-muted">live</p></div>

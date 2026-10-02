@@ -7,6 +7,7 @@
 //   OMNI_CORS_ORIGINS=https://...        extra browser origins (localhost:3000 and :5173 are allowed by default)
 //   OMNI_PGLITE_DIR=./.devdb             keep data between restarts (default: fresh every start)
 //   OMNI_DEV_MODEL=rules                 a deterministic stand-in model (services/devfakes.mjs) instead of none
+//   OMNI_DEV_CREDITS=<n>                every new org gets n action and data credits (there is no trial; DECISIONS 2026-10-02)
 //   OMNI_DEV_FIXTURES=1                  research, enrichment and lead finding read fixture sites and places instead of the network
 import { createServer } from 'node:http';
 import { PGlite } from '@electric-sql/pglite';
@@ -30,6 +31,21 @@ const PORT = Number(env.PORT ?? 8787);
 const db = env.OMNI_PGLITE_DIR ? new PGlite(env.OMNI_PGLITE_DIR) : new PGlite();
 const { ran } = await migrate(db);
 const seeded = await seedDemo(db);
+// No trial in the product (DECISIONS 2026-10-02): new orgs start with no credits. For local runs (the acceptance
+// script signs up fresh orgs), OMNI_DEV_CREDITS=<n> grants n action and data credits to every new org, through the
+// ledger. Dev only: this trigger is created here, never by a migration.
+if (Number(env.OMNI_DEV_CREDITS) > 0) {
+  const n = Math.min(Math.floor(Number(env.OMNI_DEV_CREDITS)), 100000);
+  await db.exec(`CREATE OR REPLACE FUNCTION dev_grant_credits() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$
+    BEGIN
+      INSERT INTO credit_balances (org_id, meter, balance) VALUES (NEW.id, 'action', ${n}), (NEW.id, 'data', ${n})
+        ON CONFLICT (org_id, meter) DO UPDATE SET balance = credit_balances.balance + EXCLUDED.balance;
+      INSERT INTO credit_ledger (org_id, meter, delta, kind, ref_type) VALUES (NEW.id, 'action', ${n}, 'grant', 'dev'), (NEW.id, 'data', ${n}, 'grant', 'dev');
+      RETURN NEW;
+    END $f$;
+    DROP TRIGGER IF EXISTS dev_grant_credits ON orgs;
+    CREATE TRIGGER dev_grant_credits AFTER INSERT ON orgs FOR EACH ROW EXECUTE FUNCTION dev_grant_credits();`);
+}
 
 const dev = devVerifier();
 const fb = env.OMNI_FIREBASE_PROJECT ? firebaseVerifier({ projectId: env.OMNI_FIREBASE_PROJECT }) : null;

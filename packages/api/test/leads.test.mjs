@@ -1,4 +1,4 @@
-// Level F (0013): "Find 50 Nashville dental practices" → leads with evidence from their own sites and a fit score
+// Level F (0012): "Find 50 Nashville dental practices" → leads with evidence from their own sites and a fit score
 // (acceptance step 5; Station 11). Places search is a fake here; the real adapter ships off.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -125,4 +125,29 @@ test('the real adapter: the key goes only in its header, only the fields we use 
   assert.ok(!seen.url.includes('k-test') && !seen.init.body.includes('k-test'));
   assert.equal(seen.init.headers['x-goog-api-key'], 'k-test-not-real');
   assert.match(seen.init.headers['x-goog-fieldmask'], /^places\.id,places\.displayName,places\.websiteUri,places\.formattedAddress,nextPageToken$/);
+});
+
+test('#58 audit: a place id outside the rule is skipped, not a lost batch; the site kept is an origin; an unknown icpId is a 404 before any spend', async () => {
+  const long = `https://long-0.example/${'a'.repeat(400)}?q=${'b'.repeat(50)}`;
+  const list = [{ placeId: 'good_place_0001', website: 'https://www.dent-1.example/', address: 'Nashville' },
+    { placeId: 'bad.id', website: 'https://www.dent-2.example/', address: 'Nashville' },
+    { placeId: 'good_place_0003', website: 'https://www.dent-3.example/', address: 'Nashville' },
+    { placeId: 'good_place_0004', website: 'https://long-0.example/', address: 'Nashville' }];
+  const fetchLong = async (url) => (url.includes('long-0') ? { url: long, status: 200, body: '<title>Long Co</title>' } : fetchPage(url));
+  const local = await startApi({ config: { places: fakePlaces(list), fetchPage: fetchLong } });
+  try {
+    const bal = async () => Number((await local.q(`SELECT balance FROM credit_balances WHERE org_id = $1 AND meter = 'data'`, [local.demo.org]))[0].balance);
+    // An ICP from the other workspace: not visible here, so a 404, and nothing reserved.
+    const other = (await local.call('POST', `${local.ws(1)}/icps`, { body: { name: 'Elsewhere', data: { traits: [] } } })).body;
+    const b0 = await bal();
+    const nope = await local.call('POST', `${local.W}/leads/find`, { body: { query: 'dentists', limit: 4, icpId: other.id } });
+    assert.deepEqual([nope.status, await bal()], [404, b0]);
+    const r = await local.call('POST', `${local.W}/leads/find`, { body: { query: 'dentists', limit: 4 } });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    assert.equal(r.body.skipped.badPlace, 1);
+    assert.equal(r.body.leads.length, 3, 'the good rows are kept');
+    const longLead = r.body.leads.find((l) => l.company === 'Long Co');
+    assert.equal(longLead.website, 'https://long-0.example/');
+    assert.deepEqual((await local.q(`SELECT website FROM contacts WHERE place_id = 'good_place_0004'`))[0], { website: 'https://long-0.example/' });
+  } finally { await local.stop(); }
 });
