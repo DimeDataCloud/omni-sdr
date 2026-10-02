@@ -14,6 +14,9 @@
 import PostalMime from 'postal-mime';
 
 const MAX_BODY = 100000;
+// The API refuses request bodies over 256 KB. 100,000 characters of non-Latin text is ~270 KB of JSON, so the body is
+// also cut to fit in bytes; replies are top-posted, so the person's words survive (bug bounty 2026-10-02).
+const MAX_JSON_BYTES = 240 * 1024;
 const enc = new TextEncoder();
 
 async function hmacHex(secret, data) {
@@ -63,7 +66,11 @@ export default {
       return fallback(message, env, log, 'unparseable');
     }
 
-    const raw = JSON.stringify(payload);
+    let raw = JSON.stringify(payload);
+    while (enc.encode(raw).length > MAX_JSON_BYTES && payload.body.length > 0) {
+      payload.body = payload.body.slice(0, Math.floor(payload.body.length * 0.9));
+      raw = JSON.stringify(payload);
+    }
     const ts = Math.floor(now() / 1000);
     let res;
     try {

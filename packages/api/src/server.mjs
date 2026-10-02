@@ -7,7 +7,8 @@
 //   OMNI_APP_URL            base for invite links (default https://app.omnisdr.com)
 //   OMNI_UNSUBSCRIBE_BASE   base for /u/<token> links
 //   OMNI_INBOUND_SECRET     HMAC key shared with the email-worker; /internal/* is 404 without it
-//   OMNI_TRUST_PROXY=1      take the client IP from X-Forwarded-For (behind Cloud Run's front end) [VERIFY hop count]
+//   OMNI_TRUST_PROXY=<n>    the client IP is the n-th entry from the end of X-Forwarded-For: 1 behind Cloud Run alone, 2 with
+//                           Cloudflare or a load balancer in front [VERIFY on the deployed path]. Unset: the socket address
 //   OMNI_MODEL=off|vertex   default off; vertex needs OMNI_VERTEX_PROJECT and OMNI_MODEL_{FLASH_LITE,FLASH,PRO} [VERIFY IDs]
 import { createServer } from 'node:http';
 import { createApp } from './app.mjs';
@@ -33,7 +34,8 @@ export async function main() {
       appUrl: env.OMNI_APP_URL ?? 'https://app.omnisdr.com',
       unsubscribeBase: env.OMNI_UNSUBSCRIBE_BASE ?? 'https://app.omnisdr.com',
       inboundSecret: env.OMNI_INBOUND_SECRET || null,
-      trustProxy: env.OMNI_TRUST_PROXY === '1',
+      // Number of proxies that append to X-Forwarded-For: 1 for Cloud Run alone, 2 with Cloudflare or a load balancer in front.
+      trustProxy: Number(env.OMNI_TRUST_PROXY ?? 0) || false,
     },
     log: (entry) => console.log(JSON.stringify({ severity: entry.level === 'error' ? 'ERROR' : 'INFO', ...entry })),
   });
