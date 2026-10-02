@@ -94,3 +94,18 @@ test('generation says what it was written without, and uses what it was told', a
   assert.equal(api.model.calls.length, before + 1);
   assert.match(api.model.calls.at(-1).messages[0].text, /<offer>[\s\S]*We answer after-hours calls for dental offices/);
 });
+
+test('connections is answered only by a mailbox with a live credential, not a bare mailbox row (#50 audit P3)', async () => {
+  const o = await newOwner('conn');
+  const ws = o.W.split('/').at(-1);
+  const [{ org_id: org }] = await api.q(`SELECT org_id FROM workspaces WHERE id = $1`, [ws]);
+  const [mb] = await api.q(`INSERT INTO mailboxes (org_id, workspace_id, provider, address, daily_cap) VALUES ($1, $2, 'gmail', 'me@conn.example', 5) RETURNING id`, [org, ws]);
+  let s = (await api.call('GET', `${o.W}/onboarding`, { as: o.as })).body;
+  assert.ok(!s.answered.includes('connections'), 'a mailbox row without a credential is not connected');
+  await api.q(`INSERT INTO mailbox_credentials (org_id, workspace_id, mailbox_id, provider, secret, scopes) VALUES ($1, $2, $3, 'gmail', $4, ARRAY['https://www.googleapis.com/auth/gmail.send'])`,
+    [org, ws, mb.id, `v1.${'A'.repeat(16)}.${'B'.repeat(30)}`]);
+  s = (await api.call('GET', `${o.W}/onboarding`, { as: o.as })).body;
+  assert.ok(s.answered.includes('connections'));
+  await api.q(`UPDATE mailbox_credentials SET revoked_at = now() WHERE mailbox_id = $1`, [mb.id]);
+  assert.ok(!(await api.call('GET', `${o.W}/onboarding`, { as: o.as })).body.answered.includes('connections'), 'revoked is not connected');
+});

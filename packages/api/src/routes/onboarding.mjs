@@ -32,7 +32,9 @@ async function state(tx, m) {
   const p = (await tx.query(`SELECT website, offer, voice_sample, skipped FROM workspace_profiles WHERE workspace_id = $1`, [m.workspaceId])).rows[0] ?? {};
   const w = (await tx.query(`SELECT postal_address FROM workspaces WHERE id = $1`, [m.workspaceId])).rows[0] ?? {};
   const icps = Number((await tx.query(`SELECT count(*) AS n FROM icps`)).rows[0].n);
-  const mailboxes = Number((await tx.query(`SELECT count(*) AS n FROM mailboxes WHERE paused_reason IS NULL`)).rows[0].n);
+  // A mailbox counts only with a live credential behind it (#50 audit P3: a credential-less row isn't a connection).
+  const mailboxes = Number((await tx.query(`SELECT count(*) AS n FROM mailboxes mb JOIN mailbox_credentials cr ON cr.mailbox_id = mb.id
+    WHERE mb.paused_reason IS NULL AND cr.revoked_at IS NULL`)).rows[0].n);
   const have = { website: Boolean(p.website), offer: Boolean(p.offer), voice: Boolean(p.voice_sample), postal_address: Boolean(w.postal_address),
     icp: icps > 0, connections: mailboxes > 0 };
   const skipped = (p.skipped ?? []).filter((k) => BY_KEY.has(k) && !have[k]);
