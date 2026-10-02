@@ -39,8 +39,12 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
 $$;
 
 GRANT INSERT (idp_uid, email), UPDATE (email) ON users TO tenancy_owner;
+GRANT CREATE ON SCHEMA public TO tenancy_owner;  -- PG15+: a new owner needs CREATE on the schema (no superuser on Cloud SQL)
 ALTER FUNCTION ensure_user(text, text) OWNER TO tenancy_owner;
+REVOKE CREATE ON SCHEMA public FROM tenancy_owner;
+GRANT CREATE ON SCHEMA public TO tenancy_owner;  -- PG15+: a new owner needs CREATE on the schema (no superuser on Cloud SQL)
 ALTER FUNCTION my_memberships() OWNER TO tenancy_owner;
+REVOKE CREATE ON SCHEMA public FROM tenancy_owner;
 REVOKE EXECUTE ON FUNCTION ensure_user(text, text), my_memberships() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION ensure_user(text, text), my_memberships() TO app_rw;
 
@@ -66,7 +70,9 @@ BEGIN
   INSERT INTO audit_log (org_id, actor, action, entity_type, entity_id) VALUES (p_org, app_user()::text, 'create', 'workspace', w::text);
   RETURN w;
 END $$;
+GRANT CREATE ON SCHEMA public TO tenancy_owner;  -- PG15+: a new owner needs CREATE on the schema (no superuser on Cloud SQL)
 ALTER FUNCTION create_workspace(uuid, text) OWNER TO tenancy_owner;
+REVOKE CREATE ON SCHEMA public FROM tenancy_owner;
 REVOKE EXECUTE ON FUNCTION create_workspace(uuid, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION create_workspace(uuid, text) TO app_rw;
 
@@ -214,7 +220,9 @@ GRANT SELECT ON messages, drafts, enrollments TO inbox_owner;
 CREATE POLICY inbox_all ON messages    TO inbox_owner USING (true);
 CREATE POLICY inbox_all ON drafts      TO inbox_owner USING (true);
 CREATE POLICY inbox_all ON enrollments TO inbox_owner USING (true);
+GRANT CREATE ON SCHEMA public TO inbox_owner;  -- PG15+: a new owner needs CREATE on the schema (no superuser on Cloud SQL)
 ALTER FUNCTION inbox_resolve_reply(text) OWNER TO inbox_owner;
+REVOKE CREATE ON SCHEMA public FROM inbox_owner;
 REVOKE EXECUTE ON FUNCTION inbox_resolve_reply(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION inbox_resolve_reply(text) TO inbox_svc;
 

@@ -507,7 +507,9 @@ GRANT EXECUTE ON FUNCTION credit_reserve(uuid, text, bigint, text, text), credit
 -- guard_owner owns send_guard(): reads everything the guard checks, writes only counters.
 GRANT SELECT ON drafts, enrollments, contacts, workspaces, holds, suppression, mailboxes, send_counters TO guard_owner;
 GRANT INSERT, UPDATE ON send_counters TO guard_owner;
+GRANT CREATE ON SCHEMA public TO guard_owner;  -- PG15+: a new owner needs CREATE on the schema (no superuser on Cloud SQL)
 ALTER FUNCTION send_guard() OWNER TO guard_owner;
+REVOKE CREATE ON SCHEMA public FROM guard_owner;
 DO $$
 DECLARE t text;
 BEGIN
@@ -520,8 +522,12 @@ END $$;
 GRANT SELECT, UPDATE ON credit_balances TO ledger_owner;
 GRANT SELECT, INSERT ON credit_ledger TO ledger_owner;
 GRANT USAGE ON SEQUENCE credit_ledger_id_seq TO ledger_owner;
+GRANT CREATE ON SCHEMA public TO ledger_owner;  -- PG15+: a new owner needs CREATE on the schema (no superuser on Cloud SQL)
 ALTER FUNCTION credit_reserve(uuid, text, bigint, text, text) OWNER TO ledger_owner;
+REVOKE CREATE ON SCHEMA public FROM ledger_owner;
+GRANT CREATE ON SCHEMA public TO ledger_owner;  -- PG15+: a new owner needs CREATE on the schema (no superuser on Cloud SQL)
 ALTER FUNCTION credit_release(uuid, text, bigint, text, text) OWNER TO ledger_owner;
+REVOKE CREATE ON SCHEMA public FROM ledger_owner;
 CREATE POLICY ledger_all ON credit_balances TO ledger_owner USING (true) WITH CHECK (true);
 CREATE POLICY ledger_all ON credit_ledger   TO ledger_owner USING (true) WITH CHECK (true);
 
