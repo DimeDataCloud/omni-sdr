@@ -27,6 +27,8 @@ async function connect(db, t, mailbox = t.mailbox) {
 async function tenant(db, label, opts) {
   const t = await seedTenant(db, label, opts);
   await db.query(`DELETE FROM meetings WHERE org_id = $1`, [t.org]);
+  // Anything that references a seeded reply goes first (0008's notifications), whichever migrations this tree has.
+  if ((await db.query(`SELECT to_regclass('notifications') AS t`)).rows[0].t) await db.query(`DELETE FROM notifications WHERE org_id = $1`, [t.org]);
   await db.query(`DELETE FROM inbound_messages WHERE org_id = $1`, [t.org]);
   await db.query(`DELETE FROM messages WHERE org_id = $1`, [t.org]);
   await db.query(`DELETE FROM send_counters WHERE org_id = $1`, [t.org]);
