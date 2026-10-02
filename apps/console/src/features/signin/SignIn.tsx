@@ -13,7 +13,7 @@ import { ApiError } from '@/lib/api';
 
 const msg = (e: unknown) => e instanceof SignInError || e instanceof ApiError ? e.message : 'Something went wrong. Try again.';
 
-function Frame({ title, subtitle, children }: { title: string; subtitle?: ReactNode; children: ReactNode }) {
+export function Frame({ title, subtitle, children }: { title: string; subtitle?: ReactNode; children: ReactNode }) {
   return (
     <div className="ambient grid min-h-dvh place-items-center px-4 py-10">
       <main className="card w-full max-w-sm p-6" aria-labelledby="signin-h">

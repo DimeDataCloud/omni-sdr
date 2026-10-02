@@ -7,6 +7,7 @@
 //   OMNI_APP_URL            base for invite links (default https://app.omnisdr.com)
 //   OMNI_UNSUBSCRIBE_BASE   base for /u/<token> links
 //   OMNI_INBOUND_SECRET     HMAC key shared with the email-worker; /internal/* is 404 without it
+//   OMNI_EDGE_SECRET        HMAC key shared with the api.omnisdr.com Worker, which signs the caller's IP (#52 audit)
 //   OMNI_TRUST_PROXY=<n>    the client IP is the n-th entry from the end of X-Forwarded-For. 1 behind Cloud Run (the live value).
 //                           2 ONLY when every request must pass Cloudflare or a load balancer first: while the *.run.app URL
 //                           is reachable directly, 2 lets a caller pick its own rate-limit bucket with one forged entry
@@ -36,6 +37,8 @@ export async function main() {
       appUrl: env.OMNI_APP_URL ?? 'https://app.omnisdr.com',
       unsubscribeBase: env.OMNI_UNSUBSCRIBE_BASE ?? 'https://app.omnisdr.com',
       inboundSecret: env.OMNI_INBOUND_SECRET || null,
+      // Shared with the api.omnisdr.com Worker, which signs the caller's address (app.mjs edgeIp). Unset: not trusted.
+      edgeSecret: env.OMNI_EDGE_SECRET || null,
       // Number of proxies that append to X-Forwarded-For (see OMNI_TRUST_PROXY above: 1 unless run.app ingress is closed).
       trustProxy: Number(env.OMNI_TRUST_PROXY ?? 0) || false,
     },
