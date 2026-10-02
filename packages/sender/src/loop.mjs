@@ -10,6 +10,7 @@
 //   - now is inside the send window: weekdays, 08:00–17:00 in the workspace's time zone
 import { withService } from '../../db/src/context.mjs';
 import { sendDraft } from './send.mjs';
+import { GMAIL_SEND } from './google.mjs';
 
 export const WAIT_BUSINESS_DAYS = Object.freeze({ 1: 3, 2: 4 }); // INFRASTRUCTURE §13.1: bump after 3, breakup after 4
 export const WINDOW = Object.freeze({ open: 8, close: 17 });
@@ -93,7 +94,8 @@ export async function runSendPass(client, { adapterFor, urls, now = () => new Da
         SELECT mb.id, mb.address, mb.provider, mb.daily_cap,
                coalesce((SELECT sc.count FROM send_counters sc WHERE sc.mailbox_id = mb.id AND sc.day = (now() AT TIME ZONE 'UTC')::date), 0) AS used
         FROM mailboxes mb JOIN mailbox_credentials cr ON cr.mailbox_id = mb.id AND cr.revoked_at IS NULL
-        WHERE mb.paused_reason IS NULL AND mb.provider = 'gmail'`)).rows,
+          AND $1 = ANY (cr.scopes)                       -- a grant without send would only fail at Google
+        WHERE mb.paused_reason IS NULL AND mb.provider = 'gmail'`, [GMAIL_SEND])).rows,
     }));
     const room = new Map(mailboxes.map((m) => [m.id, { ...m, left: m.daily_cap - Number(m.used) }]));
     for (const d of drafts) {

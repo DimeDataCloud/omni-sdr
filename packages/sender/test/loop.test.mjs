@@ -84,6 +84,10 @@ test('loop: nothing goes outside the window, without a connected mailbox, or fro
   assert.deepEqual([night.sent, night.skipped.outside_window], [0, 1]);
   await as(db, 'app_rw', { org: t.org, ws: [t.ws] }, () => db.query(`UPDATE mailbox_credentials SET revoked_at = now() WHERE mailbox_id = $1`, [t.mailbox]));
   assert.equal((await pass(db, a)).skipped.no_mailbox_room, 1, 'revoked: no longer used');
+  // A live credential whose grant lacks gmail.send is not a sending mailbox either (PR #36 audit P3).
+  await as(db, 'app_rw', { org: t.org, ws: [t.ws] }, () => db.query(
+    `UPDATE mailbox_credentials SET revoked_at = NULL, scopes = ARRAY['openid', 'email'] WHERE mailbox_id = $1`, [t.mailbox]));
+  assert.equal((await pass(db, a)).skipped.no_mailbox_room, 1, 'no send scope: not used');
   assert.equal(a.calls.length, 0);
 });
 
