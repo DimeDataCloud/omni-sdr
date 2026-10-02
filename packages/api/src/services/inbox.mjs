@@ -7,10 +7,10 @@ import { withoutTenant, withService } from '../../../db/src/context.mjs';
 
 const sha = (s) => createHash('sha256').update(s, 'utf8').digest('hex');
 
-import { classifyReply, addBusinessMinutes, SLA_MINUTES } from './reply-rules.mjs';
+import { classifyReply, cleanReplyBody, addBusinessMinutes, SLA_MINUTES } from './reply-rules.mjs';
 import { offDecider } from '../../../ai/src/decide.mjs';
 import { REPLY_TRIAGE } from '../../../ai/src/registry.mjs';
-export { classifyReply, addBusinessMinutes, SLA_MINUTES };
+export { classifyReply, cleanReplyBody, addBusinessMinutes, SLA_MINUTES };
 
 
 const TERMINAL = `('stopped', 'converted', 'completed')`;
@@ -78,7 +78,8 @@ export async function refineReply(client, { id, orgId, workspaceId }, { decider 
   const questions = REPLY_TRIAGE.questions({ shadowLabel });
   let out;
   try {
-    out = await decider.decide({ state: REPLY_TRIAGE.state(row), questions });
+    // The decider reads what the person wrote (reply-rules.mjs cleanReplyBody); one long reply went from 847 to 154 tokens (LAYA-PLAN 2a, n=4).
+    out = await decider.decide({ state: REPLY_TRIAGE.state({ ...row, body: cleanReplyBody(row.body) }), questions });
   } catch (e) {
     return { outcome: 'decider_failed', reason: e.message };
   }
