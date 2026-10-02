@@ -17,17 +17,25 @@ import { createServer } from 'node:http';
 import { createApp } from './app.mjs';
 import { pgPool } from './pool.mjs';
 import { firebaseVerifier } from './auth.mjs';
-import { offModel, vertexModel } from './services/model.mjs';
+import { offModel, vertexModel, geminiApiModel } from './services/model.mjs';
 
 const env = process.env;
 const need = (k) => { if (!env[k]) { console.error(`missing ${k}`); process.exit(1); } return env[k]; };
 
 export async function main() {
+  // OMNI_MODEL=gemini_api is the free Gemini API, for a demo with fake data only (Christian 2026-10-02): its terms let
+  // Google use what is sent [VERIFY], so it won't start unless the deployment says its data is demo-only.
+  if (env.OMNI_MODEL === 'gemini_api' && env.OMNI_DATA_IS_DEMO !== '1') {
+    console.error('OMNI_MODEL=gemini_api is for demo data only: set OMNI_DATA_IS_DEMO=1 on a deployment that holds no real prospect or customer data');
+    process.exit(1);
+  }
   const pool = await pgPool({ connectionString: need('DATABASE_URL'), max: Number(env.OMNI_DB_POOL ?? 10) });
+  const models = () => ({ flash_lite: need('OMNI_MODEL_FLASH_LITE'), flash: need('OMNI_MODEL_FLASH'), pro: need('OMNI_MODEL_PRO') });
   const model = env.OMNI_MODEL === 'vertex'
-    ? vertexModel({ project: need('OMNI_VERTEX_PROJECT'), location: env.OMNI_VERTEX_LOCATION ?? 'us-central1',
-      models: { flash_lite: need('OMNI_MODEL_FLASH_LITE'), flash: need('OMNI_MODEL_FLASH'), pro: need('OMNI_MODEL_PRO') } })
-    : offModel();
+    ? vertexModel({ project: need('OMNI_VERTEX_PROJECT'), location: env.OMNI_VERTEX_LOCATION ?? 'us-central1', models: models() })
+    : env.OMNI_MODEL === 'gemini_api'
+      ? geminiApiModel({ key: need('OMNI_GEMINI_KEY'), models: models(), perDay: Number(env.OMNI_GEMINI_PER_DAY ?? 20) || 20 })
+      : offModel();
   const app = createApp({
     pool,
     verifyToken: firebaseVerifier({ projectId: need('OMNI_FIREBASE_PROJECT') }),
