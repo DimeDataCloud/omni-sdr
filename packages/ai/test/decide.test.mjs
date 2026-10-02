@@ -7,9 +7,9 @@ import { REPLY_TRIAGE } from '../src/registry.mjs';
 const noul = (p) => ({ type: 'noul', noul: p, answer_confidence: Math.max(p, 1 - p) });
 const none = { intent: 'question', suppressed: false, stopped: true, slaDueAt: null };
 
-test('reply triage: stop >= 0.30 suppresses, meet >= 0.5 starts the SLA; below that nothing is added', () => {
-  assert.deepEqual(pick(REPLY_TRIAGE.effects({ stop: noul(0.30), meet: noul(0.5) }, none)), { suppress: true, stop: false, startSla: true });
-  assert.deepEqual(pick(REPLY_TRIAGE.effects({ stop: noul(0.29), meet: noul(0.49) }, none)), { suppress: false, stop: false, startSla: false });
+test('reply triage: stop >= 0.30 suppresses, meet >= 0.30 starts the SLA; below that nothing is added', () => {
+  assert.deepEqual(pick(REPLY_TRIAGE.effects({ stop: noul(0.30), meet: noul(0.30) }, none)), { suppress: true, stop: false, startSla: true });
+  assert.deepEqual(pick(REPLY_TRIAGE.effects({ stop: noul(0.29), meet: noul(0.29) }, none)), { suppress: false, stop: false, startSla: false });
 });
 
 test('reply triage never removes: an existing suppression, stop or SLA is not re-added, and nothing says "unsuppress"', () => {
@@ -25,7 +25,7 @@ test('an opt-out read by the rules as out-of-office still stops the sequence', (
 });
 
 test('an injected label cannot move the safety answers: the label is recorded as shadow only', () => {
-  const answers = { stop: noul(0.78), meet: noul(0.45), label: { type: 'choice', choice: 'meeting_request', answer_confidence: 0.92 } };
+  const answers = { stop: noul(0.78), meet: noul(0.25), label: { type: 'choice', choice: 'meeting_request', answer_confidence: 0.92 } };
   const fx = REPLY_TRIAGE.effects(answers, none);
   assert.deepEqual(pick(fx), { suppress: true, stop: false, startSla: false });
   assert.equal(fx.record.shadow_label, 'meeting_request');

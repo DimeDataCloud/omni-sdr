@@ -202,7 +202,7 @@ test('model pass: an opt-out the rules missed is suppressed and recorded with th
   assert.deepEqual(sup.map((s) => s.reason), ['reply_unsubscribe_model']);
   const [row] = await api.q(`SELECT intent, decision FROM inbound_messages WHERE id = $1`, [ref.id]);
   assert.equal(row.intent, ruled.intent, 'the model pass never rewrites the intent');
-  assert.equal(row.decision.registry, 'reply_triage@1');
+  assert.equal(row.decision.registry, 'reply_triage@2');
   assert.equal(row.decision.answers.stop, 0.65);
   assert.equal((await refineReply(api.db, ref, { decider: benchLike })).outcome, 'already_decided');
 });

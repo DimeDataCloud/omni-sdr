@@ -8,9 +8,12 @@
 
 export const REPLY_TRIAGE = {
   task: 'reply_triage',
-  version: 'reply_triage@1',
-  // Bench 2026-10-01: stop caught 5/5 opt-outs at >=0.30 (one false stop, an out-of-office); meet 3/3 at >=0.5.
-  thresholds: { stop: 0.30, meet: 0.5 },
+  version: 'reply_triage@2',
+  // Golden set 2026-10-01 (89 held-out replies, 17 opt-outs, 14 meetings; services/decider/bench/golden.mjs):
+  // stop >= 0.30 catches 16/17 at precision 0.80 (0.20 would catch 17/17 but add 3 more false stops: not worth the
+  // lost leads on n=17). meet was 0.5 (@1) and caught 9/14; at 0.30 it catches 13/14 at precision 0.62. A false
+  // meeting only puts a reply in front of a human sooner, so recall wins.
+  thresholds: { stop: 0.30, meet: 0.30 },
   // The live path asks only the two safety questions. The 9-way label is shadow-only (labels: zero-shot
   // agreement was 14/22, no better than rules-1) and costs ~2x the tokens, so it runs only when asked.
   questions: ({ shadowLabel = false } = {}) => ({
