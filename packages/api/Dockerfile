@@ -26,6 +26,7 @@ COPY packages/db/src packages/db/src
 COPY packages/db/migrations packages/db/migrations
 COPY packages/gate/src packages/gate/src
 COPY packages/sender/src packages/sender/src
+COPY packages/enrich/src packages/enrich/src
 USER node
 EXPOSE 8080
 CMD ["node", "packages/api/src/server.mjs"]
