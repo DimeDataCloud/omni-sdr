@@ -1,0 +1,79 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { cleanReplyBody, classifyReply } from '../src/services/reply-rules.mjs';
+
+const OUR_FOOTER = '--\nNorthside Growth, 100 Main St, Nashville TN 37201\nUnsubscribe: https://app.omnisdr.com/u/tok_abc123';
+const ORIGINAL = `Hi Rosa,\n\nI read through your reviews: 47 mention friendly staff.\nWant to see how practices take those requests online?\n\nThanks,\nMaya\n${OUR_FOOTER}`;
+const quote = (t) => t.split('\n').map((l) => `> ${l}`).join('\n');
+const gmail = (reply) => `${reply}\n\nOn Tue, Sep 29, 2026 at 9:14 AM Maya Chen <maya@northside-growth.example> wrote:\n${quote(ORIGINAL)}`;
+const intent = (body, subject = 'Re: Sunrise reviews') => classifyReply({ subject, body }).intent;
+
+test('a meeting reply that quotes our email is not an opt-out (our footer is in the quote)', () => {
+  assert.notEqual(intent(gmail('Thursday at 2 works for me. Send an invite.')), 'unsubscribe');
+  assert.equal(cleanReplyBody(gmail('Thursday at 2 works for me. Send an invite.')), 'Thursday at 2 works for me. Send an invite.');
+});
+
+test('Outlook: an unquoted original below a "From: / Sent:" header is cut, with our footer in it', () => {
+  const body = `Sounds good, call me at the office after 3.\n\nJordan\n\n________________________________\nFrom: Maya Chen <maya@northside-growth.example>\nSent: Tuesday, September 29, 2026 9:14 AM\nTo: Jordan Ellis <jordan@ridgeline.example>\nSubject: Sunrise reviews\n\n${ORIGINAL}`;
+  assert.equal(cleanReplyBody(body), 'Sounds good, call me at the office after 3.\n\nJordan');
+  assert.notEqual(intent(body), 'unsubscribe');
+});
+
+test('a real opt-out is kept: above the quote, below it (bottom-posting), and with nothing quoted', () => {
+  assert.equal(intent(gmail('Please remove me from your list.')), 'unsubscribe');
+  assert.equal(intent(`On Tue, Sep 29, 2026 at 9:14 AM Maya Chen <maya@northside-growth.example> wrote:\n${quote(ORIGINAL)}\n\nPlease remove me from your list.`), 'unsubscribe');
+  assert.equal(intent('Stop emailing me.'), 'unsubscribe');
+  assert.equal(intent('STOP'), 'unsubscribe');
+});
+
+test('an opt-out written under the sender\'s own "--" line is still read when nothing is above it', () => {
+  assert.equal(intent('--\nunsubscribe'), 'unsubscribe');
+});
+
+test('signature, mobile footer and legal disclaimer are removed', () => {
+  const body = 'Not interested, thanks.\n\n--\nJordan Ellis | Operations Director\nTo unsubscribe from our newsletter, click here.\n';
+  assert.equal(cleanReplyBody(body), 'Not interested, thanks.');
+  assert.equal(intent(body), 'not_interested', 'a newsletter line in their own signature is not an opt-out');
+  assert.equal(cleanReplyBody('Yes, let\'s talk next week.\n\nSent from my iPhone'), 'Yes, let\'s talk next week.');
+  const legal = 'Can you do Thursday?\n\nCONFIDENTIALITY NOTICE: This e-mail message, including any attachments, is for the sole use of the intended recipient(s). To stop receiving, unsubscribe.';
+  assert.equal(cleanReplyBody(legal), 'Can you do Thursday?');
+});
+
+test('Gmail attribution wrapped over two lines, and Spanish clients', () => {
+  const wrapped = `Yes please.\n\nOn Tue, Sep 29, 2026 at 9:14 AM Maya Chen <maya@northside-growth.example>\nwrote:\n${quote(ORIGINAL)}`;
+  assert.equal(cleanReplyBody(wrapped), 'Yes please.');
+  const es = `Sí, me interesa.\n\nEl mar, 29 sept 2026 a las 9:14, Maya Chen (<maya@northside-growth.example>) escribió:\n${quote(ORIGINAL)}`;
+  assert.equal(cleanReplyBody(es), 'Sí, me interesa.');
+});
+
+test('text that only looks like a header is kept when nothing is above it, and CRLF is handled', () => {
+  assert.equal(cleanReplyBody('From: the front desk, not me.\nSent: twice already.'), 'From: the front desk, not me.\nSent: twice already.');
+  assert.equal(cleanReplyBody('Thursday works.\r\n\r\n> old\r\n> text'), 'Thursday works.');
+  assert.equal(cleanReplyBody(''), '');
+  assert.equal(cleanReplyBody(quote(ORIGINAL)), '', 'an all-quote reply leaves nothing to classify');
+});
+
+// The decider gets the cleaned text; the stored body stays as received.
+import { startApi } from './helpers.mjs';
+import { refineReply } from '../src/services/inbox.mjs';
+import { fakeDecider } from '../../ai/src/decide.mjs';
+import { withService } from '../../db/src/context.mjs';
+
+test('the decider reads the cleaned reply; the stored body is unchanged', async () => {
+  const api = await startApi();
+  try {
+    const [c] = await api.q(`SELECT id, org_id, workspace_id FROM contacts WHERE email = $1`, ['daniel@northgate-dental.example']);
+    const raw = gmail('Thursday at 2 works for me.');
+    const id = await withService(api.db, { orgId: c.org_id, workspaceId: c.workspace_id, role: 'inbox_svc' }, async (tx) => (await tx.query(
+      `INSERT INTO inbound_messages (org_id, workspace_id, contact_id, channel, from_address, subject, body, received_at, intent, intent_confidence, classified_by)
+       VALUES ($1, $2, $3, 'email', 'daniel@northgate-dental.example', 'Re: Sunrise reviews', $4, now(), $5, 0.6, 'rules-1') RETURNING id`,
+      [c.org_id, c.workspace_id, c.id, raw, intent(raw)])).rows[0].id);
+    const seen = [];
+    const noul = (p) => ({ type: 'noul', noul: p, answer_confidence: 0.9 });
+    const spy = fakeDecider((state) => { seen.push(state.body); return { stop: noul(0.01), meet: noul(0.9) }; });
+    assert.equal((await refineReply(api.db, { id, orgId: c.org_id, workspaceId: c.workspace_id }, { decider: spy })).outcome, 'decided');
+    assert.deepEqual(seen, ['Thursday at 2 works for me.']);
+    assert.equal((await api.q(`SELECT body FROM inbound_messages WHERE id = $1`, [id]))[0].body, raw);
+    assert.equal((await api.q(`SELECT count(*)::int AS n FROM suppression WHERE value_hash = value_hash('daniel@northgate-dental.example')`))[0].n, 0, 'not suppressed');
+  } finally { await api.stop(); }
+});
