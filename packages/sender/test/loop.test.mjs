@@ -30,6 +30,7 @@ async function tenant(db, label, opts) {
   await db.query(`DELETE FROM inbound_messages WHERE org_id = $1`, [t.org]);
   await db.query(`DELETE FROM messages WHERE org_id = $1`, [t.org]);
   await db.query(`DELETE FROM send_counters WHERE org_id = $1`, [t.org]);
+  await db.query(`DELETE FROM mailbox_credentials WHERE org_id = $1`, [t.org]);   // each test connects what it needs
   await db.query(`UPDATE drafts SET status = 'discarded' WHERE org_id = $1`, [t.org]);
   await db.query(`UPDATE workspaces SET postal_address = '100 Example Street, Nashville, TN 37201', timezone = 'America/Chicago' WHERE id = $1`, [t.ws]);
   return t;
