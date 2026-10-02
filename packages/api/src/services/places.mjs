@@ -1,6 +1,6 @@
 // Places search adapters (Station 11 "Find leads"). Ships OFF: the real one needs the Places API enabled on the
 // project and a key, which are Christian's call (rails §3: cloud change, spend). The route never stores what a search
-// returns except the place id (0013); the rest is used once, to find the business's own homepage.
+// returns except the place id (0012); the rest is used once, to find the business's own homepage.
 //
 //   search({ query, pageToken }) → { places: [{ placeId, name, website, address }], next: pageToken | null }
 

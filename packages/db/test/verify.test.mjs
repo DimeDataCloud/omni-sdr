@@ -1,4 +1,4 @@
-// 0014: an address is 'valid' only through a paid vendor check (DECISIONS 2026-09-28), so the send guard's
+// 0013: an address is 'valid' only through a paid vendor check (DECISIONS 2026-09-28), so the send guard's
 // "email verified" means what it says. Tries to get 'valid' in every other way.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,6 +10,11 @@ const one = async (db, sql, p) => (await db.query(sql, p)).rows[0];
 async function setup() {
   const db = await freshDb();
   const a = await seedTenant(db, 'alpha'); const b = await seedTenant(db, 'beta');
+  // No trial (DECISIONS 2026-10-02): ops grants the Data credits these checks spend, through the ledger.
+  for (const t of [a, b]) {
+    await db.query(`INSERT INTO credit_balances (org_id, meter, balance) VALUES ($1, 'data', 10) ON CONFLICT (org_id, meter) DO UPDATE SET balance = 10`, [t.org]);
+    await db.query(`INSERT INTO credit_ledger (org_id, meter, delta, kind, ref_type) VALUES ($1, 'data', 10, 'grant', 'ops')`, [t.org]);
+  }
   const mk = async (t, email) => (await asApp(db, t, `INSERT INTO contacts (org_id, workspace_id, email) VALUES ($1, $2, $3) RETURNING id`, [t.org, t.ws, email])).rows[0].id;
   return { db, a, b, ca: await mk(a, 'pat@clinic-a.example'), cb: await mk(b, 'lee@clinic-b.example') };
 }
@@ -55,4 +60,21 @@ test('tenant walls: another org\'s contact or reservation does nothing; a role o
     const r = await as(db, role, { org: b.org, ws: [b.ws] }, () => refused(db.query(`SELECT app_email_verified($1, 'lee@clinic-b.example', 'valid', 'f', 'j')`, [cb])));
     assert.match(r ?? '', /permission denied/, role);
   }
+});
+
+test('one verdict per credit the job still holds: a refunded job writes nothing; a job can\'t write more than it paid for (#59 audit P2-1)', async () => {
+  const { db, a } = await setup();
+  const ids = [];
+  for (let i = 0; i < 5; i++) ids.push((await asApp(db, a, `INSERT INTO contacts (org_id, workspace_id, email) VALUES ($1, $2, $3) RETURNING id`, [a.org, a.ws, `p${i}@clinic-a.example`])).rows[0].id);
+  // claude-local's repro: reserve 1, release 1, then verdicts.
+  await asApp(db, a, `SELECT app_credit_reserve('data', 1, 'email_verify', 'job-x')`);
+  await asApp(db, a, `SELECT app_credit_release('data', 1, 'email_verify', 'job-x')`);
+  assert.match(await refused(asApp(db, a, `SELECT app_email_verified($1, 'p0@clinic-a.example', 'valid', 'fake', 'job-x')`, [ids[0]])) ?? '', /held 0, used 0/);
+  // Reserve 2: two verdicts, the third refused.
+  await asApp(db, a, `SELECT app_credit_reserve('data', 2, 'email_verify', 'job-y')`);
+  await asApp(db, a, `SELECT app_email_verified($1, 'p1@clinic-a.example', 'valid', 'fake', 'job-y')`, [ids[1]]);
+  await asApp(db, a, `SELECT app_email_verified($1, 'p2@clinic-a.example', 'invalid', 'fake', 'job-y')`, [ids[2]]);
+  assert.match(await refused(asApp(db, a, `SELECT app_email_verified($1, 'p3@clinic-a.example', 'valid', 'fake', 'job-y')`, [ids[3]])) ?? '', /held 2, used 2/);
+  const st = (await db.query(`SELECT email, email_status FROM contacts WHERE id = ANY ($1::uuid[]) ORDER BY email`, [ids])).rows.map((x) => x.email_status);
+  assert.deepEqual(st, ['unknown', 'valid', 'invalid', 'unknown', 'unknown']);
 });

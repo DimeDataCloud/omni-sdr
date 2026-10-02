@@ -23,7 +23,7 @@ function useNavCounts() {
   const { scope, can } = useWorkspace();
   const approvals = useQuery(() => api.approvals(scope, { status: 'review' }), [scope.workspaceId], { enabled: can('approve'), pollMs: 60000 });
   const inbox = useQuery(() => api.inbox(scope), [scope.workspaceId], { enabled: can('inbox_read'), pollMs: 60000 });
-  const capacity = useQuery(() => api.capacity(scope), [scope.workspaceId], { pollMs: 60000 });
+  const capacity = useQuery(() => api.capacity(scope), [scope.workspaceId], { enabled: can('team_view'), pollMs: 60000 }); // client viewers: 403 (#43)
   const pending = usePending();
   const urgent = (inbox.data ?? []).filter((r) => !pending.isHidden(r.id) && r.slaMinutesRemaining !== null && r.slaMinutesRemaining < 60).length;
   const decided = (approvals.data?.items ?? []).filter((d) => pending.isHidden(d.id)).length;

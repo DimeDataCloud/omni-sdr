@@ -1,5 +1,5 @@
 // Verify contacts' email addresses (SPEC §1 step 5; Station 11). Free checks first, for nothing; then the vendor, one
-// Data credit per address it checks. Only app_email_verified() (0014) can make an address 'valid', and only for a job
+// Data credit per address it checks. Only app_email_verified() (0013) can make an address 'valid', and only for a job
 // that reserved its credit. What the vendor didn't answer is refunded and the job settled, in a finally.
 import { randomUUID } from 'node:crypto';
 import { T, audit } from './index.mjs';
@@ -12,7 +12,7 @@ import { pool } from '../services/leads.mjs';
 const MAX_PER_RUN = 50;
 const CREDITS_PER_CHECK = 1;   // placeholder until the vendor's unit price is known [VERIFY]
 const CLAIM_LEASE_MS = 5 * 60 * 1000;
-const VENDOR_BUDGET_MS = 40000;   // under server.mjs's 60 s request timeout
+const VENDOR_BUDGET_MS = 40000;   // so the person pressing gets an answer in under a minute (a product choice; #59 audit P3-2)
 
 export function registerVerify(r) {
   r.post(`${T}/contacts/verify`, async (ctx) => {
@@ -34,7 +34,7 @@ export function registerVerify(r) {
       todo.push(c);
     }
     const domains = [...new Set(todo.map((c) => c.email.split('@')[1]))];
-    const mx = new Map(await Promise.all(domains.map(async (d) => [d, await mxOk(d, ctx.config.resolveMx)])));
+    const mx = new Map(await Promise.all(domains.map(async (d) => [d, await mxOk(d, ctx.config.resolveMx, ctx.config.resolveAddr)])));
     const paid = [];
     for (const c of todo) {
       if (mx.get(c.email.split('@')[1]) === false) results.set(c.id, { contactId: c.id, email: c.email, outcome: 'invalid', by: 'free', reason: 'no_mx' });

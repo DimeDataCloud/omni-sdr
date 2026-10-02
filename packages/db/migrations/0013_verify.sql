@@ -1,10 +1,10 @@
--- Omni-SDR 0014: email verification (DECISIONS 2026-09-28 "Email verification: free checks + vendor verification as a
+-- Omni-SDR 0013: email verification (DECISIONS 2026-09-28 "Email verification: free checks + vendor verification as a
 -- customer-paid credit": `email_status = 'valid'` needs a vendor pass; the send guard (0001) refuses anything else).
 --
 -- Until now any app_rw statement could write 'valid' (table-level UPDATE on contacts), so the guard trusted a value the
 -- database didn't protect. From here:
---   * 'valid' is written only by app_email_verified(), a narrow definer function, and only for a job that reserved a
---     Data credit in this org (the customer paid for the check) and for the address the contact still has;
+--   * 'valid' is written only by app_email_verified(), a narrow definer function, one verdict per Data credit its job
+--     still holds in this org (the customer paid for each check), and only for the address the contact still has;
 --   * every vendor answer is kept, insert-only, in email_verifications;
 --   * changing a contact's address takes 'valid' away (a new address hasn't been checked).
 -- Free checks (syntax, MX, disposable) may still mark an address 'invalid' or leave it 'unknown'; they cost nothing.
@@ -63,14 +63,19 @@ CREATE TRIGGER contacts_email_status_guard BEFORE INSERT OR UPDATE OF email, ema
 
 CREATE FUNCTION app_email_verified(p_contact uuid, p_email text, p_verdict text, p_vendor text, p_job text)
 RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-DECLARE c record;
+DECLARE c record; held bigint; used bigint;
 BEGIN
   IF app_org() IS NULL THEN RAISE EXCEPTION 'no tenant' USING ERRCODE = 'P0001'; END IF;
   IF p_verdict NOT IN ('valid', 'invalid', 'risky', 'unknown') THEN RAISE EXCEPTION 'bad verdict' USING ERRCODE = 'P0001'; END IF;
-  -- The customer paid for this check: the job holds a Data credit reservation in this org.
-  IF NOT EXISTS (SELECT 1 FROM credit_ledger WHERE org_id = app_org() AND meter = 'data' AND ref_type = 'email_verify'
-                 AND ref_id = p_job AND kind = 'reserve') THEN
-    RAISE EXCEPTION 'verification needs a data credit reservation for its job' USING ERRCODE = 'P0001';
+  -- The customer paid for this check: one verdict per Data credit the job still holds (reserved minus released), so
+  -- a refunded job writes nothing and a job can't write more verdicts than it paid for (#59 audit P2-1). The lock
+  -- makes two calls for one job count in turn.
+  PERFORM pg_advisory_xact_lock(hashtext('email_verify:' || p_job));
+  SELECT coalesce(-sum(delta), 0) INTO held FROM credit_ledger WHERE org_id = app_org() AND meter = 'data'
+    AND ref_type = 'email_verify' AND ref_id = p_job AND kind IN ('reserve', 'release');
+  SELECT count(*) INTO used FROM email_verifications WHERE org_id = app_org() AND job = p_job;
+  IF held <= used THEN
+    RAISE EXCEPTION 'verification needs a data credit reservation for its job (held %, used %)', held, used USING ERRCODE = 'P0001';
   END IF;
   -- RLS (tenant policy) decides which contacts are visible: only this org's, in this request's workspaces.
   SELECT id, org_id, workspace_id, email INTO c FROM contacts WHERE id = p_contact FOR UPDATE;
@@ -85,7 +90,7 @@ END $$;
 
 GRANT SELECT (id, org_id, workspace_id, email, email_status), UPDATE (email_status) ON contacts TO verify_owner;
 GRANT SELECT, INSERT ON email_verifications TO verify_owner;
-GRANT SELECT (org_id, meter, ref_type, ref_id, kind) ON credit_ledger TO verify_owner;
+GRANT SELECT (org_id, meter, delta, ref_type, ref_id, kind) ON credit_ledger TO verify_owner;
 CREATE POLICY verify_read ON credit_ledger TO verify_owner USING (org_id = app_org());
 GRANT EXECUTE ON FUNCTION app_org(), app_ws() TO verify_owner;
 -- Grants before the owner change (0008a: after it, the migration role is no longer the grantor and they'd be no-ops).

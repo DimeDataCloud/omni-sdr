@@ -23,20 +23,34 @@ async function call(as, method, path, body) {
   const out = res.status === 204 ? null : await res.json().catch(() => null);
   return { status: res.status, body: out };
 }
-const ok = (r, want, what) => { if (r.status !== want) throw new Error(`${what}: ${r.status} ${JSON.stringify(r.body)?.slice(0, 200)}`); return r.body; };
+async function raw(as, path) {
+  const res = await fetch(`${API}${path}`, { headers: { authorization: `Bearer dev:${as}` } });
+  return { status: res.status, type: res.headers.get('content-type') ?? '', disposition: res.headers.get('content-disposition') ?? '',
+    csp: res.headers.get('content-security-policy') ?? '', text: await res.text() };
+}
+/** A route that isn't on this server yet answers 404 with no handler; the step reports NOT BUILT instead of FAIL. */
+const absent = (r) => r.status === 404 && /not.?found/i.test(JSON.stringify(r.body ?? '')) && !/contact|campaign|workspace/i.test(JSON.stringify(r.body ?? ''));
+// No trial for now (DECISIONS 2026-10-02): a new org has no credits until ops grants some, so metered work answers 402.
+// That is OFF here, not a failure. The dev server's OMNI_DEV_CREDITS=<n> grants n of each meter to every new org.
+class NoCredits extends Error {}
+const ok = (r, want, what) => { if (r.status === 402 && want !== 402) throw new NoCredits(`${what}: no credits (no trial: DECISIONS 2026-10-02; dev: OMNI_DEV_CREDITS=<n>)`);
+  if (r.status !== want) throw new Error(`${what}: ${r.status} ${JSON.stringify(r.body)?.slice(0, 200)}`); return r.body; };
 
 async function step(id, title, fn) {
   try {
     const note = await fn();
     results.push({ id, title, state: note?.notBuilt ? 'NOT BUILT' : note?.off ? 'OFF' : 'PASS', note: note?.notBuilt ?? note?.off ?? note?.partial ?? '' });
   } catch (e) {
-    results.push({ id, title, state: 'FAIL', note: e.message });
+    results.push({ id, title, state: e instanceof NoCredits ? 'OFF' : 'FAIL', note: e.message });
   }
 }
 const notBuilt = (what) => ({ notBuilt: what });
+// Every key in a JSON value, at any depth (#56 audit P3: look for an open-rate field, not the word in a name).
+const keysOf = (x) => (x && typeof x === 'object' ? Object.entries(x).flatMap(([k, v]) => [...(Array.isArray(x) ? [] : [k]), ...keysOf(v)]) : []);
 // Built, but switched off here: it needs a credential, a vendor or spend this environment doesn't have (Christian's
 // call). Locally, OMNI_DEV_MODEL=rules and OMNI_DEV_FIXTURES=1 on the dev server turn the model and sites on.
 const off = (what) => ({ off: what });
+const f0 = (a) => Array.isArray(a) && a.length > 0;
 const partial = (what) => ({ partial: `partial: ${what}` });
 
 // ── Maya: owner ─────────────────────────────────────────────────────────────────────────────────
@@ -50,11 +64,11 @@ await step('M1', 'Signs up as Owner; 7-day trial', async () => {
   const me = ok(await call(maya, 'GET', '/v1/me'), 200, 'me');
   const o = me.orgs.find((x) => x.id === M.org);
   if (o?.accountType !== 'owner' || o.subscriptionStatus !== 'trialing' || o.role !== 'admin') throw new Error(`org ${JSON.stringify(o)}`);
-  return partial('Stripe Checkout (card-required trial) not wired');
+  return partial('no trial for now (DECISIONS 2026-10-02): a new org starts with no credits, and Stripe checkout is not built');
 });
 await step('M2', 'Composer asks one question at a time; every question skippable', async () => {
   const first = await call(maya, 'GET', `${T()}/onboarding`);
-  if (first.status === 404) return notBuilt('onboarding API (#50)');
+  if (absent(first)) return notBuilt('onboarding API (#50)');
   const o = ok(first, 200, 'onboarding');
   if (o.next?.key !== 'website' || o.next.skippable !== true) throw new Error(`first question ${JSON.stringify(o.next)}`);
   const a = ok(await call(maya, 'POST', `${T()}/onboarding`, { key: 'offer', value: 'We answer after-hours calls for dental offices in Nashville.' }), 200, 'answer offer');
@@ -62,7 +76,7 @@ await step('M2', 'Composer asks one question at a time; every question skippable
   for (const key of ['website', 'voice', 'postal_address', 'icp', 'connections']) st = ok(await call(maya, 'POST', `${T()}/onboarding`, { key, skip: true }), 200, `skip ${key}`);
   if (!st.done || st.next !== null) throw new Error('skipping everything must finish onboarding');
   if (!st.missing.some((x) => x.key === 'website')) throw new Error('a skipped answer must still be listed as missing');
-  return partial('voice note input is text here; audio intake comes with the media pipeline (Station 18)');
+  return partial('the composer UI that asks them (console); voice note input is text here, audio intake comes with the media pipeline (Station 18)');
 });
 await step('M3', 'ICP v1 → v2; the campaign stays pinned to v1', async () => {
   const v1 = ok(await call(maya, 'POST', `${T()}/icps`, { name: 'Dental practices', data: { region: 'Nashville' } }), 201, 'icp v1');
@@ -126,7 +140,7 @@ await step('M5', 'Leads with free checks on every email', async () => {
   const bare = found.leads.filter((l) => !l.evidenceId && !l.evidence);
   if (bare.length) throw new Error(`${bare.length} leads with neither evidence nor a "no evidence found" mark`);
   if (found.leads.some((l) => l.emailStatus === 'valid')) throw new Error('a found address was marked valid without verification');
-  // Vendor verification: one Data credit per address; only a vendor pass makes an address 'valid' (0014).
+  // Vendor verification: one Data credit per address; only a vendor pass makes an address 'valid' (0013).
   const ids = [...M.contacts.slice(0, 2), ...found.leads.filter((l) => l.email).map((l) => l.id)].slice(0, 20);
   const vr = await call(maya, 'POST', `${T()}/contacts/verify`, { contactIds: ids });
   if (vr.status === 404) return partial('vendor email verification (level G) not built: addresses stay unverified, so none can be enrolled to send');
@@ -151,12 +165,12 @@ await step('M6', 'Campaign: a 3-step sequence, gated before review', async () =>
   M.draft = d.id; M.draftGate = d.gate;
   // Evidence comes only from the enricher, then generation writes the sequence through the gate.
   const en = await call(maya, 'POST', `${T()}/contacts/${M.contacts[0]}/enrich`);
-  if (en.status === 404) return notBuilt('enrich route (#48): no evidence, so no first touch can pass the gate yet');
+  if (absent(en)) return notBuilt('enrich route (#48): no evidence, so no first touch can pass the gate yet');
   if (!en.body?.enriched) return off(`enrichment ran but found nothing here (${en.body?.reason}); fixture sites: OMNI_DEV_FIXTURES=1`);
   const camp2 = ok(await call(maya, 'POST', `${T()}/campaigns`, { name: `Generated ${RUN}` }), 201, 'campaign 2');
   ok(await call(maya, 'POST', `${T()}/campaigns/${camp2.id}/enrollments`, { contactIds: [M.contacts[0]] }), 201, 'enroll 2');
   const est = await call(maya, 'GET', `${T()}/campaigns/${camp2.id}/generate/estimate`);
-  if (est.status === 404) return notBuilt('generation (#47)');
+  if (absent(est)) return notBuilt('generation (#47)');
   if (!ok(est, 200, 'estimate').available) return off('generation: built (#47), model not configured here');
   const g = ok(await call(maya, 'POST', `${T()}/campaigns/${camp2.id}/generate`, { steps: 3 }), 201, 'generate');
   const seq = g.generated[0]?.drafts ?? [];
@@ -196,16 +210,18 @@ await step('M10', 'Analytics: sends, replies, meetings, rate by step; no open ra
   if (!cr.balances) throw new Error('credits');
 });
 await step('M11', 'Reports and export: PDF + Doc, leads to CSV/Sheets, meetings to the CRM', async () => {
-  const rep = await call(maya, 'GET', `${T()}/reports/campaigns/${M.campaign}`);
-  if (rep.status === 404) return notBuilt('reports (#46)');
-  const r = ok(rep, 200, 'report');
-  if (JSON.stringify(r).match(/open/i)) throw new Error('a report must never carry an open rate');
-  const page = await fetch(`${API}${T()}/reports/campaigns/${M.campaign}?format=html`, { headers: { authorization: `Bearer dev:${maya}` } });
-  const html = await page.text();
-  if (page.status !== 200 || !/^text\/html/.test(page.headers.get('content-type') ?? '') || /<script/i.test(html)) throw new Error('printable report');
-  const csv = await fetch(`${API}${T()}/exports/contacts.csv`, { headers: { authorization: `Bearer dev:${maya}` } });
-  if (csv.status !== 200 || !/^attachment/.test(csv.headers.get('content-disposition') ?? '')) throw new Error(`contacts CSV → ${csv.status}`);
-  return off('report (JSON + printable PDF) and CSV exports pass; Google Docs/Sheets export and the CRM push need those connectors (Drive OAuth, Shopify/GHL/Whop apps)');
+  const rep = ok(await call(maya, 'GET', `${T()}/reports/campaigns/${M.campaign}`), 200, 'report');
+  if (!rep.totals || keysOf(rep).some((k) => /open/i.test(k))) throw new Error('report totals missing, or an open-rate field');
+  const page = await raw(maya, `${T()}/reports/campaigns/${M.campaign}?format=html`);
+  if (page.status !== 200 || !page.type.startsWith('text/html') || /<script/i.test(page.text) || !/default-src 'none'/.test(page.csp)) {
+    throw new Error(`printable report: ${page.status} ${page.type} csp=${page.csp}`);
+  }
+  for (const f of ['contacts', 'meetings']) {
+    const csv = await raw(maya, `${T()}/exports/${f}.csv`);
+    if (csv.status !== 200 || !csv.type.startsWith('text/csv') || !/attachment/.test(csv.disposition)) throw new Error(`${f}.csv → ${csv.status} ${csv.type}`);
+  }
+  if (f0(M.contacts) && !(await raw(maya, `${T()}/exports/contacts.csv`)).text.includes('Lena Ortiz')) throw new Error('contacts.csv is missing a contact');
+  return partial("PDF is the browser's print of the page; Google Doc/Sheets export and CRM push (sprint 9)");
 });
 
 // ── Northside Growth: agency ───────────────────────────────────────────────────────────────────
@@ -242,18 +258,17 @@ await step('A3', 'The client sees analytics; approves only when the admin turns 
   ok(await call(client, 'GET', `${NT()}/approvals`), 200, 'client approvals with toggle on');
   const other = await call(client, 'GET', `/v1/o/${N.org}/w/${N.ws2}/analytics?days=30`);
   if (other.status !== 403 && other.status !== 404) throw new Error(`client reached another client's workspace → ${other.status}`);
-  const staffOnly = await call(client, 'GET', `${NT()}/agents`);
-  if (staffOnly.status !== 403) throw new Error(`client_viewer reads the team's agents → ${staffOnly.status} (must be 403: #43)`);
+  for (const p of ['agents', 'routines', 'campaigns', 'connectors', 'capacity', 'credits']) {
+    const r = await call(client, 'GET', `${NT()}/${p}`);
+    if (r.status !== 403) throw new Error(`client_viewer reads the team's ${p} → ${r.status} (bug bounty #4, #43)`);
+  }
 });
 await step('A4', 'Reports carry the agency brand on the agency domain (white-label)', async () => {
-  const camp = ok(await call(admin, 'POST', `${NT()}/campaigns`, { name: `Client report ${RUN}` }), 201, 'agency campaign');
-  const page = await fetch(`${API}${NT()}/reports/campaigns/${camp.id}?format=html`, { headers: { authorization: `Bearer dev:${client}` } });
-  if (page.status === 404) return notBuilt('reports (#46)');
-  const html = await page.text();
+  const camp = ok(await call(admin, 'POST', `${NT()}/campaigns`, { name: 'Brightline Q4' }), 201, 'agency campaign');
+  const page = await raw(client, `${NT()}/reports/campaigns/${camp.id}?format=html`);
   if (page.status !== 200) throw new Error(`client report → ${page.status}`);
-  if (!html.includes(`Northside ${RUN}`)) throw new Error('the report must carry the agency\'s name');
-  if (/omni/i.test(html)) throw new Error('no Omni-SDR mention anywhere a client can see');
-  return notBuilt('agency logo/colours and custom domains (Cloudflare for SaaS) not built; the name-only white-label passes');
+  if (!page.text.includes(`Northside ${RUN}`) || /omni-?sdr/i.test(page.text)) throw new Error('report is not white-label (agency name missing or Omni-SDR shown)');
+  return partial("the agency's own domain (custom domains, sprint 9)");
 });
 
 // ── Report ─────────────────────────────────────────────────────────────────────────────────────

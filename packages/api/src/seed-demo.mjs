@@ -86,9 +86,7 @@ export async function seedDemo(db, { now = new Date() } = {}) {
   const maya = users['maya@example.com'];
 
   for (const [meter, amount] of [['data', 30000], ['action', 40000], ['media', 0]]) {
-    // 0012 already granted the trial credits; the demo's own grant adds to them, through the ledger as well.
-    await db.query(`INSERT INTO credit_balances (org_id, meter, balance) VALUES ($1, $2, $3)
-      ON CONFLICT (org_id, meter) DO UPDATE SET balance = credit_balances.balance + EXCLUDED.balance`, [org, meter, amount]);
+    await db.query(`INSERT INTO credit_balances (org_id, meter, balance) VALUES ($1, $2, $3)`, [org, meter, amount]);
     if (amount) await db.query(`INSERT INTO credit_ledger (org_id, meter, delta, kind, ref_type) VALUES ($1, $2, $3, 'grant', 'trial')`, [org, meter, amount]);
   }
 

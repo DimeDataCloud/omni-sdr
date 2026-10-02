@@ -1,4 +1,4 @@
-// Level G (0014): free checks on every address; a vendor check per Data credit; only that makes an address 'valid'.
+// Level G (0013): free checks on every address; a vendor check per Data credit; only that makes an address 'valid'.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startApi } from './helpers.mjs';
@@ -28,11 +28,16 @@ const ledger = async (job) => (await api.q(`SELECT kind, delta::int AS d FROM cr
 const statusOf = async (id) => (await api.q(`SELECT email_status FROM contacts WHERE id = $1`, [id]))[0].email_status;
 const verify = (ids, as) => api.call('POST', `${api.W}/contacts/verify`, { as, body: { contactIds: ids } });
 
-test('mx: a domain with mail servers passes; no domain or a null MX fails; DNS trouble is "can\'t tell"', async () => {
+test('mx: a domain with mail servers passes; no domain or a null MX fails; DNS trouble is "can\'t tell"; no MX falls back to A/AAAA', async () => {
   assert.equal(await mxOk('clinic.example', resolveMx), true);
   assert.equal(await mxOk('nope.example', resolveMx), false);
   assert.equal(await mxOk('nullmx.example', resolveMx), false);
   assert.equal(await mxOk('flaky.example', resolveMx), null);
+  // #59 audit P3-1: a domain with no MX record (ENODATA) but an address takes mail there (RFC 5321 §5.1).
+  const noMx = async () => { throw Object.assign(new Error('nodata'), { code: 'ENODATA' }); };
+  assert.equal(await mxOk('a-only.example', noMx, async () => ['192.0.2.10']), true);
+  assert.equal(await mxOk('bare.example', noMx, async () => { throw Object.assign(new Error('nodata'), { code: 'ENODATA' }); }), false);
+  assert.equal(await mxOk('flaky-a.example', noMx, async () => { throw Object.assign(new Error('servfail'), { code: 'ESERVFAIL' }); }), null);
 });
 
 test('free checks cost nothing; the vendor makes addresses valid, one Data credit each, settled; the verdicts are kept', async () => {

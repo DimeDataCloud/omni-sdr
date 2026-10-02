@@ -1,0 +1,10 @@
+{
+  "name": "@omni/api-proxy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "api.omnisdr.com: a pass-through Worker to the Cloud Run API. No auth, no caching, no state.",
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  }
+}
