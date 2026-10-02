@@ -77,8 +77,14 @@ export default {
     }
     if (!res.ok) return fallback(message, env, log, `api_${res.status}`);
     const out = await res.json().catch(() => ({}));
-    // `unmatched` (an unknown or expired token) is accepted and dropped: bouncing it would only tell a stranger
-    // which addresses exist.
+    // `unmatched` (no send has this token) is never bounced: that would tell a stranger which addresses exist. It
+    // goes to the fallback mailbox when there is one, so a reply whose address was mangled on the way is still read
+    // by a person (found in the 2026-10-02 audit); without one it is dropped.
+    if (out.outcome === 'unmatched' && env.FALLBACK_TO) {
+      await message.forward(env.FALLBACK_TO);
+      log({ worker: 'email', outcome: 'unmatched_forwarded' });
+      return;
+    }
     log({ worker: 'email', outcome: out.outcome ?? 'unknown' });
   },
 };

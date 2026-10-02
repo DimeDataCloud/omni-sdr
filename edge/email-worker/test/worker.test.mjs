@@ -57,6 +57,15 @@ test('the API down: forwarded to the fallback mailbox if set, otherwise thrown s
   assert.ok(!JSON.stringify(logs).includes('remove me') && !JSON.stringify(logs).includes('maplegrove'), 'logs carry no content or address');
 });
 
+test('a reply no send matches goes to the fallback mailbox, not the bin', async () => {
+  const m = message(mime());
+  await worker.email(m, { ...env, FALLBACK_TO: 'replies-fallback@omnisdr.example' }, {}, { fetchImpl: fakeApi(200, 'unmatched').fetchImpl, log: quiet });
+  assert.equal(m.forwarded, 'replies-fallback@omnisdr.example');
+  const m2 = message(mime());
+  await worker.email(m2, { ...env, FALLBACK_TO: 'replies-fallback@omnisdr.example' }, {}, { fetchImpl: fakeApi(200, 'recorded').fetchImpl, log: quiet });
+  assert.equal(m2.forwarded, null, 'a recorded reply is not also forwarded');
+});
+
 test('HTML-only mail: text kept, the quoted thread marked as quoted so the API drops it', () => {
   const t = textOf({ html: '<div>Yes, Thursday at 2.</div><div><br></div><blockquote class="gmail_quote">Hi Tom,<br>Unsubscribe: https://app.omnisdr.com/u/tok</blockquote>' });
   assert.match(t, /^Yes, Thursday at 2\./);
@@ -104,16 +113,18 @@ test('end to end: a Gmail-style reply quoting our email lands as a meeting reque
   assert.equal((await api.q(`SELECT count(*)::int AS n FROM inbound_messages WHERE external_id = '<e2e-1@maplegrove.example>'`))[0].n, 1);
 });
 
-test('end to end: an opt-out written above the quote suppresses the address', async () => {
-  // Any other contact with an unsent first touch that has passed the gate.
+test('end to end: an opt-out above the quote, to a Reply-To a mail server upper-cased, still lands and suppresses', async () => {
   const [c] = await api.q(`SELECT c.email FROM drafts d JOIN enrollments e ON e.id = d.enrollment_id JOIN contacts c ON c.id = e.contact_id
     WHERE d.step = 0 AND d.gate_passed AND c.email <> 'tom@maplegrove-dental.example' AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.draft_id = d.id)
     ORDER BY c.email LIMIT 1`);
   assert.ok(c, 'fixture: the demo seed has a second sendable contact');
-  const sent = await realSend(c.email);
-  const replyTo = /^Reply-To: (.+)$/mi.exec(sent)[1].trim();
-  await worker.email(message(mime({ to: replyTo, body: 'Please remove me from your list.\r\n\r\n> earlier text', id: '<e2e-2@x.example>' }), replyTo),
+  const replyTo = /^Reply-To: (.+)$/mi.exec(await realSend(c.email))[1].trim();
+  assert.match(replyTo, /^r\+[0-9a-f]{48}@/, 'reply tokens are lowercase hex');
+  const shouted = replyTo.replace(/^r\+([^@]+)@/, (_, t) => `r+${t.toUpperCase()}@`);
+  await worker.email(message(mime({ to: shouted, body: 'Please remove me from your list.\r\n\r\n> earlier text', id: '<e2e-2@x.example>' }), shouted),
     { API_URL: api.base, INBOUND_SECRET: SECRET }, {}, { log: quiet });
   const [row] = await api.q(`SELECT intent FROM inbound_messages WHERE external_id = '<e2e-2@x.example>'`);
-  assert.equal(row.intent, 'unsubscribe');
+  assert.equal(row?.intent, 'unsubscribe');
+  const sup = await api.q(`SELECT count(*)::int AS n FROM suppression WHERE value_hash = value_hash($1)`, [c.email]);
+  assert.equal(sup[0].n, 1);
 });

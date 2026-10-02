@@ -16,6 +16,9 @@ import { composeEmail } from './compose.mjs';
 
 const sha = (s) => createHash('sha256').update(s, 'utf8').digest('hex');
 const token = () => randomBytes(24).toString('base64url');
+// The Reply-To token is lowercase hex: mail servers may lower-case an address's local part, and a token that changed
+// case would no longer match its hash, so the reply would be lost (found in the 2026-10-02 audit).
+const replyToken = () => randomBytes(24).toString('hex');
 
 /**
  * @param client  one DB connection
@@ -41,7 +44,7 @@ export async function sendDraft(client, { orgId, workspaceId, draftId, mailboxId
       if (!mb) return { outcome: 'refused', reason: 'mailbox not found in this workspace' };
 
       const unsub = token();
-      const reply = token();
+      const reply = replyToken();
       const messageId = (await tx.query(
         `INSERT INTO messages (org_id, workspace_id, draft_id, mailbox_id, channel, reply_token_hash)
          VALUES ($1, $2, $3, $4, 'email', $5) RETURNING id`,   // send_guard() runs here
