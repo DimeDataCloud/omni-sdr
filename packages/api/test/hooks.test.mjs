@@ -86,3 +86,22 @@ test('hooks: wrong token, unknown id, revoked hook and no token all answer the s
     assert.equal((await b.post({ message: 'x'.repeat(5001) })).status, 400);
   } finally { await b.api.stop(); }
 });
+
+test('hooks: past the daily cap a submission is recorded and rules-triaged but never queued for the model (#85 audit P2b)', async () => {
+  const { api, hook } = await withHook();
+  try {
+    const { ingestForm } = await import('../src/services/inbox.mjs');
+    const { createHash } = await import('node:crypto');
+    const ref = { id: hook.id, tokenHash: createHash('sha256').update(hook.token, 'utf8').digest('hex') };
+    const at = new Date();
+    for (let i = 0; i < 3; i++) assert.equal((await ingestForm(api.db, ref, { body: `hi ${i}`, receivedAt: at }, { dailyCap: 2 })).outcome, 'recorded');
+    const rows = await api.q(`SELECT decided_at, decision FROM inbound_messages WHERE channel = 'form' ORDER BY created_at`);
+    assert.deepEqual(rows.map((r) => Boolean(r.decided_at)), [false, false, true]);
+    assert.equal(rows[2].decision.skipped, 'form_daily_cap');
+    // Two concurrent retries with one externalId: one row, and the second answers duplicate, not a 500.
+    const both = await Promise.all([0, 1].map(() => ingestForm(api.db, ref, { body: 'retry', externalId: 'ext-7', receivedAt: at }, { dailyCap: 100 })));
+    assert.deepEqual(both.map((o) => o.outcome).sort(), ['duplicate', 'recorded']);
+    const [{ n }] = await api.q(`SELECT count(*)::int AS n FROM inbound_messages WHERE external_id = 'ext-7'`);
+    assert.equal(n, 1);
+  } finally { await api.stop(); }
+});
