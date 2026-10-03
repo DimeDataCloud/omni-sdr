@@ -26,6 +26,7 @@ If two sources conflict, **stop and report the conflict**. Don't pick one silent
 
 ## 3. Hard rails: never do these without Christian's explicit approval *in the current conversation*
 Approval for one action never extends to the next one.
+**Standing exception (Christian, 2026-10-03: "no longer ask if approved by both of you"):** merging a PR and deploying it, prod migration included, need no further OK from Christian once **both sessions have approved it** (§6: no open P0–P2, the author's tests and the auditor's break tests green) and prod has a fresh backup before any migration. Say what was merged and deployed in the PR and in a `to: christian` FYI issue. Everything else in this list still needs Christian: spend, new or reconfigured cloud resources, sending to a real person or publishing, exposing data, secrets, and decisions.
 1. **Deploy** anything (Cloud Run/Functions, Pages/Workers, DNS, email routing), or run a migration against prod.
 2. **Create, delete or reconfigure cloud resources**: enable APIs, IAM bindings, service accounts, buckets, billing, domains.
 3. **Spend money** or start a paid plan or trial.
@@ -53,7 +54,7 @@ The workboard is `WORKBOARD.md` on `main` of the journal repo (`DimeDataCloud/om
 3. Before overwriting any file you didn't write last, re-read it from disk. If it changed since you read it, merge; never clobber.
 4. When finished, append `DONE` (or `REVIEW-REQUEST`) with the same paths and a one-line result. A `DONE` releases the claim.
 5. A claim older than 4 hours without a `DONE` is stale: ask Christian before taking it over.
-6. Once the GitHub repo exists: each session works on its own branch (`claude/<topic>`), and work merges only through a PR that the other session has reviewed and Christian has approved. `master` is never edited directly.
+6. Once the GitHub repo exists: each session works on its own branch (`claude/<topic>`), and work merges only through a PR that the other session has reviewed and approved (Christian's OK is standing once both sessions approve, §3). `master` is never edited directly.
 7. **Messages go through GitHub** in `DimeDataCloud/omni-sdr` (Christian, 2026-10-03; protocol in issue #63):
    - A PR's review goes on the PR. Every other request, question, handoff or FYI is one issue per item, labeled `from: <session>`, `to: <who acts>`, `type: <request|review|question|fyi|blocker|decision>`.
    - Between the sessions, write terse and exact, as if Christian isn't reading: a `<cloud|local>→<local|cloud> · <REQ|REVIEW|Q|FYI|ACK|DONE|BLOCKED|NACK> · P<n>` header, then `ask` / `ref` / `repro` / `done-when`. Start each comment with the session's name (both post as one account).
@@ -68,7 +69,7 @@ The workboard is `WORKBOARD.md` on `main` of the journal repo (`DimeDataCloud/om
   - Actively tries to break the change: writes new tests that fail on defects, and checks against SPEC §5 invariants and DECISIONS.
   - Reports each finding with severity (P0–P3), file:line and a reproduction.
   - **Does not fix the author's code** unless Christian says so; the author fixes it.
-- A change to the claims gate, `send_guard`, RLS, grants, credits, auth or any public endpoint needs **both** the other session's audit **and** Christian's OK.
+- A change to the claims gate, `send_guard`, RLS, grants, credits, auth or any public endpoint needs the other session's audit **with an explicit approval** (not just "no findings yet"). Christian's OK is standing once both sessions approve (§3, 2026-10-03).
 - "Tests pass" is not an audit. Most of the defects found on 2026-09-28 passed every existing test.
 
 ## 7. Evidence and the task report
