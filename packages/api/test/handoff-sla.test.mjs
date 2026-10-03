@@ -36,6 +36,13 @@ test('the draft card: who, where, what they asked, their words; and only people 
   assert.equal(emails[0], 'cole.closer@example.com', 'closers first');
   assert.ok(!emails.includes('riley@example.com'), 'a reviewer can\'t take handoffs');
   assert.equal((await api.call('GET', `${api.W}/conversations/${convId}/handoff-draft`, { as: 'cole.closer@example.com' })).status, 403);
+  // A closer's settings: the narrow view a client viewer gets, never the plan, flags or Trust Dial.
+  const st = await api.call('GET', `${api.W}/settings`, { as: 'cole.closer@example.com' });
+  assert.equal(st.status, 200);
+  assert.deepEqual([st.body.you.role, st.body.org.featureFlags, st.body.workspace.trustLevel], ['closer', undefined, undefined]);
+  // The inbox shows each reply's conversation, so the console can hand it off.
+  const ib = await api.call('GET', `${api.W}/inbox`, { as: 'sam@example.com' });
+  assert.ok(ib.body.items.some((r) => r.conversationId === convId));
 });
 
 test('booking link: the closer sets their own (https only); it shows on their card', async () => {
