@@ -249,3 +249,64 @@ export async function ingestForm(client, hook, msg, { classify = classifyReply }
     return { outcome: 'recorded', id, conversationId: conversation.id, intent: verdict.intent, slaDueAt: slaDueAt?.toISOString() ?? null };
   });
 }
+
+/**
+ * A LinkedIn message a person pasted in (SDR-PIVOT P7). LinkedIn has no general messaging API and automating a personal
+ * inbox breaks its terms, so Omni never reads or sends there: the person pastes what they received, Omni triages and
+ * threads it like any reply, and the answer is copied back by hand. The caller has already proved the member and
+ * `inbox_draft` (routes/conversations.mjs); this writes as inbox_svc in that workspace only.
+ * @param msg { name, profileUrl?, email?, body, receivedAt: Date }
+ * @returns { outcome: 'recorded', id, conversationId, intent, slaDueAt }
+ */
+export async function ingestPasted(client, { orgId, workspaceId }, msg, { classify = classifyReply } = {}) {
+  const email = msg.email ? String(msg.email).trim().toLowerCase() : null;
+  const profile = msg.profileUrl ? normalizeLinkedIn(msg.profileUrl) : null;
+  const verdict = classify({ subject: '', body: msg.body ?? '', from: email ?? '' });
+  return withService(client, { orgId, workspaceId, role: 'inbox_svc' }, async (tx) => {
+    let contactId = null;
+    if (email) {
+      await tx.query(`INSERT INTO contacts (org_id, workspace_id, name, email) VALUES ($1, $2, $3, $4) ON CONFLICT (workspace_id, email) DO NOTHING`,
+        [orgId, workspaceId, msg.name?.slice(0, 200) ?? null, email]);
+      contactId = (await tx.query(`SELECT id FROM contacts WHERE workspace_id = $1 AND email = $2`, [workspaceId, email])).rows[0]?.id ?? null;
+    }
+    const tz = (await tx.query(`SELECT timezone FROM workspaces WHERE id = $1`, [workspaceId])).rows[0]?.timezone ?? 'America/Chicago';
+    const slaDueAt = verdict.intent === 'meeting_request' ? addBusinessMinutes(msg.receivedAt, SLA_MINUTES, tz) : null;
+    // One thread per person on LinkedIn: their profile, else their address, else their name as typed.
+    const threadKey = profile ? `profile:${profile}` : contactId ? emailThreadKey(contactId) : `name:${String(msg.name).trim().toLowerCase().slice(0, 200)}`;
+    // Without an address the person is still someone: the thread's contact, or a new one with the name they gave.
+    if (!contactId) {
+      contactId = (await tx.query(`SELECT contact_id FROM conversations WHERE workspace_id = $1 AND channel = 'linkedin' AND thread_key = $2`,
+        [workspaceId, threadKey])).rows[0]?.contact_id ?? null;
+    }
+    if (!contactId) {
+      contactId = (await tx.query(`INSERT INTO contacts (org_id, workspace_id, name) VALUES ($1, $2, $3) RETURNING id`,
+        [orgId, workspaceId, String(msg.name).trim().slice(0, 200)])).rows[0].id;
+    }
+    const conversation = await threadFor(tx, { orgId, workspaceId, channel: 'linkedin', threadKey, contactId, at: msg.receivedAt, category: verdict.intent });
+    const id = (await tx.query(
+      `INSERT INTO inbound_messages (org_id, workspace_id, contact_id, channel, from_address, subject, body, received_at,
+         intent, intent_confidence, classified_by, sla_due_at, conversation_id)
+       VALUES ($1, $2, $3, 'linkedin', $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
+      [orgId, workspaceId, contactId, profile ?? email, `LinkedIn: ${String(msg.name).slice(0, 180)}`, String(msg.body ?? '').slice(0, 100000),
+        msg.receivedAt, verdict.intent, verdict.confidence, verdict.by, slaDueAt, conversation.id])).rows[0].id;
+    // Safe-side effects only, as for any reply.
+    if (verdict.intent === 'unsubscribe' && email) {
+      await tx.query(`INSERT INTO suppression (scope_org_id, value_hash, kind, reason) VALUES ($1, value_hash($2), 'email', 'linkedin_unsubscribe')
+                      ON CONFLICT DO NOTHING`, [orgId, email]);
+    }
+    if (contactId && verdict.intent !== 'out_of_office') {
+      await tx.query(`UPDATE enrollments SET state = 'stopped', stop_reason = $2, next_run_at = NULL
+                      WHERE contact_id = $1 AND state NOT IN ${TERMINAL}`, [contactId, `linkedin:${verdict.intent}`]);
+    }
+    if (slaDueAt) await notifyInApp(tx, { orgId, workspaceId, inboundId: id, at: msg.receivedAt });
+    await tx.query(`INSERT INTO outbox (org_id, topic, key, payload) VALUES ($1, 'inbound.received', $2, $3)`,
+      [orgId, id, JSON.stringify({ inbound_id: id, channel: 'linkedin', intent: verdict.intent, sla_due_at: slaDueAt })]);
+    return { outcome: 'recorded', id, conversationId: conversation.id, intent: verdict.intent, slaDueAt: slaDueAt?.toISOString() ?? null };
+  });
+}
+
+/** linkedin.com/in/<slug> as `in/<slug>`, lower-cased; anything else is refused by the route before it gets here. */
+export function normalizeLinkedIn(url) {
+  const m = /^https:\/\/(?:[a-z]{2,3}\.)?(?:www\.)?linkedin\.com\/(in|company)\/([A-Za-z0-9_%-]{2,100})\/?(?:[?#].*)?$/i.exec(String(url).trim());
+  return m ? `${m[1].toLowerCase()}/${m[2].toLowerCase()}` : null;
+}
