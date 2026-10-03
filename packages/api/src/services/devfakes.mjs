@@ -69,6 +69,12 @@ for (const [i, name] of PRACTICES.entries()) {
     + `<a href="mailto:${i % 2 ? 'frontdesk' : 'dr.patel'}@practice-${i}.example">Email</a>${i % 3 ? '' : '<a href="https://calendly.com/x">Book online</a>'}`;
 }
 
+// Email checks (OMNI_DEV_FIXTURES=1): every *.example domain takes mail, except nomail.example.
+export async function fixtureMx(domain) {
+  if (domain.endsWith('.example') && domain !== 'nomail.example') return [{ exchange: `mx.${domain}`, priority: 10 }];
+  throw Object.assign(new Error('fixture: no such domain'), { code: 'ENOTFOUND' });
+}
+
 export async function fixtureFetch(url) {
   const key = url.endsWith('/') || /\.[a-z]+\/[a-z]/i.test(url) ? url : `${url}/`;
   const body = FIXTURE_SITES[key];

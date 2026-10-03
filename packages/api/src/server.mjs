@@ -19,8 +19,15 @@ import { pgPool } from './pool.mjs';
 import { firebaseVerifier } from './auth.mjs';
 import { offModel, vertexModel } from './services/model.mjs';
 import { offPlaces, googlePlaces } from './services/places.mjs';
+import { offVerifier } from './services/verify.mjs';
+import { zeroBounceVerifier } from './services/zerobounce.mjs';
 
 const env = process.env;
+const senderSecret = (k) => {
+  let v; try { v = JSON.parse(env.OMNI_SENDER_SECRETS ?? '')[k]; } catch { /* not JSON: reported below */ }
+  if (!v) { console.error(`missing ${k} in OMNI_SENDER_SECRETS`); process.exit(1); }
+  return v;
+};
 const need = (k) => { if (!env[k]) { console.error(`missing ${k}`); process.exit(1); } return env[k]; };
 
 export async function main() {
@@ -29,6 +36,9 @@ export async function main() {
     ? vertexModel({ project: need('OMNI_VERTEX_PROJECT'), location: env.OMNI_VERTEX_LOCATION ?? 'us-central1',
       models: { flash_lite: need('OMNI_MODEL_FLASH_LITE'), flash: need('OMNI_MODEL_FLASH'), pro: need('OMNI_MODEL_PRO') } })
     : offModel();
+  // Vendor verification ships off: OMNI_VERIFY=zerobounce reads the key by name from OMNI_SENDER_SECRETS.zeroBounceKey
+  // (Secret Manager `omni-sender-secrets`). Asked for and missing is a refusal to start, not a silent 'off'.
+  const verifier = env.OMNI_VERIFY === 'zerobounce' ? zeroBounceVerifier({ key: senderSecret('zeroBounceKey') }) : offVerifier();
   // Lead finding by place ships off: OMNI_PLACES=google needs the Places API enabled and a key (Christian's call).
   const places = env.OMNI_PLACES === 'google' ? googlePlaces({ key: need('OMNI_PLACES_KEY') }) : offPlaces();
   const app = createApp({
@@ -41,6 +51,8 @@ export async function main() {
       unsubscribeBase: env.OMNI_UNSUBSCRIBE_BASE ?? 'https://app.omnisdr.com',
       inboundSecret: env.OMNI_INBOUND_SECRET || null,
       places,
+      // Free checks always run; the vendor check only with OMNI_VERIFY=zerobounce (above).
+      verifier,
       // Shared with the api.omnisdr.com Worker, which signs the caller's address (app.mjs edgeIp). Unset: not trusted.
       edgeSecret: env.OMNI_EDGE_SECRET || null,
       // Number of proxies that append to X-Forwarded-For (see OMNI_TRUST_PROXY above: 1 unless run.app ingress is closed).
