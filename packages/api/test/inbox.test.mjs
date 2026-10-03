@@ -211,7 +211,7 @@ test('model pass: an opt-out the rules missed is suppressed and recorded with th
   assert.deepEqual(sup.map((s) => s.reason), ['reply_unsubscribe_model']);
   const [row] = await api.q(`SELECT intent, decision FROM inbound_messages WHERE id = $1`, [ref.id]);
   assert.equal(row.intent, ruled.intent, 'the model pass never rewrites the intent');
-  assert.equal(row.decision.registry, 'reply_triage@2');
+  assert.equal(row.decision.registry, 'reply_triage@3');
   assert.equal(row.decision.answers.stop, 0.65);
   assert.equal((await refineReply(api.db, ref, { decider: benchLike })).outcome, 'already_decided');
 });
@@ -223,6 +223,18 @@ test('model pass: a meeting the rules missed gets an SLA counted from when the r
   assert.deepEqual((await refineReply(api.db, ref, { decider: benchLike })).effects, ['sla']);
   const [after] = await api.q(`SELECT sla_due_at FROM inbound_messages WHERE id = $1`, [ref.id]);
   assert.ok(after.sla_due_at > before.received_at);
+});
+
+test('model pass with categories (shadow): the category is recorded; intent and effects are what the safety answers say', async () => {
+  const keen = fakeDecider((state, questions) => Object.fromEntries(Object.keys(questions).map((k) => [k, noulAns(k === 'question' ? 0.6 : k === 'meet' ? 0.05 : 0.02)])));
+  const ref = await replyFrom('lena@brightline-dental.example', 'Does it work with Square? We use Square for everything.');
+  const [ruled] = await api.q(`SELECT intent FROM inbound_messages WHERE id = $1`, [ref.id]);
+  const out = await refineReply(api.db, ref, { decider: keen, categories: true });
+  assert.deepEqual(out, { outcome: 'decided', effects: [] });
+  assert.equal(Object.keys(keen.calls[0].questions).length, 10, 'all ten category questions were asked');
+  const [row] = await api.q(`SELECT intent, decision FROM inbound_messages WHERE id = $1`, [ref.id]);
+  assert.equal(row.intent, ruled.intent, 'never rewritten');
+  assert.deepEqual([row.decision.answers.category, row.decision.answers.category_p], ['question', 0.6]);
 });
 
 test('model pass: a down decider changes nothing and leaves the reply for the next pass; a pass stops at the first failure', async () => {
