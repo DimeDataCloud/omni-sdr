@@ -92,6 +92,10 @@ GRANT SELECT (id, org_id, workspace_id, email, email_status), UPDATE (email_stat
 GRANT SELECT, INSERT ON email_verifications TO verify_owner;
 GRANT SELECT (org_id, meter, delta, ref_type, ref_id, kind) ON credit_ledger TO verify_owner;
 CREATE POLICY verify_read ON credit_ledger TO verify_owner USING (org_id = app_org());
+-- The count of a job's verdicts is org-wide, like the credits it is compared with: under the tenant policy alone a
+-- request scoped to another workspace of the same org wouldn't see the first workspace's verdicts, and one job's credit
+-- could pay twice (#59 audit P2-1b). Read-only; inserts still pass the tenant policy's WITH CHECK.
+CREATE POLICY verify_count ON email_verifications FOR SELECT TO verify_owner USING (org_id = app_org());
 GRANT EXECUTE ON FUNCTION app_org(), app_ws() TO verify_owner;
 -- Grants before the owner change (0008a: after it, the migration role is no longer the grantor and they'd be no-ops).
 REVOKE EXECUTE ON FUNCTION app_email_verified(uuid, text, text, text, text) FROM PUBLIC;

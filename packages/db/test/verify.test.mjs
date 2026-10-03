@@ -78,3 +78,19 @@ test('one verdict per credit the job still holds: a refunded job writes nothing;
   const st = (await db.query(`SELECT email, email_status FROM contacts WHERE id = ANY ($1::uuid[]) ORDER BY email`, [ids])).rows.map((x) => x.email_status);
   assert.deepEqual(st, ['unknown', 'valid', 'invalid', 'unknown', 'unknown']);
 });
+
+test('one job\'s credits are counted org-wide: a second workspace of the same org can\'t spend them again (#59 audit P2-1b)', async () => {
+  const { db, a } = await setup();
+  const ws2 = (await db.query(`INSERT INTO workspaces (org_id, name) VALUES ($1, 'second') RETURNING id`, [a.org])).rows[0].id;
+  const in1 = (sql, p) => as(db, 'app_rw', { org: a.org, ws: [a.ws] }, () => db.query(sql, p));
+  const in2 = (sql, p) => as(db, 'app_rw', { org: a.org, ws: [ws2] }, () => db.query(sql, p));
+  const c1 = (await in1(`INSERT INTO contacts (org_id, workspace_id, email) VALUES ($1, $2, 'one@clinic-a.example') RETURNING id`, [a.org, a.ws])).rows[0].id;
+  const c2 = (await in2(`INSERT INTO contacts (org_id, workspace_id, email) VALUES ($1, $2, 'two@clinic-a.example') RETURNING id`, [a.org, ws2])).rows[0].id;
+  // claude-local's repro: reserve 1 in ws1, verdict in ws1, then the same job in ws2.
+  await in1(`SELECT app_credit_reserve('data', 1, 'email_verify', 'job-z')`);
+  await in1(`SELECT app_email_verified($1, 'one@clinic-a.example', 'valid', 'fake', 'job-z')`, [c1]);
+  assert.match(await refused(in2(`SELECT app_email_verified($1, 'two@clinic-a.example', 'valid', 'fake', 'job-z')`, [c2])) ?? '', /held 1, used 1/);
+  assert.equal((await db.query(`SELECT email_status FROM contacts WHERE id = $1`, [c2])).rows[0].email_status, 'unknown');
+  // The org-wide read is for the count only: app_rw in ws2 still sees no ws1 verdicts.
+  assert.equal((await in2(`SELECT count(*)::int AS n FROM email_verifications`)).rows[0].n, 0);
+});

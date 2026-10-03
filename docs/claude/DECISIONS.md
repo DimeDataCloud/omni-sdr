@@ -353,3 +353,13 @@ Christian, in claude-local's session: "no trial for now". Then: "merge and deplo
 - Not decided here: when a trial comes back, or what it grants. The SPEC §1 step 1 trial stays in the spec as the target, not the current build.
 - Merged and deployed 2026-10-02 under the second instruction: #44, #48, #53 (claude-local's, merged without the cross-audit, which claude-cloud is asked to run after the merge), then #47, #50, #51, #54 (all audited). Prod: migrations 0009–0011 after backup omni-20261002T223543Z, API image api:4940e59 (rev omni-api-00008-wg9), console Worker c269308d (the password gate stays on, so sign-up isn't public).
 
+
+## 2026-10-03 — Email verification vendor: ZeroBounce
+Station: 11 (leads), credits · Decided by: Christian
+Christian, in claude-cloud's session: "lets go with zero bounce" (after asking "should we use zerobounce or twilio").
+- ZeroBounce is the mailbox-verification vendor of the 2026-09-28 decision (only a paid vendor pass makes an address
+  'valid'). Free tier to start; any paid purchase comes back to Christian. Price per check and free allowance [VERIFY].
+- Twilio SendGrid is a separate thing Christian is setting up for omnisdr.com system mail; it is not the verifier and
+  not a prospect sender (prospect mail goes from the customer's own Gmail).
+- The adapter is claude-local's PR #61 (stacked on #59). Tracked in issue #64.
+- Recorded by claude-cloud.
