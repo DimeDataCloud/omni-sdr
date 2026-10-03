@@ -1,11 +1,11 @@
 # Omni-SDR — Agent Rails (shared by the two Claude sessions)
 
-**Rails v1.3 · 2026-10-02 · Changes only with Christian's approval (§11).**
+**Rails v1.4 · 2026-10-03 · Changes only with Christian's approval (§11).**
 This file is identical for both sessions. It lives at `projects/omni-sdr/AGENT-RAILS.md` and nowhere else.
 `CLAUDE.md` and `AGENTS.md` point here; never copy these rules into another file.
 
 ## 0. Load check
-Start every task report with **`Rails v1.3 loaded`**. If you can't say it truthfully, read this file first.
+Start every task report with **`Rails v1.4 loaded`**. If you can't say it truthfully, read this file first.
 
 ## 1. Who does what
 - **Christian:** the only decision-maker. The only one who approves deploys, spend, cloud changes and changes to decisions or to this file.
@@ -13,7 +13,7 @@ Start every task report with **`Rails v1.3 loaded`**. If you can't say it truthf
   - **`claude-local`**: the Claude Code session on Christian's Windows machine. It can reach his browser, keys and logged-in tools, so work that needs that machine goes here (deploys Christian approves, visual baselines, production checks behind login).
   - **`claude-cloud`**: the Claude Code session in the cloud (claude.ai/code). It runs on Linux in a fresh container with no access to Christian's machine or keys.
 - **Each session reviews the other's work** (§5.6, §6): the author is never the auditor.
-- The two sessions can't see each other. **All coordination goes through files:** the workboard (§5), git, and the task reports. Christian relays when needed.
+- The two sessions can't see each other. **All coordination goes through the repo:** the workboard (§5) for file claims, **GitHub issues and PRs for messages (§5.7, protocol in issue #63)**, git, and the task reports. Christian relays when needed.
 
 ## 2. Authority (highest first)
 1. `docs/claude/DECISIONS.md`: Christian's decisions. Only Claude writes it, and only to record what Christian said.
@@ -54,6 +54,12 @@ The workboard is `WORKBOARD.md` on `main` of the journal repo (`DimeDataCloud/om
 4. When finished, append `DONE` (or `REVIEW-REQUEST`) with the same paths and a one-line result. A `DONE` releases the claim.
 5. A claim older than 4 hours without a `DONE` is stale: ask Christian before taking it over.
 6. Once the GitHub repo exists: each session works on its own branch (`claude/<topic>`), and work merges only through a PR that the other session has reviewed and Christian has approved. `master` is never edited directly.
+7. **Messages go through GitHub** in `DimeDataCloud/omni-sdr` (Christian, 2026-10-03; protocol in issue #63):
+   - A PR's review goes on the PR. Every other request, question, handoff or FYI is one issue per item, labeled `from: <session>`, `to: <who acts>`, `type: <request|review|question|fyi|blocker|decision>`.
+   - Between the sessions, write terse and exact, as if Christian isn't reading: a `<cloud|local>→<local|cloud> · <REQ|REVIEW|Q|FYI|ACK|DONE|BLOCKED|NACK> · P<n>` header, then `ask` / `ref` / `repro` / `done-when`. Start each comment with the session's name (both post as one account).
+   - At the start and end of every task, list your open `to: <you>` issues and act on them.
+   - Close an issue only with a `DONE:` comment carrying the evidence.
+   - Anything Christian must decide or approve is its own `to: christian` issue in plain English: answer first, then the options, a recommended default and the risk.
 
 ## 6. Cross-audit (the author is never the auditor)
 - **Author:** runs the tests, writes the task report (§7), appends `REVIEW-REQUEST` to the workboard.
@@ -70,7 +76,7 @@ Never claim a thing exists, runs, passes or is deployed without the command and 
 Never invent platform facts (limits, scopes, prices, model IDs); mark them `[VERIFY] <doc URL>`.
 Every task ends with this report:
 ```
-Rails v1.3 loaded
+Rails v1.4 loaded
 Task: <what was asked>
 Read: <files read>
 Changed: <files written, with one line each>

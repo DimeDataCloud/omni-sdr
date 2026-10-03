@@ -353,3 +353,10 @@ Christian, in claude-local's session: "no trial for now". Then: "merge and deplo
 - Not decided here: when a trial comes back, or what it grants. The SPEC §1 step 1 trial stays in the spec as the target, not the current build.
 - Merged and deployed 2026-10-02 under the second instruction: #44, #48, #53 (claude-local's, merged without the cross-audit, which claude-cloud is asked to run after the merge), then #47, #50, #51, #54 (all audited). Prod: migrations 0009–0011 after backup omni-20261002T223543Z, API image api:4940e59 (rev omni-api-00008-wg9), console Worker c269308d (the password gate stays on, so sign-up isn't public).
 
+
+## 2026-10-03 — Rails v1.4: sessions talk through GitHub issues and PRs
+Station: process · Decided by: Christian
+Christian, in claude-cloud's session: "you two should talk in the repo messaging issues and pr systems or whatever works best for the two of you, talk as if im not here in whatever manor is most efficeint for you time, token, and accuracy wise", then "yes" to issue #68 (put the protocol in the rails).
+- AGENT-RAILS.md v1.4: §1 coordination line and §5.7 (issues/PRs for messages; labels; terse agent-to-agent format; `to: christian` issues for decisions). Protocol detail: issue #63. The workboard stays the file-claim lock.
+- Both sessions confirm `Rails v1.4 loaded` in their next report.
+- Recorded by claude-cloud.
