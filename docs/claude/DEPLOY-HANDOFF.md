@@ -42,13 +42,13 @@ re-capture, or the visual gate fails on Studio.
 Shapes, not tested command lines. `<…>` are placeholders.
 
 1. **Database (A, B).** Follow `docs/claude/DB-ROLLOUT.md` §2 steps 1–5: instance, database `omni`, owner login
-   with its password in Secret Manager as `omni-db-owner`, an on-demand backup.
+   with its password in Secret Manager as `omni-db-owner` (retired 2026-10-03; now inside `omni-db-url-owner`), an on-demand backup.
 2. **Image.** `docker build -f packages/api/Dockerfile -t <region>-docker.pkg.dev/<project>/omni/api:<git-sha> .`
    from the repo root (or `gcloud builds submit` with the same Dockerfile), push to Artifact Registry.
    No Docker on Christian's machine (rails §8): use Cloud Build.
 3. **Migrations (C).** A Cloud Run job from the image:
    `node packages/db/src/migrate-cli.mjs` (dry run, read its list), then the same with `--apply`, with
-   `DATABASE_URL` from `omni-db-owner` and the Cloud SQL connection attached. Expect `applied 6 of 6`.
+   `DATABASE_URL` from `omni-db-url-owner` and the Cloud SQL connection attached. Expect `applied 6 of 6`.
 4. **API login.** As the owner, in SQL (not `gcloud sql users create`, which adds `cloudsqlsuperuser` [VERIFY]):
    `CREATE ROLE omni_api LOGIN PASSWORD …` (value from Secret Manager `omni-db-api`), then
    `GRANT app_rw, gate_svc, sender_svc, inbox_svc TO omni_api`. Check:

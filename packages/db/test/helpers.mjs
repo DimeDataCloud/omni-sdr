@@ -48,6 +48,8 @@ export async function seedTenant(db, label, { cap = 5, trust = 1, heat = 1 } = {
   await db.query(`INSERT INTO evidence (org_id, workspace_id, contact_id, type, source_uri, fetched_at, snapshot_sha, facts, expires_at)
     VALUES ($1, $2, $3, 'website_gap', 'https://example.test', now(), 'abc', '{"booking":false}', now() + interval '30 days')`,
     [org, ws, contact]);
+  await db.query(`INSERT INTO email_verifications (org_id, workspace_id, contact_id, email, verdict, vendor, job)
+    SELECT org_id, workspace_id, id, email, 'valid', 'seed', 'seed-job' FROM contacts WHERE id = $1`, [contact]);
   const icp = (await one(db, `INSERT INTO icps (org_id, workspace_id, data) VALUES ($1, $2, '{}') RETURNING id`, [org, ws])).id;
   const campaign = (await one(db, `INSERT INTO campaigns (org_id, workspace_id, name, icp_id, status) VALUES ($1, $2, 'c1', $3, 'active') RETURNING id`,
     [org, ws, icp])).id;
