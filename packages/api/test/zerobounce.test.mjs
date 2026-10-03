@@ -1,6 +1,7 @@
 // The ZeroBounce adapter: the key never goes in a URL, and only a plain "valid" on a non-catch-all domain is 'valid'.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { zeroBounceVerifier, verdictOf } from '../src/services/zerobounce.mjs';
 
 const KEY = 'test-key-not-real';
@@ -46,4 +47,15 @@ test('request: POST to ZeroBounce with the key in the body only; errors and non-
   const err = await zeroBounceVerifier({ key: KEY, fetchImpl: reply({}, 401) }).check('a@b.example').catch((e) => e);
   assert.doesNotMatch(String(err?.message), new RegExp(KEY), 'the key never appears in an error');
   assert.throws(() => zeroBounceVerifier({ key: '' }), /no key/);
+});
+
+test('server.mjs: OMNI_VERIFY=zerobounce without the key in OMNI_SENDER_SECRETS refuses to start (never a silent off)', () => {
+  const server = new URL('../src/server.mjs', import.meta.url).href;
+  const run = (extra) => spawnSync(process.execPath, ['-e', `import(${JSON.stringify(server)}).then((m) => m.main?.())`], {
+    env: { PATH: process.env.PATH, DATABASE_URL: 'postgres://nobody@127.0.0.1:1/none', OMNI_VERIFY: 'zerobounce', ...extra }, encoding: 'utf8', timeout: 20000 });
+  for (const secrets of [undefined, 'not json', JSON.stringify({ mailboxKey: 'x' })]) {
+    const r = run(secrets === undefined ? {} : { OMNI_SENDER_SECRETS: secrets });
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /missing zeroBounceKey in OMNI_SENDER_SECRETS/);
+  }
 });
