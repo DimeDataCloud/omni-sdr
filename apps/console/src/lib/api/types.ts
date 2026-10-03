@@ -78,7 +78,8 @@ export interface ThreadMessage { id: Id; direction: 'in' | 'out'; at: Iso; chann
 export interface HandoffItem {
   id: Id; conversationId: Id; closerId: Id; reason: HandoffReason; summary: string; answers: Record<string, unknown>; createdBy: Id | null; createdAt: Iso;
   dueAt: Iso | null; acceptedAt: Iso | null; outcome: HandoffOutcome | null; outcomeAt: Iso | null; overdue: boolean;
-  channel: string; category: string | null; contactName: string | null; contactEmail: string | null; contactCompany: string | null;
+  // channel and contact are null for a closer whose handoff ended (not won): they keep the record, not the conversation.
+  channel: string | null; category: string | null; contactName: string | null; contactEmail: string | null; contactCompany: string | null;
 }
 // GET …/handoffs/:id
 export interface HandoffCard extends Omit<HandoffItem, 'channel' | 'category' | 'contactName' | 'contactEmail' | 'contactCompany'> {
@@ -95,7 +96,7 @@ export interface AutonomyRow { category: string; decided: number; unedited: numb
 export interface Playbook { replies: PlaybookReply[]; questions: QualificationQuestion[]; fields: string[];
   autonomy: { window: number; rate: number; autoSend: false; categories: AutonomyRow[] } }
 export interface ReplyDraft { id: Id; conversationId: Id; playbookReplyId: Id | null; category: string; channel: string; questionKey: string | null;
-  subject: string | null; bodyProposed: string; bodyFinal: string | null; status: 'pending' | 'approved' | 'discarded'; edited: boolean | null;
+  subject: string | null; bodyProposed: string; bodyFinal: string | null; status: 'pending' | 'approved' | 'discarded' | 'superseded'; edited: boolean | null;
   countsForAutonomy: boolean; createdAt: Iso; decidedAt: Iso | null }
 // GET …/conversations/:id/handoff-draft
 export interface HandoffDraft { reason: HandoffReason; summary: string; closers: { id: Id; email: string; role: Role; hasBookingLink: boolean }[] }

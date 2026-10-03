@@ -37,8 +37,8 @@ export interface HandoffRow extends Row { ws: string; contactId: string; closerI
 export interface PlaybookRow extends Row { ws: string; category: string; name: string; subject: string | null; body: string; asksNextQuestion: boolean;
   archivedAt: string | null; createdAt: string; updatedAt: string }
 export interface QuestionRow { ws: string; position: number; key: string; question: string }
-export interface ReplyDraftRow extends Row { ws: string; contactId: string; playbookReplyId: string | null; category: string; channel: string; questionKey: string | null;
-  subject: string | null; bodyProposed: string; bodyFinal: string | null; status: 'pending' | 'approved' | 'discarded'; edited: boolean | null;
+export interface ReplyDraftRow extends Row { ws: string; contactId: string; inboundId: string | null; playbookReplyId: string | null; category: string; channel: string; questionKey: string | null;
+  subject: string | null; bodyProposed: string; bodyFinal: string | null; status: 'pending' | 'approved' | 'discarded' | 'superseded'; edited: boolean | null;
   countsForAutonomy: boolean; createdBy: string; createdAt: string; decidedBy: string | null; decidedAt: string | null }
 export interface AuditRow { id: string; ws: string | null; actor: string; action: string; entityType: string; entityId: string; at: string }
 
@@ -52,7 +52,7 @@ export interface World {
   playbook: PlaybookRow[]; questions: QuestionRow[]; replyDrafts: ReplyDraftRow[];
 }
 
-export const WORLD_VERSION = 9;
+export const WORLD_VERSION = 10;
 
 // Deterministic randomness so the demo looks the same on every device.
 function rng(seed: number) {

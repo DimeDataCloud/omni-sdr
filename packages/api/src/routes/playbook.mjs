@@ -101,12 +101,18 @@ export function registerPlaybook(r) {
   r.post(`${T}/conversations/:id/reply-draft`, (ctx) => {
     const b = parse(v.object({ playbookReplyId: v.optional(v.uuid()) }), ctx.body ?? {});
     return ctx.tenant(async (tx, m) => {
-      const c = (await tx.query(`SELECT c.*, k.name AS contact_name, k.company AS contact_company FROM conversations c
+      const c = (await tx.query(`SELECT c.*, k.name AS contact_name, k.company AS contact_company,
+          c.contact_id IS NOT NULL AND app_contact_suppressed(c.contact_id) AS suppressed FROM conversations c
         LEFT JOIN contacts k ON k.id = c.contact_id WHERE c.id = $1 FOR UPDATE OF c`, [ctx.params.id])).rows[0];
       if (!c) throw notFound('conversation not found');
       if (['closed', 'spam', 'handed_off'].includes(c.state)) throw conflict(`a ${c.state.replace('_', ' ')} conversation gets no playbook reply`);
       const category = c.category ?? 'unclassified';
       if (!PLAYBOOK_CATEGORIES.includes(category)) throw conflict(`a ${category} is never answered`);
+      if (c.suppressed) throw conflict('this person opted out or bounced, so they get no reply');
+      const last = (await tx.query(`SELECT id FROM inbound_messages WHERE conversation_id = $1 ORDER BY received_at DESC LIMIT 1`, [c.id])).rows[0];
+      if (last && (await tx.query(`SELECT 1 FROM reply_drafts WHERE inbound_message_id = $1 AND status = 'approved'`, [last.id])).rows.length) {
+        throw conflict('their latest message already has an approved reply; the next one comes with their next message');
+      }
       const pick = b.playbookReplyId
         ? (await tx.query(`SELECT * FROM playbook_replies WHERE id = $1 AND archived_at IS NULL`, [b.playbookReplyId])).rows[0]
         : (await tx.query(`SELECT * FROM playbook_replies WHERE category = $1 AND archived_at IS NULL ORDER BY lower(name) LIMIT 1`, [category])).rows[0];
@@ -124,9 +130,8 @@ export function registerPlaybook(r) {
       const subj = pick.subject ? render(pick.subject, values) : { text: null, missing: [] };
       const missing = [...new Set([...out.missing, ...subj.missing])];
       if (missing.length) throw conflict(`this reply needs ${missing.map((f) => `{${f}}`).join(', ')}, which we don't have here`, { missing });
-      const last = (await tx.query(`SELECT id FROM inbound_messages WHERE conversation_id = $1 ORDER BY received_at DESC LIMIT 1`, [c.id])).rows[0];
-      // A newer suggestion replaces a pending one.
-      await tx.query(`UPDATE reply_drafts SET status = 'discarded', decided_by = $2, decided_at = now() WHERE conversation_id = $1 AND status = 'pending'`, [c.id, m.userId]);
+      // A newer suggestion replaces a pending one: superseded, not a decision (it never counts).
+      await tx.query(`UPDATE reply_drafts SET status = 'superseded', decided_by = $2, decided_at = now() WHERE conversation_id = $1 AND status = 'pending'`, [c.id, m.userId]);
       const d = (await tx.query(`INSERT INTO reply_drafts (org_id, workspace_id, conversation_id, inbound_message_id, playbook_reply_id, category,
           question_key, subject, body_proposed, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
       [m.orgId, m.workspaceId, c.id, last?.id ?? null, pick.id, category, (asks || /\{next_question\}/.test(pick.body)) && q ? q.key : null,
@@ -143,8 +148,14 @@ export function registerPlaybook(r) {
       if (!d) throw notFound('reply draft not found');
       if (d.status !== 'pending') throw conflict(`this draft is already ${d.status}`);
       const final = b.body ?? d.body_proposed;
-      const row = (await tx.query(`UPDATE reply_drafts SET status = 'approved', body_final = $2, decided_by = $3, decided_at = now() WHERE id = $1 RETURNING *`,
-        [d.id, final, m.userId])).rows[0];
+      let row;
+      try {
+        row = (await tx.query(`UPDATE reply_drafts SET status = 'approved', body_final = $2, decided_by = $3, decided_at = now() WHERE id = $1 RETURNING *`,
+          [d.id, final, m.userId])).rows[0];
+      } catch (e) {
+        if (/reply_drafts_one_approved/.test(e.message)) throw conflict('that message already has an approved reply');
+        throw e;
+      }
       await audit(tx, m, row.edited ? 'approve_edited' : 'approve', 'reply_draft', d.id);
       // For the send step (separate, audited). Never sent from here.
       await tx.query(`INSERT INTO outbox (org_id, topic, key, payload) VALUES ($1, 'reply.approved', $2, $3)`,

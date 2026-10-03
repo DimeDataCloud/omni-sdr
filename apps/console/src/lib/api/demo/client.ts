@@ -124,12 +124,18 @@ function thread(w: World, ws: string, contactId: string): ThreadMessage[] {
   });
   return [...inbound, ...out].sort((a, b) => a.at.localeCompare(b.at));
 }
-function handoffOut(w: World, h: World['handoffs'][number]): HandoffItem {
-  const c = w.contacts.find((x) => x.id === h.contactId);
+/** Whether `m` still sees a handoff's conversation (0015 handoffs_sync): a closer only while it is handed to them, or won by them. */
+function seesConversation(w: World, ws: string, m: MemberRow | undefined, contactId: string) {
+  if (!m || m.role !== 'closer') return true;
+  const latest = w.handoffs.filter((x) => x.ws === ws && x.contactId === contactId).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  return Boolean(latest && latest.closerId === m.userId && (!latest.outcome || latest.outcome === 'won'));
+}
+function handoffOut(w: World, h: World['handoffs'][number], m?: MemberRow): HandoffItem {
+  const c = seesConversation(w, h.ws, m, h.contactId) ? w.contacts.find((x) => x.id === h.contactId) : undefined;
   const last = [...w.inbound].filter((r) => r.contactId === h.contactId).sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))[0];
   return { id: h.id, conversationId: convId(h.contactId), closerId: h.closerId, reason: h.reason, summary: h.summary, answers: h.answers, createdBy: h.createdBy,
     createdAt: h.createdAt, dueAt: h.dueAt, acceptedAt: h.acceptedAt, outcome: h.outcome, outcomeAt: h.outcomeAt,
-    overdue: !h.acceptedAt && !h.outcome && Boolean(h.dueAt && h.dueAt <= nowIso()), channel: 'email', category: last?.intent ?? null,
+    overdue: !h.acceptedAt && !h.outcome && Boolean(h.dueAt && h.dueAt <= nowIso()), channel: c ? 'email' : null, category: c ? last?.intent ?? null : null,
     contactName: c?.name ?? null, contactEmail: c?.email ?? null, contactCompany: c?.company ?? null };
 }
 /** What a person may see: a closer only their own handoffs (0015 closer_scope). */
@@ -366,7 +372,7 @@ export const demoClient: Client = {
   }),
   handoffs: (s, q = {}) => read((w) => {
     const { m, ws } = tenant(w, s, 'handoff_work');
-    return visibleHandoffs(w, ws.id, m).filter((h) => q.open === false || !h.outcome).map((h) => handoffOut(w, h))
+    return visibleHandoffs(w, ws.id, m).filter((h) => q.open === false || !h.outcome).map((h) => handoffOut(w, h, m))
       .sort((a, b) => Number(!a.outcome) === Number(!b.outcome) ? (Number(!b.acceptedAt) - Number(!a.acceptedAt) || (a.dueAt ?? '~').localeCompare(b.dueAt ?? '~'))
         : Number(!b.outcome) - Number(!a.outcome));
   }),
@@ -374,11 +380,12 @@ export const demoClient: Client = {
     const { m, ws } = tenant(w, s, 'handoff_work');
     const h = visibleHandoffs(w, ws.id, m).find((x) => x.id === id);
     if (!h) throw nf('handoff');
-    const { channel, category, contactName, contactEmail, contactCompany, ...rest } = handoffOut(w, h);
+    const { channel, category, contactName, contactEmail, contactCompany, ...rest } = handoffOut(w, h, m);
     const closer = w.members.find((x) => x.userId === h.closerId);
+    const sees = seesConversation(w, ws.id, m, h.contactId);
     return { ...rest, closerEmail: closer?.email ?? null, bookingUrl: closer?.bookingUrl ?? null,
-      contact: { name: contactName, email: contactEmail, company: contactCompany },
-      conversation: { id: convId(h.contactId), channel, category, messages: thread(w, ws.id, h.contactId) } };
+      contact: sees ? { name: contactName, email: contactEmail, company: contactCompany } : null,
+      conversation: sees ? { id: convId(h.contactId), channel: channel ?? 'email', category, messages: thread(w, ws.id, h.contactId) } : null };
   }),
   acceptHandoff: (s, id) => write((w) => {
     const { m, ws } = tenant(w, s, 'handoff_work');
@@ -393,6 +400,7 @@ export const demoClient: Client = {
     const h = visibleHandoffs(w, ws.id, m).find((x) => x.id === id);
     if (!h) throw nf('handoff');
     if (m.role === 'closer' && h.closerId !== m.userId) throw new ApiError(403, 'forbidden', 'not your handoff');
+    if (outcome === 'reassigned' && m.role === 'closer') throw new ApiError(403, 'forbidden', 'a closer can\'t reassign; ask an operator');
     if (h.outcome) throw conflict('this handoff already has an outcome');
     h.outcome = outcome; h.outcomeAt = nowIso();
     audit(w, ws.id, m.userId, `handoff_${outcome}`, 'handoff', h.id);
@@ -407,8 +415,11 @@ export const demoClient: Client = {
   }),
   playbook: (s) => read((w) => {
     const { ws } = tenant(w, s, 'inbox_read');
-    const decided = w.replyDrafts.filter((d) => d.ws === ws.id && d.status !== 'pending' && d.countsForAutonomy)
-      .sort((a, b) => (b.decidedAt ?? '').localeCompare(a.decidedAt ?? ''));
+    // One decision per message they sent (the latest), none without one; superseded drafts were never judged (#90 audit).
+    const seen = new Set<string>();
+    const decided = w.replyDrafts.filter((d) => d.ws === ws.id && (d.status === 'approved' || d.status === 'discarded') && d.countsForAutonomy && d.inboundId)
+      .sort((a, b) => (b.decidedAt ?? '').localeCompare(a.decidedAt ?? ''))
+      .filter((d) => !seen.has(d.inboundId!) && Boolean(seen.add(d.inboundId!)));
     const cats = [...new Set(decided.map((d) => d.category))].sort();
     return {
       replies: w.playbook.filter((p) => p.ws === ws.id && !p.archivedAt).sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name)).map(playbookOut),
@@ -477,6 +488,10 @@ export const demoClient: Client = {
     const last = [...w.inbound].filter((r) => r.ws === ws.id && r.contactId === contactId).sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))[0];
     const category = last?.intent ?? 'unclassified';
     if (!PLAYBOOK_CATEGORIES.includes(category)) throw conflict(`a ${category} is never answered`);
+    if (c.email && w.suppression.includes(c.email.toLowerCase())) throw conflict('this person opted out or bounced, so they get no reply');
+    if (last && w.replyDrafts.some((d) => d.inboundId === last.id && d.status === 'approved')) {
+      throw conflict('their latest message already has an approved reply; the next one comes with their next message');
+    }
     const live = w.playbook.filter((p) => p.ws === ws.id && !p.archivedAt);
     const pick = playbookReplyId ? live.find((p) => p.id === playbookReplyId) : live.filter((p) => p.category === category).sort((a, b) => a.name.localeCompare(b.name))[0];
     if (!pick) throw nf(playbookReplyId ? 'playbook reply' : `a playbook reply for ${category}`);
@@ -488,9 +503,9 @@ export const demoClient: Client = {
     if (asks) body = `${body.replace(/\s+$/, '')}\n\n${q!.question}`;
     const out = render(body, values);
     if (out.missing.length) throw new ApiError(409, 'conflict', `this reply needs ${out.missing.map((f) => `{${f}}`).join(', ')}, which we don't have here`, { missing: out.missing });
-    for (const d of w.replyDrafts.filter((x) => x.ws === ws.id && x.contactId === contactId && x.status === 'pending')) { d.status = 'discarded'; d.decidedBy = m.userId; d.decidedAt = nowIso(); }
+    for (const d of w.replyDrafts.filter((x) => x.ws === ws.id && x.contactId === contactId && x.status === 'pending')) { d.status = 'superseded'; d.decidedBy = m.userId; d.decidedAt = nowIso(); }
     const channel = last?.channel ?? 'email';
-    const d = { id: newId(), ws: ws.id, contactId, playbookReplyId: pick.id, category, channel, questionKey: (asks || /\{next_question\}/.test(pick.body)) && q ? q.key : null,
+    const d = { id: newId(), ws: ws.id, contactId, inboundId: last?.id ?? null, playbookReplyId: pick.id, category, channel, questionKey: (asks || /\{next_question\}/.test(pick.body)) && q ? q.key : null,
       subject: pick.subject, bodyProposed: out.text, bodyFinal: null, status: 'pending' as const, edited: null, countsForAutonomy: channel !== 'form',
       createdBy: m.userId, createdAt: nowIso(), decidedBy: null, decidedAt: null };
     w.replyDrafts.push(d);
@@ -503,6 +518,7 @@ export const demoClient: Client = {
     if (!d) throw nf('reply draft');
     if (d.status !== 'pending') throw conflict(`this draft is already ${d.status}`);
     if (body !== undefined && (!body.trim() || body.length > 8000)) throw new ApiError(400, 'bad_request', 'body: 1 to 8000 characters', { field: 'body' });
+    if (d.inboundId && w.replyDrafts.some((x) => x.inboundId === d.inboundId && x.status === 'approved')) throw conflict('that message already has an approved reply');
     d.bodyFinal = body ?? d.bodyProposed; d.edited = d.bodyFinal !== d.bodyProposed; d.status = 'approved'; d.decidedBy = m.userId; d.decidedAt = nowIso();
     audit(w, ws.id, m.userId, d.edited ? 'approve_edited' : 'approve', 'reply_draft', d.id);
     return replyDraftOut(d);
