@@ -363,3 +363,13 @@ Christian, in claude-cloud's session: "lets go with zero bounce" (after asking "
   not a prospect sender (prospect mail goes from the customer's own Gmail).
 - The adapter is claude-local's PR #61 (stacked on #59). Tracked in issue #64.
 - Recorded by claude-cloud.
+
+## 2026-10-03 — Laya decider image storage cost approved
+Station: infra · Decided by: Christian
+Christian, in claude-local's session: "approve laya costs".
+- The Artifact Registry repo `omni` holds the decider image `decider:laya-0.3.23-cpu-pruned` (2.52 GB) and the current
+  API image (~81 MB). Storage beyond the free 0.5 GB bills: about 2.1 GB, roughly $0.20/month at $0.10/GB-month
+  [VERIFY https://cloud.google.com/artifact-registry/pricing]. Approved; it is the one exception to "$0 except AR".
+- Superseded API images are still deleted after each deploy, so the API side stays at one image.
+- Any other spend still comes back to Christian first.
+- Recorded by claude-local.
