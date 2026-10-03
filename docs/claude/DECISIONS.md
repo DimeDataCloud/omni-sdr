@@ -390,3 +390,9 @@ Christian, in claude-cloud's session (after "yes deploy"): "no longer ask if app
 - Scope as claude-cloud read it (Christian may widen it): merge + deploy only. Spend, new or reconfigured cloud
   resources, sending to real people or publishing, exposing data, secrets and decisions still need Christian.
 - Recorded by claude-cloud.
+## 2026-10-03 — Pivot: Omni is the SDR buffer between first touch and the closer
+Station: all · Decided by: Christian
+Christian, in claude-local's session: "we need to focus this product a little further. this needs to be more focused on the real sdr aspect of it. it needs to be the buffer between the real closer and the initial outreach whethether that be a comment on an instagram ad, an email campaign, linkedin dms anything like that. should be a master at properly categorizing, responding, etc. we can use laya for a lot of this". Same message: "complete open items for you and cloud both".
+- Decided: the direction. Omni's core is inbound conversations from any channel: categorize, respond, qualify, hand off to a human closer. Laya does much of the categorizing.
+- Not decided (proposals in docs/claude/SDR-PIVOT.md §8, awaiting Christian): parking outbound work, playbook vs model replies, channel order, autonomy rule, waitlist demo.
+- Recorded by claude-local.
