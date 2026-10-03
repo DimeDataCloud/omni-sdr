@@ -19,8 +19,8 @@ async function setup() {
   const other = await mkUser('other-closer@alpha.test', 'closer');
   const reviewer = await mkUser('reviewer@alpha.test', 'reviewer');
   // Two more conversations in A: one handed to `closer`, one still open.
-  const mine = (await one(db, `INSERT INTO conversations (org_id, workspace_id, channel, thread_key, state, closer_id)
-    VALUES ($1, $2, 'instagram_dm', 'ig:thread-1', 'handed_off', $3) RETURNING id`, [a.org, a.ws, closer])).id;
+  const mine = (await one(db, `INSERT INTO conversations (org_id, workspace_id, channel, thread_key)
+    VALUES ($1, $2, 'instagram_dm', 'ig:thread-1') RETURNING id`, [a.org, a.ws])).id;
   const open = (await one(db, `INSERT INTO conversations (org_id, workspace_id, channel, thread_key) VALUES ($1, $2, 'chat', 'chat:42') RETURNING id`, [a.org, a.ws])).id;
   for (const [conv, body] of [[mine, 'how much is it?'], [open, 'hi there']]) {
     await db.query(`INSERT INTO inbound_messages (org_id, workspace_id, channel, body, received_at, conversation_id) VALUES ($1, $2, 'instagram_dm', $3, now(), $4)`,
@@ -28,6 +28,7 @@ async function setup() {
   }
   await db.query(`INSERT INTO handoffs (org_id, workspace_id, conversation_id, closer_id, reason, summary) VALUES ($1, $2, $3, $4, 'qualified', 'Ready')`,
     [a.org, a.ws, mine, closer]);
+  await db.query(`UPDATE conversations SET state = 'handed_off', closer_id = $2 WHERE id = $1`, [mine, closer]);
   const asUser = (user, fn) => as(db, 'app_rw', { org: a.org, ws: [a.ws] }, async () => {
     await db.query(`SELECT set_config('app.user_id', $1, false)`, [user]);
     try { return await fn(); } finally { await db.query(`SELECT set_config('app.user_id', '', false)`); }
@@ -143,4 +144,44 @@ test('closer_id follows the open handoff: no bare reassignment; reassign = close
     [a.org, a.ws, open, other, a.user]));
   await asUser(a.user, () => db.query(`UPDATE conversations SET closer_id = $1 WHERE id = $2`, [other, open]));
   assert.equal((await one(db, `SELECT count(*)::int AS n FROM handoffs WHERE conversation_id = $1`, [open])).n, 2, 'the record shows both');
+});
+
+test('a closer can create neither a handoff nor a conversation, and no conversation starts with a closer (#87 audit P3-1)', async () => {
+  const { db, a, closer, open, asUser } = await setup();
+  // The closer hands themself a conversation they can't see: refused, so it can't block the real handoff.
+  assert.match(await refused(asUser(closer, () => db.query(
+    `INSERT INTO handoffs (org_id, workspace_id, conversation_id, closer_id, reason, summary, created_by) VALUES ($1, $2, $3, $4, 'qualified', 'mine', $4)`,
+    [a.org, a.ws, open, closer]))) ?? '', /row-level security/);
+  assert.match(await refused(asUser(closer, () => db.query(
+    `INSERT INTO conversations (org_id, workspace_id, channel, thread_key) VALUES ($1, $2, 'chat', 'chat:closer')`, [a.org, a.ws]))) ?? '', /row-level security/);
+  assert.equal((await one(db, `SELECT count(*)::int AS n FROM handoffs WHERE conversation_id = $1`, [open])).n, 0);
+  // Anyone else: a conversation can't be born with a closer either; it gets one through a handoff.
+  assert.match(await refused(asUser(a.user, () => db.query(
+    `INSERT INTO conversations (org_id, workspace_id, channel, thread_key, state, closer_id) VALUES ($1, $2, 'chat', 'chat:x', 'handed_off', $3)`,
+    [a.org, a.ws, closer]))) ?? '', /follows the open handoff/);
+});
+
+test('closed carries its reason: an opt-out or bounce, or a handoff outcome', async () => {
+  const { db, a, open, asUser } = await setup();
+  assert.match(await refused(asUser(a.user, () => db.query(`UPDATE conversations SET state = 'closed' WHERE id = $1`, [open]))) ?? '', /check constraint/);
+  await asUser(a.user, () => db.query(`UPDATE conversations SET state = 'closed', closed_reason = 'outcome' WHERE id = $1`, [open]));
+  assert.match(await refused(asUser(a.user, () => db.query(`UPDATE conversations SET state = 'open' WHERE id = $1`, [open]))) ?? '', /check constraint/);
+});
+
+test('the conversation follows its handoffs: an outcome settles it, even when the closer records it (#87 audit P2-1)', async () => {
+  const { db, a, closer, mine, open, asUser } = await setup();
+  const conv = async (id) => one(db, `SELECT state, closed_reason, closer_id FROM conversations WHERE id = $1`, [id]);
+  // A closer can't reassign their own handoff; an operator decides that.
+  assert.match(await refused(asUser(closer, () => db.query(`UPDATE handoffs SET outcome = 'reassigned', outcome_at = now() WHERE conversation_id = $1`, [mine]))) ?? '',
+    /can't reassign/);
+  // The closer records a no-show: closed, released, and they no longer see it.
+  await asUser(closer, () => db.query(`UPDATE handoffs SET outcome = 'no_show', outcome_at = now() WHERE conversation_id = $1`, [mine]));
+  assert.deepEqual(await conv(mine), { state: 'closed', closed_reason: 'outcome', closer_id: null });
+  assert.equal(await asUser(closer, async () => (await db.query(`SELECT 1 FROM conversations`)).rows.length), 0);
+  // A new handoff marks it handed off to the new closer; won keeps the closer on it.
+  await asUser(a.user, () => db.query(`INSERT INTO handoffs (org_id, workspace_id, conversation_id, closer_id, reason, summary, created_by) VALUES ($1, $2, $3, $4, 'qualified', 'x', $5)`,
+    [a.org, a.ws, open, closer, a.user]));
+  assert.deepEqual(await conv(open), { state: 'handed_off', closed_reason: null, closer_id: closer });
+  await asUser(closer, () => db.query(`UPDATE handoffs SET outcome = 'won', outcome_at = now() WHERE conversation_id = $1 AND outcome IS NULL`, [open]));
+  assert.deepEqual(await conv(open), { state: 'closed', closed_reason: 'outcome', closer_id: closer });
 });

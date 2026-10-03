@@ -123,12 +123,18 @@ function thread(w: World, ws: string, contactId: string): ThreadMessage[] {
   });
   return [...inbound, ...out].sort((a, b) => a.at.localeCompare(b.at));
 }
-function handoffOut(w: World, h: World['handoffs'][number]): HandoffItem {
-  const c = w.contacts.find((x) => x.id === h.contactId);
+/** Whether `m` still sees a handoff's conversation (0015 handoffs_sync): a closer only while it is handed to them, or won by them. */
+function seesConversation(w: World, ws: string, m: MemberRow | undefined, contactId: string) {
+  if (!m || m.role !== 'closer') return true;
+  const latest = w.handoffs.filter((x) => x.ws === ws && x.contactId === contactId).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  return Boolean(latest && latest.closerId === m.userId && (!latest.outcome || latest.outcome === 'won'));
+}
+function handoffOut(w: World, h: World['handoffs'][number], m?: MemberRow): HandoffItem {
+  const c = seesConversation(w, h.ws, m, h.contactId) ? w.contacts.find((x) => x.id === h.contactId) : undefined;
   const last = [...w.inbound].filter((r) => r.contactId === h.contactId).sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))[0];
   return { id: h.id, conversationId: convId(h.contactId), closerId: h.closerId, reason: h.reason, summary: h.summary, answers: h.answers, createdBy: h.createdBy,
     createdAt: h.createdAt, dueAt: h.dueAt, acceptedAt: h.acceptedAt, outcome: h.outcome, outcomeAt: h.outcomeAt,
-    overdue: !h.acceptedAt && !h.outcome && Boolean(h.dueAt && h.dueAt <= nowIso()), channel: 'email', category: last?.intent ?? null,
+    overdue: !h.acceptedAt && !h.outcome && Boolean(h.dueAt && h.dueAt <= nowIso()), channel: c ? 'email' : null, category: c ? last?.intent ?? null : null,
     contactName: c?.name ?? null, contactEmail: c?.email ?? null, contactCompany: c?.company ?? null };
 }
 /** What a person may see: a closer only their own handoffs (0015 closer_scope). */
@@ -355,7 +361,7 @@ export const demoClient: Client = {
   }),
   handoffs: (s, q = {}) => read((w) => {
     const { m, ws } = tenant(w, s, 'handoff_work');
-    return visibleHandoffs(w, ws.id, m).filter((h) => q.open === false || !h.outcome).map((h) => handoffOut(w, h))
+    return visibleHandoffs(w, ws.id, m).filter((h) => q.open === false || !h.outcome).map((h) => handoffOut(w, h, m))
       .sort((a, b) => Number(!a.outcome) === Number(!b.outcome) ? (Number(!b.acceptedAt) - Number(!a.acceptedAt) || (a.dueAt ?? '~').localeCompare(b.dueAt ?? '~'))
         : Number(!b.outcome) - Number(!a.outcome));
   }),
@@ -363,11 +369,12 @@ export const demoClient: Client = {
     const { m, ws } = tenant(w, s, 'handoff_work');
     const h = visibleHandoffs(w, ws.id, m).find((x) => x.id === id);
     if (!h) throw nf('handoff');
-    const { channel, category, contactName, contactEmail, contactCompany, ...rest } = handoffOut(w, h);
+    const { channel, category, contactName, contactEmail, contactCompany, ...rest } = handoffOut(w, h, m);
     const closer = w.members.find((x) => x.userId === h.closerId);
+    const sees = seesConversation(w, ws.id, m, h.contactId);
     return { ...rest, closerEmail: closer?.email ?? null, bookingUrl: closer?.bookingUrl ?? null,
-      contact: { name: contactName, email: contactEmail, company: contactCompany },
-      conversation: { id: convId(h.contactId), channel, category, messages: thread(w, ws.id, h.contactId) } };
+      contact: sees ? { name: contactName, email: contactEmail, company: contactCompany } : null,
+      conversation: sees ? { id: convId(h.contactId), channel: channel ?? 'email', category, messages: thread(w, ws.id, h.contactId) } : null };
   }),
   acceptHandoff: (s, id) => write((w) => {
     const { m, ws } = tenant(w, s, 'handoff_work');
@@ -382,6 +389,7 @@ export const demoClient: Client = {
     const h = visibleHandoffs(w, ws.id, m).find((x) => x.id === id);
     if (!h) throw nf('handoff');
     if (m.role === 'closer' && h.closerId !== m.userId) throw new ApiError(403, 'forbidden', 'not your handoff');
+    if (outcome === 'reassigned' && m.role === 'closer') throw new ApiError(403, 'forbidden', 'a closer can\'t reassign; ask an operator');
     if (h.outcome) throw conflict('this handoff already has an outcome');
     h.outcome = outcome; h.outcomeAt = nowIso();
     audit(w, ws.id, m.userId, `handoff_${outcome}`, 'handoff', h.id);

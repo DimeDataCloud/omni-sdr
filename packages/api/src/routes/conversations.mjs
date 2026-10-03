@@ -8,7 +8,7 @@
 //   GET  …/handoffs                         yours if you're a closer, every open one otherwise (handoff_work)
 //   GET  …/handoffs/:id                     the handoff and its thread (handoff_work)
 //   POST …/handoffs/:id/accept              the closer takes it (handoff_work, the closer only)
-//   POST …/handoffs/:id/outcome             { outcome } closes it (handoff_work)
+//   POST …/handoffs/:id/outcome             { outcome } closes it (handoff_work); 'reassigned' not by a closer
 //   GET  …/conversations/:id/handoff-draft  the card's first draft + who can take it (handoff; 0016)
 //   GET  …/me/booking-link                  your booking link in this org (handoff_work; 0016)
 //   PUT  …/me/booking-link                  { url | null } (handoff_work; 0016)
@@ -19,7 +19,7 @@ import { CHANNELS, STATES, timeline, draftHandoff } from '../services/conversati
 import { addBusinessMinutes, SLA_MINUTES } from '../services/reply-rules.mjs';
 
 const REASONS = ['qualified', 'meeting_request', 'asked_for_human', 'escalation'];
-const OUTCOMES = ['won', 'lost', 'no_show', 'not_a_fit'];
+const OUTCOMES = ['won', 'lost', 'no_show', 'not_a_fit', 'reassigned'];
 const SNIPPET = 160;
 // How long a closer has to accept a handoff before it escalates: the meeting SLA's clock (business minutes in the
 // workspace's timezone). Proposal (SDR-PIVOT P4), not a decision.
@@ -97,7 +97,7 @@ export function registerConversations(r) {
         if (/not a closer, operator or admin/.test(e.message)) throw new HttpError(400, 'bad_request', 'that person can\'t take handoffs in this workspace', { field: 'closerId' });
         throw e;
       }
-      await tx.query(`UPDATE conversations SET state = 'handed_off', closer_id = $2, updated_at = now() WHERE id = $1`, [c.id, b.closerId]);
+      // The handoffs_sync trigger marks the conversation handed off to that closer.
       await audit(tx, m, 'handoff', 'conversation', c.id);
       // For the notify relay: tell the closer they have one (in the console, it's their open handoffs).
       await tx.query(`INSERT INTO outbox (org_id, topic, key, payload) VALUES ($1, 'notify.handoff', $2, $3)`,
@@ -109,12 +109,13 @@ export function registerConversations(r) {
   r.get(`${T}/handoffs`, (ctx) => {
     const q = parse(v.object({ open: v.optional(v.oneOf(['true', 'false'])) }), ctx.query);
     return ctx.tenant(async (tx) => {
-      // RLS already narrows a closer to their own; everyone else sees the workspace's.
+      // RLS already narrows a closer to their own; everyone else sees the workspace's. LEFT JOIN: a closer keeps the
+      // record of a handoff that ended (not won) but no longer sees its conversation.
       // Open first, the most urgent (earliest due, not yet accepted) on top.
       const rows = (await tx.query(`SELECT h.*, c.channel, c.state AS conversation_state, c.category, k.name AS contact_name,
           k.email AS contact_email, k.company AS contact_company,
           (h.accepted_at IS NULL AND h.outcome IS NULL AND h.due_at <= now()) AS overdue
-        FROM handoffs h JOIN conversations c ON c.id = h.conversation_id LEFT JOIN contacts k ON k.id = c.contact_id
+        FROM handoffs h LEFT JOIN conversations c ON c.id = h.conversation_id LEFT JOIN contacts k ON k.id = c.contact_id
         ${q.open === 'false' ? '' : 'WHERE h.outcome IS NULL'}
         ORDER BY (h.outcome IS NULL) DESC, (h.accepted_at IS NULL) DESC, h.due_at ASC NULLS LAST, h.created_at DESC LIMIT 200`)).rows;
       return { items: rows.map(camel) };
@@ -124,6 +125,7 @@ export function registerConversations(r) {
   r.get(`${T}/handoffs/:id`, (ctx) => ctx.tenant(async (tx) => {
     const h = (await tx.query(`SELECT * FROM handoffs WHERE id = $1`, [ctx.params.id])).rows[0];
     if (!h) throw notFound('handoff not found');
+    // A closer whose handoff ended (other than won) no longer sees the conversation: the card has it null.
     return handoffCard(tx, h);
   }, { action: 'handoff_work' }));
 
@@ -145,9 +147,11 @@ export function registerConversations(r) {
       const h = (await tx.query(`SELECT id, closer_id, conversation_id, outcome FROM handoffs WHERE id = $1 FOR UPDATE`, [ctx.params.id])).rows[0];
       if (!h) throw notFound('handoff not found');
       if (m.role === 'closer' && h.closer_id !== m.userId) throw new HttpError(403, 'forbidden', 'not your handoff');
+      if (b.outcome === 'reassigned' && m.role === 'closer') throw new HttpError(403, 'forbidden', 'a closer can\'t reassign; ask an operator');
       if (h.outcome) throw conflict('this handoff already has an outcome');
       await tx.query(`UPDATE handoffs SET outcome = $2, outcome_at = now() WHERE id = $1`, [h.id, b.outcome]);
-      await tx.query(`UPDATE conversations SET state = 'closed', updated_at = now() WHERE id = $1`, [h.conversation_id]);
+      // The handoffs_sync trigger settles the conversation: reassigned → open; otherwise closed until they write again,
+      // and the closer keeps it only when won.
       await audit(tx, m, `handoff_${b.outcome}`, 'handoff', h.id);
       return camel((await tx.query(`SELECT * FROM handoffs WHERE id = $1`, [h.id])).rows[0]);
     }, { action: 'handoff_work' });
