@@ -146,7 +146,7 @@ export async function refineReply(client, { id, orgId, workspaceId }, { decider 
 // One pass over undecided replies, oldest first, one at a time (the decider runs one request per instance).
 export async function refinePending(client, { decider = offDecider(), limit = 50, shadowLabel = false } = {}) {
   const ids = await withoutTenant(client, { role: 'inbox_svc' }, async (tx) =>
-    (await tx.query(`SELECT * FROM inbox_undecided($1)`, [limit])).rows);
+    (await tx.query(`SELECT * FROM inbox_undecided_fair($1)`, [limit])).rows);   // round-robin by workspace (0014)
   const tally = { decided: 0, failed: 0, skipped: 0 };
   for (const r of ids) {
     const res = await refineReply(client, { id: r.id, orgId: r.org_id, workspaceId: r.workspace_id }, { decider, shadowLabel });
@@ -192,12 +192,15 @@ export async function escalateSla(client, { now = new Date(), limit = 500 } = {}
 /**
  * A website form or chat submission through an inbound webhook (0014; SDR-PIVOT P5). Resolved by hook id + token
  * hash only; the submitter becomes (or matches) a contact in the hook's workspace; then the same triage as an email
- * reply: rules now, Laya on the next refine pass (inbox_undecided lists every channel).
+ * reply: rules now, Laya on the next refine pass (inbox_undecided_fair lists every channel, round-robin by workspace).
+ * Past FORM_DAILY_CAP submissions in 24 h a workspace's forms are still recorded and rules-triaged, but marked decided so
+ * a flood (a public form anyone can post to) never spends model calls (#85 audit P2b).
  * @param hook { id, tokenHash }
  * @param msg { body, email?, name?, phone?, page?, externalId?, receivedAt: Date }
  * @returns { outcome: 'recorded'|'duplicate'|'unknown_hook', id?, intent?, slaDueAt? }
  */
-export async function ingestForm(client, hook, msg, { classify = classifyReply } = {}) {
+export const FORM_DAILY_CAP = 500;
+export async function ingestForm(client, hook, msg, { classify = classifyReply, dailyCap = FORM_DAILY_CAP } = {}) {
   const hit = await withoutTenant(client, { role: 'inbox_svc' }, async (tx) =>
     (await tx.query(`SELECT * FROM inbox_resolve_hook($1, $2)`, [hook.id, hook.tokenHash])).rows[0]);
   if (!hit) return { outcome: 'unknown_hook' };
@@ -219,12 +222,24 @@ export async function ingestForm(client, hook, msg, { classify = classifyReply }
     const tz = (await tx.query(`SELECT timezone FROM workspaces WHERE id = $1`, [hit.workspace_id])).rows[0]?.timezone ?? 'America/Chicago';
     const slaDueAt = verdict.intent === 'meeting_request' ? addBusinessMinutes(msg.receivedAt, SLA_MINUTES, tz) : null;
     const subject = msg.page ? `Form: ${String(msg.page).slice(0, 200)}` : 'Form submission';
-    const id = (await tx.query(
+    const recent = (await tx.query(`SELECT count(*)::int AS n FROM inbound_messages WHERE workspace_id = $1 AND channel = 'form'
+      AND received_at > $2::timestamptz - interval '24 hours'`, [hit.workspace_id, msg.receivedAt])).rows[0].n;
+    const capped = recent >= dailyCap;
+    // ON CONFLICT: two concurrent retries with one externalId record one row (#85 audit P3-1).
+    const ins = (await tx.query(
       `INSERT INTO inbound_messages (org_id, workspace_id, contact_id, channel, from_address, subject, body, received_at,
-         intent, intent_confidence, classified_by, sla_due_at, external_id)
-       VALUES ($1, $2, $3, 'form', $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
+         intent, intent_confidence, classified_by, sla_due_at, external_id, decision, decided_at)
+       VALUES ($1, $2, $3, 'form', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+       ON CONFLICT (workspace_id, channel, external_id) DO NOTHING RETURNING id`,
       [hit.org_id, hit.workspace_id, contactId, email, subject, String(msg.body ?? '').slice(0, 100000), msg.receivedAt,
-        verdict.intent, verdict.confidence, verdict.by, slaDueAt, msg.externalId ?? null])).rows[0].id;
+        verdict.intent, verdict.confidence, verdict.by, slaDueAt, msg.externalId ?? null,
+        capped ? JSON.stringify({ skipped: 'form_daily_cap', cap: dailyCap }) : null, capped ? msg.receivedAt : null])).rows[0];
+    if (!ins) {
+      const dup = (await tx.query(`SELECT id FROM inbound_messages WHERE workspace_id = $1 AND channel = 'form' AND external_id = $2`,
+        [hit.workspace_id, msg.externalId])).rows[0];
+      return { outcome: 'duplicate', id: dup?.id ?? null };
+    }
+    const id = ins.id;
     // Safe-side effects only, as for an email reply: an opt-out suppresses the address, and a real message stops any
     // sequence the person is in.
     if (verdict.intent === 'unsubscribe' && email) {

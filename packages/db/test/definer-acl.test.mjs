@@ -16,7 +16,7 @@ const EXPECTED = {
   app_credit_reserve: ['app_rw'], app_credit_release: ['app_rw'], app_credit_settle: ['app_rw'],   // 0009 (#47)
   app_email_verified: ['app_rw'],   // 0013 (#59): the only way to write email_status 'valid'
   inbox_resolve_reply: ['inbox_svc'], inbox_undecided: ['inbox_svc'], inbox_wake_snoozed: ['inbox_svc'], inbox_sla_due: ['inbox_svc'],
-  inbox_resolve_hook: ['inbox_svc'],   // 0014
+  inbox_resolve_hook: ['inbox_svc'], inbox_undecided_fair: ['inbox_svc'],   // 0014
   sender_due_workspaces: ['sender_svc'],
   send_guard: [], send_guard_enrollment: [],  // trigger-only
 };
