@@ -9,6 +9,7 @@ export const screenLoaders: Record<PageKey, () => Promise<ScreenModule>> = {
   home: () => import('@/features/home/HomePage'),
   approvals: () => import('@/features/approvals/ApprovalsPage'),
   inbox: () => import('@/features/inbox/InboxPage'),
+  handoffs: () => import('@/features/handoffs/HandoffsPage'),
   meetings: () => import('@/features/meetings/MeetingsPage'),
   leads: () => import('@/features/leads/LeadsPage'),
   analytics: () => import('@/features/analytics/AnalyticsPage'),

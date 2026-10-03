@@ -2,7 +2,7 @@
 // Written from the route code on 2026-09-29. Timestamps are ISO strings. All ids are uuids.
 // Base path for workspace routes: /v1/o/{orgId}/w/{workspaceId}
 
-export type Role = 'admin' | 'operator' | 'reviewer' | 'client_viewer';
+export type Role = 'admin' | 'operator' | 'reviewer' | 'client_viewer' | 'closer';
 export type AccountType = 'owner' | 'agency';
 export type ModelTier = 'flash_lite' | 'flash' | 'pro';
 export type Iso = string;
@@ -66,7 +66,29 @@ export interface InboxItem {
   slaDueAt: Iso | null; slaMinutesRemaining: number | null; needsHuman: boolean;
   handledAt: Iso | null; handledBy: Id | null; messageId: Id | null;
   contactId: Id | null; contactName: string | null; contactCompany: string | null; contactTitle: string | null;
+  /** 0015: the thread this reply belongs to; a handoff passes the whole thread to a closer. */
+  conversationId?: Id | null;
 }
+
+// Handoffs (0015/0016; SDR-PIVOT P1, P4). A qualified conversation passed to a human closer.
+export type HandoffReason = 'qualified' | 'meeting_request' | 'asked_for_human' | 'escalation';
+export type HandoffOutcome = 'won' | 'lost' | 'no_show' | 'not_a_fit' | 'reassigned';
+export interface ThreadMessage { id: Id; direction: 'in' | 'out'; at: Iso; channel: string; subject: string | null; body: string; category?: string | null }
+// GET …/handoffs → { items: HandoffItem[] }
+export interface HandoffItem {
+  id: Id; conversationId: Id; closerId: Id; reason: HandoffReason; summary: string; answers: Record<string, unknown>; createdBy: Id | null; createdAt: Iso;
+  dueAt: Iso | null; acceptedAt: Iso | null; outcome: HandoffOutcome | null; outcomeAt: Iso | null; overdue: boolean;
+  // channel and contact are null for a closer whose handoff ended (not won): they keep the record, not the conversation.
+  channel: string | null; category: string | null; contactName: string | null; contactEmail: string | null; contactCompany: string | null;
+}
+// GET …/handoffs/:id
+export interface HandoffCard extends Omit<HandoffItem, 'channel' | 'category' | 'contactName' | 'contactEmail' | 'contactCompany'> {
+  closerEmail: string | null; bookingUrl: string | null;
+  contact: { name: string | null; email: string | null; company: string | null } | null;
+  conversation: { id: Id; channel: string; category: string | null; messages: ThreadMessage[] } | null;
+}
+// GET …/conversations/:id/handoff-draft
+export interface HandoffDraft { reason: HandoffReason; summary: string; closers: { id: Id; email: string; role: Role; hasBookingLink: boolean }[] }
 
 // GET …/meetings → { items: Meeting[] }
 export interface Meeting {

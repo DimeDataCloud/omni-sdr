@@ -16,7 +16,7 @@ const affected = (r) => r.affectedRows ?? r.rowCount ?? 0;
 
 const INBOX_SQL = `
   SELECT i.id, i.channel, i.from_address, i.subject, i.body, i.received_at, i.intent, i.intent_confidence,
-         i.classified_by, i.sla_due_at, i.handled_at, i.handled_by, i.message_id,
+         i.classified_by, i.sla_due_at, i.handled_at, i.handled_by, i.message_id, i.conversation_id,
          c.id AS contact_id, c.name AS contact_name, c.company AS contact_company, c.title AS contact_title
   FROM inbound_messages i LEFT JOIN contacts c ON c.id = i.contact_id`;
 
@@ -75,11 +75,16 @@ export function registerInbox(r) {
     }, { action: 'inbox_draft' });
   });
 
-  // In-app notifications (0008): unread SLA alerts with the reply they're about, newest first.
+  // In-app notifications (0008): unread SLA alerts with the reply they're about, newest first; and (0016) handoffs no
+  // closer accepted in time, with the conversation's contact.
   r.get(`${T}/notifications`, (ctx) => ctx.tenant(async (tx) => {
-    const rows = (await tx.query(`SELECT n.id, n.kind, n.channel, n.due_at, n.created_at, n.read_at, n.inbound_message_id,
-        i.sla_due_at, i.handled_at, c.name AS contact_name, c.company AS contact_company
-      FROM notifications n JOIN inbound_messages i ON i.id = n.inbound_message_id LEFT JOIN contacts c ON c.id = i.contact_id
+    const rows = (await tx.query(`SELECT n.id, n.kind, n.channel, n.due_at, n.created_at, n.read_at, n.inbound_message_id, n.handoff_id,
+        i.sla_due_at, i.handled_at, coalesce(c.name, hc.name) AS contact_name, coalesce(c.company, hc.company) AS contact_company,
+        h.closer_id, h.accepted_at
+      FROM notifications n
+        LEFT JOIN inbound_messages i ON i.id = n.inbound_message_id LEFT JOIN contacts c ON c.id = i.contact_id
+        LEFT JOIN handoffs h ON h.id = n.handoff_id LEFT JOIN conversations cv ON cv.id = h.conversation_id
+        LEFT JOIN contacts hc ON hc.id = cv.contact_id
       WHERE n.channel = 'in_app' AND n.read_at IS NULL ORDER BY n.created_at DESC LIMIT 100`)).rows;
     return { items: rows.map(camel) };
   }, { action: 'inbox_read' }));

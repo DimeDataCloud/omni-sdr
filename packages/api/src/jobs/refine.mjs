@@ -1,4 +1,4 @@
-// The follow-up pass (snooze wake-ups, SLA escalation; 0008), then one model pass over undecided replies (docs/claude/DB-ROLLOUT.md, gap G4). Runs as a Cloud Run job that Cloud
+// The follow-up pass (snooze wake-ups, SLA escalation; 0008; overdue handoffs, 0016), then one model pass over undecided replies (docs/claude/DB-ROLLOUT.md, gap G4). Runs as a Cloud Run job that Cloud
 // Scheduler starts every minute or two, and exits when the pass is done, so nothing idles between replies.
 // Deploying the job and its schedule is Christian's call (rails §3.1).
 //
@@ -14,6 +14,7 @@
 import { pathToFileURL } from 'node:url';
 import { pgPool } from '../pool.mjs';
 import { refinePending, wakeSnoozed, escalateSla } from '../services/inbox.mjs';
+import { escalateHandoffs } from '../services/conversations.mjs';
 import { layaDecider } from '../../../ai/src/decide.mjs';
 
 export async function runRefine(env, { pool, decider, log = (e) => console.log(JSON.stringify(e)) } = {}) {
@@ -30,7 +31,8 @@ export async function runRefine(env, { pool, decider, log = (e) => console.log(J
     // Follow-up first (0008): it needs no decider, so a down decider never delays a wake-up or an SLA alert.
     const woke = await wakeSnoozed(client);
     const escalated = await escalateSla(client);
-    log({ job: 'followup', woke, escalated });
+    const handoffsOverdue = await escalateHandoffs(client);   // 0016: handoffs no closer accepted in time
+    log({ job: 'followup', woke, escalated, handoffsOverdue });
     tally = await refinePending(client, { decider, limit, shadowLabel: env.OMNI_DECIDER_SHADOW_LABEL === '1',
       categories: env.OMNI_TRIAGE_CATEGORIES === 'shadow' });
   } finally {

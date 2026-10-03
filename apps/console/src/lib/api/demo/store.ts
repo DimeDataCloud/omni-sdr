@@ -92,6 +92,19 @@ function prime(w: World, now: Date) {
       receivedAt: new Date(now.getTime() - (70 + i * 55) * 60000) });
   });
   for (const m of w.meetings.filter((x) => x.status === 'booked')) convertOnMeeting(w, m.contactId);
+  // One open handoff for the closer persona: the newest unhandled meeting ask in the first workspace (SDR-PIVOT P4).
+  const cole = w.members.find((x) => x.role === 'closer');
+  const ask = [...w.inbound].filter((r) => r.ws === w.workspaces[0].id && r.contactId && !r.handledAt && ['meeting_request', 'positive_inquiry'].includes(r.intent))
+    .sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))[0];
+  if (cole && ask) {
+    const c = w.contacts.find((x) => x.id === ask.contactId);
+    const at = new Date(new Date(ask.receivedAt).getTime() + 15 * 60000);
+    cole.bookingUrl = 'https://cal.example/cole-park';
+    w.handoffs.push({ id: newId(), ws: ask.ws, contactId: ask.contactId!, closerId: cole.userId, reason: ask.intent === 'meeting_request' ? 'meeting_request' : 'qualified',
+      summary: `${c?.name ?? 'This person'}${c?.company ? ` (${c.company})` : ''} ${ask.intent === 'meeting_request' ? 'asked for a meeting' : 'is interested'} by email. Last message: "${ask.body.replace(/\s+/g, ' ').slice(0, 200)}"`,
+      answers: { timing: 'this month', decisionMaker: 'yes' }, createdBy: maya, createdAt: at.toISOString(),
+      dueAt: addBusinessMinutes(at, SLA_MINUTES, w.workspaces[0].timezone).toISOString(), acceptedAt: null, outcome: null, outcomeAt: null });
+  }
   // Seeded agent answers are computed from the finished world, so what they say is true of what's on screen.
   w.chat.forEach((m, i) => {
     const q = w.chat[i - 1];

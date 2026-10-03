@@ -4,7 +4,8 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { AnimatePresence, motion } from 'motion/react';
 import { toast } from 'sonner';
-import { CalendarPlus, CheckCircle2, ArrowLeft, Inbox as InboxIcon, Info, Clock3, UserRound, ShieldOff, FileText } from 'lucide-react';
+import { CalendarPlus, CheckCircle2, ArrowLeft, Inbox as InboxIcon, Info, Clock3, UserRound, ShieldOff, FileText, Handshake } from 'lucide-react';
+import { HandoffSheet } from '@/features/handoffs/HandoffSheet';
 import { api } from '@/lib/api';
 import type { InboxItem } from '@/lib/api/types';
 import { bumpEdge, useArrivalFocus, useFillHeight, useHotkeys, useMedia, useNow, useQuery, useSelection, prefetchQuery, requestArrival } from '@/lib/hooks';
@@ -170,6 +171,8 @@ function ReplyList({ items, selectedId, onSelect, sel }: { items: InboxItem[]; s
 function ReplyDetail({ r, onDone, keyboard }: { r: InboxItem; onDone: () => void; keyboard?: boolean }) {
   const { scope, tz, can } = useWorkspace();
   const [booking, setBooking] = useState(false);
+  const [handing, setHanding] = useState(false);
+  const canHand = can('handoff') && Boolean(r.conversationId) && !['unsubscribe', 'bounce'].includes(r.intent);
   const contact = useQuery(() => api.contact(scope, r.contactId!), [r.contactId], { enabled: Boolean(r.contactId) && can('build') });
   const intent = INTENT[r.intent];
   const act = can('inbox_draft') && !r.handledAt;
@@ -207,6 +210,7 @@ function ReplyDetail({ r, onDone, keyboard }: { r: InboxItem; onDone: () => void
         {act && (
           <div className="flex flex-wrap gap-2 border-t border-line bg-sunken px-5 py-3">
             {['meeting_request', 'positive_inquiry', 'question', 'referral'].includes(r.intent) && <Button variant="primary" kbd="B" icon={<CalendarPlus className="size-4" aria-hidden />} onClick={() => setBooking(true)} className="max-sm:flex-1">Book</Button>}
+            {canHand && <Button icon={<Handshake className="size-4" aria-hidden />} onClick={() => setHanding(true)} className="max-sm:flex-1">Hand off</Button>}
             <Button kbd="H" icon={<CheckCircle2 className="size-4" aria-hidden />} onClick={handle} className="max-sm:flex-1">Mark handled</Button>
           </div>
         )}
@@ -227,6 +231,7 @@ function ReplyDetail({ r, onDone, keyboard }: { r: InboxItem; onDone: () => void
         </Card>
       )}
       <BookSheet open={booking} onOpenChange={setBooking} reply={r} onBooked={onDone} />
+      {canHand && <HandoffSheet open={handing} onOpenChange={setHanding} conversationId={r.conversationId!} who={r.contactName ?? r.fromAddress ?? 'this contact'} />}
     </motion.article>
   );
 }
