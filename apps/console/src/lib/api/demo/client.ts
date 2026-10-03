@@ -415,8 +415,11 @@ export const demoClient: Client = {
   }),
   playbook: (s) => read((w) => {
     const { ws } = tenant(w, s, 'inbox_read');
-    const decided = w.replyDrafts.filter((d) => d.ws === ws.id && d.status !== 'pending' && d.countsForAutonomy)
-      .sort((a, b) => (b.decidedAt ?? '').localeCompare(a.decidedAt ?? ''));
+    // One decision per message they sent (the latest), none without one; superseded drafts were never judged (#90 audit).
+    const seen = new Set<string>();
+    const decided = w.replyDrafts.filter((d) => d.ws === ws.id && (d.status === 'approved' || d.status === 'discarded') && d.countsForAutonomy && d.inboundId)
+      .sort((a, b) => (b.decidedAt ?? '').localeCompare(a.decidedAt ?? ''))
+      .filter((d) => !seen.has(d.inboundId!) && Boolean(seen.add(d.inboundId!)));
     const cats = [...new Set(decided.map((d) => d.category))].sort();
     return {
       replies: w.playbook.filter((p) => p.ws === ws.id && !p.archivedAt).sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name)).map(playbookOut),
@@ -485,6 +488,10 @@ export const demoClient: Client = {
     const last = [...w.inbound].filter((r) => r.ws === ws.id && r.contactId === contactId).sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))[0];
     const category = last?.intent ?? 'unclassified';
     if (!PLAYBOOK_CATEGORIES.includes(category)) throw conflict(`a ${category} is never answered`);
+    if (c.email && w.suppression.includes(c.email.toLowerCase())) throw conflict('this person opted out or bounced, so they get no reply');
+    if (last && w.replyDrafts.some((d) => d.inboundId === last.id && d.status === 'approved')) {
+      throw conflict('their latest message already has an approved reply; the next one comes with their next message');
+    }
     const live = w.playbook.filter((p) => p.ws === ws.id && !p.archivedAt);
     const pick = playbookReplyId ? live.find((p) => p.id === playbookReplyId) : live.filter((p) => p.category === category).sort((a, b) => a.name.localeCompare(b.name))[0];
     if (!pick) throw nf(playbookReplyId ? 'playbook reply' : `a playbook reply for ${category}`);
@@ -496,9 +503,9 @@ export const demoClient: Client = {
     if (asks) body = `${body.replace(/\s+$/, '')}\n\n${q!.question}`;
     const out = render(body, values);
     if (out.missing.length) throw new ApiError(409, 'conflict', `this reply needs ${out.missing.map((f) => `{${f}}`).join(', ')}, which we don't have here`, { missing: out.missing });
-    for (const d of w.replyDrafts.filter((x) => x.ws === ws.id && x.contactId === contactId && x.status === 'pending')) { d.status = 'discarded'; d.decidedBy = m.userId; d.decidedAt = nowIso(); }
+    for (const d of w.replyDrafts.filter((x) => x.ws === ws.id && x.contactId === contactId && x.status === 'pending')) { d.status = 'superseded'; d.decidedBy = m.userId; d.decidedAt = nowIso(); }
     const channel = last?.channel ?? 'email';
-    const d = { id: newId(), ws: ws.id, contactId, playbookReplyId: pick.id, category, channel, questionKey: (asks || /\{next_question\}/.test(pick.body)) && q ? q.key : null,
+    const d = { id: newId(), ws: ws.id, contactId, inboundId: last?.id ?? null, playbookReplyId: pick.id, category, channel, questionKey: (asks || /\{next_question\}/.test(pick.body)) && q ? q.key : null,
       subject: pick.subject, bodyProposed: out.text, bodyFinal: null, status: 'pending' as const, edited: null, countsForAutonomy: channel !== 'form',
       createdBy: m.userId, createdAt: nowIso(), decidedBy: null, decidedAt: null };
     w.replyDrafts.push(d);
@@ -511,6 +518,7 @@ export const demoClient: Client = {
     if (!d) throw nf('reply draft');
     if (d.status !== 'pending') throw conflict(`this draft is already ${d.status}`);
     if (body !== undefined && (!body.trim() || body.length > 8000)) throw new ApiError(400, 'bad_request', 'body: 1 to 8000 characters', { field: 'body' });
+    if (d.inboundId && w.replyDrafts.some((x) => x.inboundId === d.inboundId && x.status === 'approved')) throw conflict('that message already has an approved reply');
     d.bodyFinal = body ?? d.bodyProposed; d.edited = d.bodyFinal !== d.bodyProposed; d.status = 'approved'; d.decidedBy = m.userId; d.decidedAt = nowIso();
     audit(w, ws.id, m.userId, d.edited ? 'approve_edited' : 'approve', 'reply_draft', d.id);
     return replyDraftOut(d);

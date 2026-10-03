@@ -57,7 +57,8 @@ CREATE TABLE reply_drafts (
   subject             text CHECK (subject IS NULL OR length(subject) <= 200),
   body_proposed       text NOT NULL CHECK (length(body_proposed) BETWEEN 1 AND 8000),
   body_final          text CHECK (body_final IS NULL OR length(body_final) BETWEEN 1 AND 8000),
-  status              text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'discarded')),
+  -- superseded: replaced by a newer suggestion before anyone judged it (not a decision; never counted).
+  status              text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'discarded', 'superseded')),
   edited              boolean,
   -- Counted toward the category's autonomy: false for website-form addresses, which anyone can type.
   counts_for_autonomy boolean NOT NULL,
@@ -78,7 +79,11 @@ CREATE TABLE reply_drafts (
 );
 -- One pending draft per conversation: a new suggestion replaces the old one (the app discards it first).
 CREATE UNIQUE INDEX reply_drafts_one_pending ON reply_drafts (conversation_id) WHERE status = 'pending';
-CREATE INDEX reply_drafts_autonomy ON reply_drafts (workspace_id, category, decided_at DESC) WHERE status <> 'pending' AND counts_for_autonomy;
+-- One approved reply per inbound message (#90 audit P2-1): approving the same message over and over can't stack up the
+-- autonomy counter; the next reply waits for their next message.
+CREATE UNIQUE INDEX reply_drafts_one_approved ON reply_drafts (inbound_message_id) WHERE status = 'approved';
+CREATE INDEX reply_drafts_autonomy ON reply_drafts (workspace_id, category, decided_at DESC)
+  WHERE status IN ('approved', 'discarded') AND counts_for_autonomy AND inbound_message_id IS NOT NULL;
 
 -- A decision is final, and `edited` is computed here, not taken from the app: the counter can't be talked up.
 CREATE FUNCTION reply_drafts_decide() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -103,6 +108,11 @@ BEGIN
   SELECT c.channel INTO NEW.channel FROM conversations c WHERE c.id = NEW.conversation_id;
   IF NEW.channel IS NULL THEN
     RAISE EXCEPTION 'reply draft: conversation not found' USING ERRCODE = 'P0001';
+  END IF;
+  -- The message it answers must be in this conversation, so a draft can't borrow another thread's message to count.
+  IF NEW.inbound_message_id IS NOT NULL AND NOT EXISTS (
+       SELECT 1 FROM inbound_messages i WHERE i.id = NEW.inbound_message_id AND i.conversation_id = NEW.conversation_id) THEN
+    RAISE EXCEPTION 'reply draft: the message it answers is not in this conversation' USING ERRCODE = 'P0001';
   END IF;
   NEW.counts_for_autonomy := NEW.channel <> 'form';
   NEW.status := 'pending'; NEW.body_final := NULL; NEW.edited := NULL; NEW.decided_by := NULL; NEW.decided_at := NULL;
@@ -137,3 +147,16 @@ GRANT SELECT ON reply_drafts TO app_rw;
 GRANT INSERT (org_id, workspace_id, conversation_id, inbound_message_id, playbook_reply_id, category, question_key,
   subject, body_proposed, created_by) ON reply_drafts TO app_rw;
 GRANT UPDATE (status, body_final, decided_by, decided_at) ON reply_drafts TO app_rw;
+
+-- Whether a contact is suppressed (opted out or bounced), by the same rule send_guard applies (#90 audit P3-1): a
+-- reply to them is never drafted, whatever channel they wrote on. A definer owned by guard_owner, which already reads
+-- contacts and suppression for send_guard; it answers only yes/no, and only for a contact the request can see.
+CREATE FUNCTION app_contact_suppressed(p_contact uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS
+$$ SELECT EXISTS (SELECT 1 FROM contacts c JOIN suppression s
+                    ON s.value_hash IN (value_hash(c.email), value_hash(c.phone)) AND (s.scope_org_id IS NULL OR s.scope_org_id = c.org_id)
+                  WHERE c.id = p_contact) $$;
+REVOKE EXECUTE ON FUNCTION app_contact_suppressed(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app_contact_suppressed(uuid) TO app_rw;
+GRANT CREATE ON SCHEMA public TO guard_owner;
+ALTER FUNCTION app_contact_suppressed(uuid) OWNER TO guard_owner;
+REVOKE CREATE ON SCHEMA public FROM guard_owner;

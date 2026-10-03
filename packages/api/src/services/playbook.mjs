@@ -49,7 +49,11 @@ export async function autonomy(tx) {
       count(*) FILTER (WHERE status = 'approved' AND edited = true)::int AS edited,
       count(*) FILTER (WHERE status = 'discarded')::int AS discarded
     FROM (SELECT category, status, edited, row_number() OVER (PARTITION BY category ORDER BY decided_at DESC) AS n
-          FROM reply_drafts WHERE status <> 'pending' AND counts_for_autonomy) x
+          -- One decision per message they sent (the latest), and none without one (#90 audit P2-1): the counter means
+          -- distinct replies a person judged. Superseded drafts were never judged.
+          FROM (SELECT DISTINCT ON (inbound_message_id) category, status, edited, decided_at FROM reply_drafts
+                WHERE status IN ('approved', 'discarded') AND counts_for_autonomy AND inbound_message_id IS NOT NULL
+                ORDER BY inbound_message_id, decided_at DESC) per_message) x
     WHERE n <= $1 GROUP BY category ORDER BY category`, [AUTONOMY_WINDOW])).rows;
   return rows.map((r) => {
     const rate = r.decided ? r.unedited / r.decided : 0;

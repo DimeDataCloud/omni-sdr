@@ -96,7 +96,7 @@ export interface AutonomyRow { category: string; decided: number; unedited: numb
 export interface Playbook { replies: PlaybookReply[]; questions: QualificationQuestion[]; fields: string[];
   autonomy: { window: number; rate: number; autoSend: false; categories: AutonomyRow[] } }
 export interface ReplyDraft { id: Id; conversationId: Id; playbookReplyId: Id | null; category: string; channel: string; questionKey: string | null;
-  subject: string | null; bodyProposed: string; bodyFinal: string | null; status: 'pending' | 'approved' | 'discarded'; edited: boolean | null;
+  subject: string | null; bodyProposed: string; bodyFinal: string | null; status: 'pending' | 'approved' | 'discarded' | 'superseded'; edited: boolean | null;
   countsForAutonomy: boolean; createdAt: Iso; decidedAt: Iso | null }
 // GET …/conversations/:id/handoff-draft
 export interface HandoffDraft { reason: HandoffReason; summary: string; closers: { id: Id; email: string; role: Role; hasBookingLink: boolean }[] }
