@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { toast } from 'sonner';
 import { CalendarPlus, CheckCircle2, ArrowLeft, Inbox as InboxIcon, Info, Clock3, UserRound, ShieldOff, FileText, Handshake } from 'lucide-react';
 import { HandoffSheet } from '@/features/handoffs/HandoffSheet';
+import { ReplyPanel } from '@/features/playbook/ReplyPanel';
 import { api } from '@/lib/api';
 import type { InboxItem } from '@/lib/api/types';
 import { bumpEdge, useArrivalFocus, useFillHeight, useHotkeys, useMedia, useNow, useQuery, useSelection, prefetchQuery, requestArrival } from '@/lib/hooks';
@@ -219,8 +220,9 @@ function ReplyDetail({ r, onDone, keyboard }: { r: InboxItem; onDone: () => void
       </Card>
       {act && (
         <p className="flex items-start gap-2 px-1 text-xs text-muted"><FileText className="mt-px size-3.5 shrink-0" aria-hidden />
-          Answers go through Approvals like any draft. Ask Sales Outbound on Home to draft a reply; it lands in Approvals after the claims gate.</p>
+          Answer with a reply from your Playbook below. For anything it doesn’t cover, ask Sales Outbound on Home; that draft lands in Approvals after the claims gate.</p>
       )}
+      {act && r.conversationId && !['unsubscribe', 'bounce'].includes(r.intent) && <ReplyPanel conversationId={r.conversationId} channel={r.channel} />}
       {contact.data && (
         <Card className="p-5">
           <h3 className="mb-2 flex items-center gap-2 text-base font-semibold"><UserRound className="size-4" aria-hidden />{contact.data.name}</h3>

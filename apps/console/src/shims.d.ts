@@ -11,6 +11,15 @@ declare module '@rules/reply-rules.mjs' {
   export function addBusinessMinutes(start: Date, minutes: number, timeZone: string, hours?: { open?: number; close?: number }): Date;
   export const SLA_MINUTES: number;
 }
+declare module '@rules/playbook.mjs' {
+  export const PLAYBOOK_CATEGORIES: readonly string[];
+  export const FIELDS: readonly string[];
+  export function unknownFields(text: string | null | undefined): string[];
+  export function render(template: string, values: Record<string, string | null | undefined>): { text: string; missing: string[] };
+  export function firstName(name: string | null | undefined): string | null;
+  export const AUTONOMY_WINDOW: number;
+  export const AUTONOMY_RATE: number;
+}
 declare module '@rules/catalog.mjs' {
   export const CONNECTORS: readonly {
     id: string; name: string; category: 'mail' | 'calendar' | 'booking' | 'social' | 'commerce' | 'crm' | 'export' | 'mcp' | 'warmup' | 'sms';

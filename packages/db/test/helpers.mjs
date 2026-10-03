@@ -119,7 +119,13 @@ export async function seedTenant(db, label, { cap = 5, trust = 1, heat = 1 } = {
   await db.query(`INSERT INTO handoffs (org_id, workspace_id, conversation_id, closer_id, reason, summary, created_by, due_at)
     VALUES ($1, $2, $3, $4, 'qualified', 'Wants a call next week.', $4, now() + interval '2 hours')`, [org, ws, conversation, user]);
   await db.query(`UPDATE conversations SET state = 'handed_off', closer_id = $2 WHERE id = $1`, [conversation, user]);
-  return { ...t, message, inbound, conversation };
+  // 0017: a playbook reply, a qualification question and a pending reply draft per tenant (RLS matrix, FK rule).
+  const playbook = (await one(db, `INSERT INTO playbook_replies (org_id, workspace_id, category, name, body)
+    VALUES ($1, $2, 'not_interested', 'Polite close', 'Understood, {first_name}. Thanks for letting us know.') RETURNING id`, [org, ws])).id;
+  await db.query(`INSERT INTO qualification_questions (org_id, workspace_id, position, key, question) VALUES ($1, $2, 1, 'timing', 'When are you hoping to start?')`, [org, ws]);
+  await db.query(`INSERT INTO reply_drafts (org_id, workspace_id, conversation_id, inbound_message_id, playbook_reply_id, category, body_proposed)
+    VALUES ($1, $2, $3, $4, $5, 'not_interested', 'Understood, Pat. Thanks for letting us know.')`, [org, ws, conversation, inbound, playbook]);
+  return { ...t, message, inbound, conversation, playbook };
 }
 
 // A new draft for the tenant's enrollment, passed through the gate and approved.

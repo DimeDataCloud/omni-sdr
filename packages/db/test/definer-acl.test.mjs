@@ -24,6 +24,7 @@ const EXPECTED = {
   inbox_resolve_hook: ['inbox_svc'], inbox_undecided_fair: ['inbox_svc'],   // 0014
   inbox_handoffs_overdue: ['inbox_svc'],   // 0016
   sender_due_workspaces: ['sender_svc'],
+  app_contact_suppressed: ['app_rw'],   // 0017: no reply drafted to someone who opted out
   send_guard: [], send_guard_enrollment: [], handoffs_sync: [],  // trigger-only
 };
 

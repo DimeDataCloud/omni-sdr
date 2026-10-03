@@ -4,6 +4,7 @@ import type {
   Me, Settings, Members, ApprovalsList, ApprovalCard, InboxItem, Meeting, Agent, ChatMessage, Routine, Capacity,
   Analytics, Credits, Connector, Contact, ContactDetail, Role, ModelTier, DraftStatus, Id, About, AskMode, Pipeline,
   Autonomy, AgentStats, Dataset, HandoffItem, HandoffCard, HandoffDraft, HandoffReason, HandoffOutcome,
+  Playbook, PlaybookReply, PlaybookCategory, ReplyDraft,
   Asset, AssetKind, AssetStatus, Aspect, Edits, GenMode, Ingredient, MotionKey, Product, Project, Scene, SequenceClip, StudioCaps,
 } from './types';
 
@@ -54,6 +55,17 @@ export interface Client {
   handoffOutcome(s: Scope, id: Id, outcome: HandoffOutcome): Promise<void>;
   bookingLink(s: Scope): Promise<{ url: string | null }>;
   setBookingLink(s: Scope, url: string | null): Promise<{ url: string | null }>;
+
+  // Playbook (SDR-PIVOT P3). Read: inbox_read. Edit the playbook: build. Draft and decide replies: inbox_draft. Nothing sends.
+  playbook(s: Scope): Promise<Playbook>;
+  createPlaybookReply(s: Scope, body: { category: PlaybookCategory; name: string; subject?: string | null; body: string; asksNextQuestion?: boolean }): Promise<PlaybookReply>;
+  patchPlaybookReply(s: Scope, id: Id, patch: { name?: string; subject?: string | null; body?: string; asksNextQuestion?: boolean }): Promise<PlaybookReply>;
+  archivePlaybookReply(s: Scope, id: Id): Promise<void>;
+  setQuestions(s: Scope, questions: { key: string; question: string }[]): Promise<void>;
+  replyDraft(s: Scope, conversationId: Id): Promise<ReplyDraft | null>;
+  createReplyDraft(s: Scope, conversationId: Id, playbookReplyId?: Id): Promise<ReplyDraft>;
+  approveReplyDraft(s: Scope, id: Id, body?: string): Promise<ReplyDraft>;
+  discardReplyDraft(s: Scope, id: Id): Promise<void>;
   patchMeeting(s: Scope, id: Id, patch: { status?: Meeting['status'] }): Promise<Meeting>;
 
   agents(s: Scope): Promise<Agent[]>;

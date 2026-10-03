@@ -4,8 +4,9 @@
 import { can } from '@db/permissions.mjs';
 import { CONNECTORS, freeEmailChecks } from '@rules/catalog.mjs';
 import { ApiError, invalidate, type Client, type Scope, type Campaign, type Icp } from '../client';
-import type { Dataset, ApprovalCard, Agent, ChatMessage, Contact, InboxItem, Meeting, Routine, Role, Analytics, Me, Pipeline, AboutKind, AskMode, HandoffItem, HandoffCard, ThreadMessage } from '../types';
+import type { Dataset, ApprovalCard, Agent, ChatMessage, Contact, InboxItem, Meeting, Routine, Role, Analytics, Me, Pipeline, AboutKind, AskMode, HandoffItem, HandoffCard, ThreadMessage, PlaybookReply, ReplyDraft, PlaybookCategory } from '../types';
 import { addBusinessMinutes, SLA_MINUTES } from '@rules/reply-rules.mjs';
+import { PLAYBOOK_CATEGORIES, unknownFields, render, firstName, AUTONOMY_WINDOW, AUTONOMY_RATE } from '@rules/playbook.mjs';
 import { load, save, gate, newId, personaEmail, convertOnMeeting } from './store';
 import { think } from './brain';
 import { studioDemo, mediaCounts } from './studio';
@@ -139,6 +140,16 @@ function handoffOut(w: World, h: World['handoffs'][number], m?: MemberRow): Hand
 }
 /** What a person may see: a closer only their own handoffs (0015 closer_scope). */
 const visibleHandoffs = (w: World, ws: string, m: MemberRow) => w.handoffs.filter((h) => h.ws === ws && (m.role !== 'closer' || h.closerId === m.userId));
+
+const playbookOut = (p: World['playbook'][number]): PlaybookReply => ({ id: p.id, category: p.category as PlaybookCategory, name: p.name, subject: p.subject, body: p.body,
+  asksNextQuestion: p.asksNextQuestion, createdAt: p.createdAt, updatedAt: p.updatedAt });
+const replyDraftOut = (d: World['replyDrafts'][number]): ReplyDraft => ({ id: d.id, conversationId: convId(d.contactId), playbookReplyId: d.playbookReplyId, category: d.category,
+  channel: d.channel, questionKey: d.questionKey, subject: d.subject, bodyProposed: d.bodyProposed, bodyFinal: d.bodyFinal, status: d.status, edited: d.edited,
+  countsForAutonomy: d.countsForAutonomy, createdAt: d.createdAt, decidedAt: d.decidedAt });
+function checkFields(text: string | null | undefined, field: string) {
+  const unknown = unknownFields(text);
+  if (unknown.length) throw new ApiError(400, 'bad_request', `unknown field ${unknown.map((f) => `{${f}}`).join(', ')}`, { field });
+}
 
 function meetingOut(w: World, m: World['meetings'][number]): Meeting {
   const c = w.contacts.find((x) => x.id === m.contactId);
@@ -401,6 +412,124 @@ export const demoClient: Client = {
     m.bookingUrl = url;
     audit(w, ws.id, m.userId, 'booking_link', 'membership', m.userId);
     return { url };
+  }),
+  playbook: (s) => read((w) => {
+    const { ws } = tenant(w, s, 'inbox_read');
+    // One decision per message they sent (the latest), none without one; superseded drafts were never judged (#90 audit).
+    const seen = new Set<string>();
+    const decided = w.replyDrafts.filter((d) => d.ws === ws.id && (d.status === 'approved' || d.status === 'discarded') && d.countsForAutonomy && d.inboundId)
+      .sort((a, b) => (b.decidedAt ?? '').localeCompare(a.decidedAt ?? ''))
+      .filter((d) => !seen.has(d.inboundId!) && Boolean(seen.add(d.inboundId!)));
+    const cats = [...new Set(decided.map((d) => d.category))].sort();
+    return {
+      replies: w.playbook.filter((p) => p.ws === ws.id && !p.archivedAt).sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name)).map(playbookOut),
+      questions: w.questions.filter((q) => q.ws === ws.id).sort((a, b) => a.position - b.position).map(({ position, key, question }) => ({ position, key, question })),
+      fields: ['first_name', 'name', 'company', 'business_name', 'booking_link', 'next_question'],
+      autonomy: { window: AUTONOMY_WINDOW, rate: AUTONOMY_RATE, autoSend: false as const, categories: cats.map((category) => {
+        const last = decided.filter((d) => d.category === category).slice(0, AUTONOMY_WINDOW);
+        const unedited = last.filter((d) => d.status === 'approved' && d.edited === false).length;
+        const rate = last.length ? unedited / last.length : 0;
+        return { category, decided: last.length, unedited, edited: last.filter((d) => d.status === 'approved' && d.edited).length,
+          discarded: last.filter((d) => d.status === 'discarded').length, rate: Math.round(rate * 1000) / 1000, eligible: last.length >= AUTONOMY_WINDOW && rate >= AUTONOMY_RATE };
+      }) },
+    };
+  }),
+  createPlaybookReply: (s, body) => write((w) => {
+    const { m, ws } = tenant(w, s, 'build');
+    if (!PLAYBOOK_CATEGORIES.includes(body.category)) throw new ApiError(400, 'bad_request', 'category: not one a playbook answers', { field: 'category' });
+    if (!body.name.trim() || body.name.length > 80) throw new ApiError(400, 'bad_request', 'name: 1 to 80 characters', { field: 'name' });
+    if (!body.body.trim() || body.body.length > 4000) throw new ApiError(400, 'bad_request', 'body: 1 to 4000 characters', { field: 'body' });
+    checkFields(body.body, 'body'); checkFields(body.subject, 'subject');
+    if (w.playbook.some((p) => p.ws === ws.id && !p.archivedAt && p.category === body.category && p.name.toLowerCase() === body.name.trim().toLowerCase())) {
+      throw conflict('a reply with that name already exists for this category');
+    }
+    const p = { id: newId(), ws: ws.id, category: body.category, name: body.name.trim(), subject: body.subject ?? null, body: body.body, asksNextQuestion: body.asksNextQuestion ?? false,
+      archivedAt: null, createdAt: nowIso(), updatedAt: nowIso() };
+    w.playbook.push(p);
+    audit(w, ws.id, m.userId, 'create', 'playbook_reply', p.id);
+    return playbookOut(p);
+  }),
+  patchPlaybookReply: (s, id, patch) => write((w) => {
+    const { m, ws } = tenant(w, s, 'build');
+    const p = w.playbook.find((x) => x.id === id && x.ws === ws.id && !x.archivedAt);
+    if (!p) throw nf('playbook reply');
+    if (patch.body !== undefined) { if (!patch.body.trim()) throw new ApiError(400, 'bad_request', 'body: 1 to 4000 characters', { field: 'body' }); checkFields(patch.body, 'body'); }
+    if (patch.subject) checkFields(patch.subject, 'subject');
+    Object.assign(p, Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)), { updatedAt: nowIso() });
+    audit(w, ws.id, m.userId, 'update', 'playbook_reply', p.id);
+    return playbookOut(p);
+  }),
+  archivePlaybookReply: (s, id) => write((w) => {
+    const { m, ws } = tenant(w, s, 'build');
+    const p = w.playbook.find((x) => x.id === id && x.ws === ws.id && !x.archivedAt);
+    if (!p) throw nf('playbook reply');
+    p.archivedAt = nowIso();
+    audit(w, ws.id, m.userId, 'archive', 'playbook_reply', p.id);
+  }),
+  setQuestions: (s, questions) => write((w) => {
+    const { m, ws } = tenant(w, s, 'build');
+    if (questions.length > 4) throw new ApiError(400, 'bad_request', 'questions: up to 4', { field: 'questions' });
+    if (questions.some((q) => !/^[a-z][a-z_]{0,39}$/.test(q.key) || !q.question.trim() || q.question.length > 300)) throw new ApiError(400, 'bad_request', 'each question needs a key and 1 to 300 characters', { field: 'questions' });
+    if (new Set(questions.map((q) => q.key)).size !== questions.length) throw new ApiError(400, 'bad_request', 'each question needs its own key', { field: 'questions' });
+    w.questions = w.questions.filter((q) => q.ws !== ws.id).concat(questions.map((q, i) => ({ ws: ws.id, position: i + 1, key: q.key, question: q.question.trim() })));
+    audit(w, ws.id, m.userId, 'update', 'qualification_questions', ws.id);
+  }),
+  replyDraft: (s, id) => read((w) => {
+    const { ws } = tenant(w, s, 'inbox_read');
+    const d = w.replyDrafts.find((x) => x.ws === ws.id && convId(x.contactId) === id && x.status === 'pending');
+    return d ? replyDraftOut(d) : null;
+  }),
+  createReplyDraft: (s, id, playbookReplyId) => write((w) => {
+    const { m, ws } = tenant(w, s, 'inbox_draft');
+    const contactId = contactOfConv(id);
+    const c = w.contacts.find((x) => x.id === contactId && x.ws === ws.id);
+    if (!c) throw nf('conversation');
+    if (w.handoffs.some((h) => h.ws === ws.id && h.contactId === contactId && !h.outcome)) throw conflict('a handed off conversation gets no playbook reply');
+    const last = [...w.inbound].filter((r) => r.ws === ws.id && r.contactId === contactId).sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))[0];
+    const category = last?.intent ?? 'unclassified';
+    if (!PLAYBOOK_CATEGORIES.includes(category)) throw conflict(`a ${category} is never answered`);
+    if (c.email && w.suppression.includes(c.email.toLowerCase())) throw conflict('this person opted out or bounced, so they get no reply');
+    if (last && w.replyDrafts.some((d) => d.inboundId === last.id && d.status === 'approved')) {
+      throw conflict('their latest message already has an approved reply; the next one comes with their next message');
+    }
+    const live = w.playbook.filter((p) => p.ws === ws.id && !p.archivedAt);
+    const pick = playbookReplyId ? live.find((p) => p.id === playbookReplyId) : live.filter((p) => p.category === category).sort((a, b) => a.name.localeCompare(b.name))[0];
+    if (!pick) throw nf(playbookReplyId ? 'playbook reply' : `a playbook reply for ${category}`);
+    const asked = new Set(w.replyDrafts.filter((d) => d.ws === ws.id && d.contactId === contactId && d.status === 'approved').map((d) => d.questionKey));
+    const q = w.questions.filter((x) => x.ws === ws.id && !asked.has(x.key)).sort((a, b) => a.position - b.position)[0];
+    const values = { first_name: firstName(c.name), name: c.name, company: c.company, business_name: ws.name, booking_link: m.bookingUrl ?? null, next_question: q?.question ?? null };
+    let body = pick.body;
+    const asks = pick.asksNextQuestion && q && !/\{next_question\}/.test(body);
+    if (asks) body = `${body.replace(/\s+$/, '')}\n\n${q!.question}`;
+    const out = render(body, values);
+    if (out.missing.length) throw new ApiError(409, 'conflict', `this reply needs ${out.missing.map((f) => `{${f}}`).join(', ')}, which we don't have here`, { missing: out.missing });
+    for (const d of w.replyDrafts.filter((x) => x.ws === ws.id && x.contactId === contactId && x.status === 'pending')) { d.status = 'superseded'; d.decidedBy = m.userId; d.decidedAt = nowIso(); }
+    const channel = last?.channel ?? 'email';
+    const d = { id: newId(), ws: ws.id, contactId, inboundId: last?.id ?? null, playbookReplyId: pick.id, category, channel, questionKey: (asks || /\{next_question\}/.test(pick.body)) && q ? q.key : null,
+      subject: pick.subject, bodyProposed: out.text, bodyFinal: null, status: 'pending' as const, edited: null, countsForAutonomy: channel !== 'form',
+      createdBy: m.userId, createdAt: nowIso(), decidedBy: null, decidedAt: null };
+    w.replyDrafts.push(d);
+    audit(w, ws.id, m.userId, 'create', 'reply_draft', d.id);
+    return replyDraftOut(d);
+  }),
+  approveReplyDraft: (s, id, body) => write((w) => {
+    const { m, ws } = tenant(w, s, 'inbox_draft');
+    const d = w.replyDrafts.find((x) => x.id === id && x.ws === ws.id);
+    if (!d) throw nf('reply draft');
+    if (d.status !== 'pending') throw conflict(`this draft is already ${d.status}`);
+    if (body !== undefined && (!body.trim() || body.length > 8000)) throw new ApiError(400, 'bad_request', 'body: 1 to 8000 characters', { field: 'body' });
+    if (d.inboundId && w.replyDrafts.some((x) => x.inboundId === d.inboundId && x.status === 'approved')) throw conflict('that message already has an approved reply');
+    d.bodyFinal = body ?? d.bodyProposed; d.edited = d.bodyFinal !== d.bodyProposed; d.status = 'approved'; d.decidedBy = m.userId; d.decidedAt = nowIso();
+    audit(w, ws.id, m.userId, d.edited ? 'approve_edited' : 'approve', 'reply_draft', d.id);
+    return replyDraftOut(d);
+  }),
+  discardReplyDraft: (s, id) => write((w) => {
+    const { m, ws } = tenant(w, s, 'inbox_draft');
+    const d = w.replyDrafts.find((x) => x.id === id && x.ws === ws.id);
+    if (!d) throw nf('reply draft');
+    if (d.status !== 'pending') throw conflict(`this draft is already ${d.status}`);
+    d.status = 'discarded'; d.decidedBy = m.userId; d.decidedAt = nowIso();
+    audit(w, ws.id, m.userId, 'discard', 'reply_draft', d.id);
   }),
   meetings: (s, range = 'upcoming') => read((w) => {
     tenant(w, s, 'reports_view');

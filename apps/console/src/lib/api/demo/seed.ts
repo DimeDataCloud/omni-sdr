@@ -34,6 +34,12 @@ export interface MeetingRow extends Row { ws: string; contactId: string | null; 
 export interface HandoffRow extends Row { ws: string; contactId: string; closerId: string; reason: 'qualified' | 'meeting_request' | 'asked_for_human' | 'escalation';
   summary: string; answers: Record<string, string>; createdBy: string | null; createdAt: string; dueAt: string | null; acceptedAt: string | null;
   outcome: 'won' | 'lost' | 'no_show' | 'not_a_fit' | 'reassigned' | null; outcomeAt: string | null }
+export interface PlaybookRow extends Row { ws: string; category: string; name: string; subject: string | null; body: string; asksNextQuestion: boolean;
+  archivedAt: string | null; createdAt: string; updatedAt: string }
+export interface QuestionRow { ws: string; position: number; key: string; question: string }
+export interface ReplyDraftRow extends Row { ws: string; contactId: string; inboundId: string | null; playbookReplyId: string | null; category: string; channel: string; questionKey: string | null;
+  subject: string | null; bodyProposed: string; bodyFinal: string | null; status: 'pending' | 'approved' | 'discarded' | 'superseded'; edited: boolean | null;
+  countsForAutonomy: boolean; createdBy: string; createdAt: string; decidedBy: string | null; decidedAt: string | null }
 export interface AuditRow { id: string; ws: string | null; actor: string; action: string; entityType: string; entityId: string; at: string }
 
 export interface World {
@@ -43,9 +49,10 @@ export interface World {
   mailboxes: MailboxRow[]; holds: HoldRow[]; suppression: string[]; contacts: ContactRow[]; evidence: EvidenceRow[]; icps: IcpRow[];
   campaigns: CampaignRow[]; enrollments: EnrollmentRow[]; drafts: DraftRow[]; sent: SentRow[]; inbound: InboundRow[]; meetings: MeetingRow[];
   audit: AuditRow[]; credits: { data: number; action: number; media: number }; handoffs: HandoffRow[];
+  playbook: PlaybookRow[]; questions: QuestionRow[]; replyDrafts: ReplyDraftRow[];
 }
 
-export const WORLD_VERSION = 8;
+export const WORLD_VERSION = 10;
 
 // Deterministic randomness so the demo looks the same on every device.
 function rng(seed: number) {
@@ -135,7 +142,23 @@ export function buildWorld(now = new Date()): World {
   const maya = members[0].userId;
 
   const w: World = { version: WORLD_VERSION, org, workspaces, members, invites: [], agents: [], chat: [], routines: [], mailboxes: [], holds: [], suppression: [],
-    contacts: [], evidence: [], icps: [], campaigns: [], enrollments: [], drafts: [], sent: [], inbound: [], meetings: [], audit: [], credits: { data: 30000, action: 38420, media: 0 }, handoffs: [] };
+    contacts: [], evidence: [], icps: [], campaigns: [], enrollments: [], drafts: [], sent: [], inbound: [], meetings: [], audit: [], credits: { data: 30000, action: 38420, media: 0 }, handoffs: [], playbook: [], questions: [], replyDrafts: [] };
+
+  // A starter playbook for every workspace (SDR-PIVOT P3): the business's own words, per category. Fictional.
+  const PLAYBOOK: [string, string, string, boolean][] = [
+    ['meeting_request', 'Offer times', 'Great to hear from you, {first_name}. Pick any time that suits you here: {booking_link}', false],
+    ['positive_inquiry', 'Interested', 'Thanks, {first_name}. Happy to share more about how {business_name} could help.', true],
+    ['question', 'Pricing and how it works', 'Good question, {first_name}. Pricing is a flat monthly fee with no setup cost, and we can walk you through it on a short call.', true],
+    ['objection', 'Already have a provider', 'Understood, {first_name}. Many of our clients switched from an existing provider; if it is ever useful to compare, I am here.', false],
+    ['not_interested', 'Polite close', 'Thanks for letting me know, {first_name}. I won\'t follow up again.', false],
+  ];
+  for (const ws of workspaces) {
+    for (const [category, name, body, asks] of PLAYBOOK) {
+      w.playbook.push({ id: uid('pb'), ws: ws.id, category, name, subject: null, body, asksNextQuestion: asks, archivedAt: null, createdAt: iso(ago(now, 60 * 24 * 7)), updatedAt: iso(ago(now, 60 * 24 * 7)) });
+    }
+    w.questions.push({ ws: ws.id, position: 1, key: 'timing', question: 'When are you hoping to get started?' },
+      { ws: ws.id, position: 2, key: 'decision_maker', question: 'Is anyone else involved in the decision?' });
+  }
 
   // Agents
   const agentIds: Record<string, string> = {};
