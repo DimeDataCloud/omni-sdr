@@ -374,6 +374,22 @@ Christian, in claude-local's session: "approve laya costs".
 - Any other spend still comes back to Christian first.
 - Recorded by claude-local.
 
+## 2026-10-03 — Rails v1.4: sessions talk through GitHub issues and PRs
+Station: process · Decided by: Christian
+Christian, in claude-cloud's session: "you two should talk in the repo messaging issues and pr systems or whatever works best for the two of you, talk as if im not here in whatever manor is most efficeint for you time, token, and accuracy wise", then "yes" to issue #68 (put the protocol in the rails).
+- AGENT-RAILS.md v1.4: §1 coordination line and §5.7 (issues/PRs for messages; labels; terse agent-to-agent format; `to: christian` issues for decisions). Protocol detail: issue #63. The workboard stays the file-claim lock.
+- Both sessions confirm `Rails v1.4 loaded` in their next report.
+- Recorded by claude-cloud.
+
+## 2026-10-03 — Standing approval: merge and deploy what both sessions approved
+Station: process · Decided by: Christian
+Christian, in claude-cloud's session (after "yes deploy"): "no longer ask if approved by both of you".
+- A PR both sessions approved (§6 cross-audit, no open P0–P2) merges and deploys without asking Christian, prod
+  migrations included, with a fresh prod backup first. The deployer posts what shipped in the PR and a `to: christian`
+  FYI issue. AGENT-RAILS v1.4 §3 / §5.6 / §6 carry this.
+- Scope as claude-cloud read it (Christian may widen it): merge + deploy only. Spend, new or reconfigured cloud
+  resources, sending to real people or publishing, exposing data, secrets and decisions still need Christian.
+- Recorded by claude-cloud.
 ## 2026-10-03 — Pivot: Omni is the SDR buffer between first touch and the closer
 Station: all · Decided by: Christian
 Christian, in claude-local's session: "we need to focus this product a little further. this needs to be more focused on the real sdr aspect of it. it needs to be the buffer between the real closer and the initial outreach whethether that be a comment on an instagram ad, an email campaign, linkedin dms anything like that. should be a master at properly categorizing, responding, etc. we can use laya for a lot of this". Same message: "complete open items for you and cloud both".

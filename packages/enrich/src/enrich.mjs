@@ -32,11 +32,16 @@ export async function enrichContact(tx, { orgId, workspaceId, contactId, now = n
   try {
     page = await fetchPage(site);
   } catch (e) {
-    return { skipped: e instanceof FetchRefused ? e.reason : 'fetch_failed' };
+    return { skipped: e instanceof FetchRefused ? e.reason : (e?.skip ?? 'fetch_failed') };
   }
   if (page.status < 200 || page.status >= 300) return { skipped: `http_${page.status}` };
   const facts = extractFacts(page.body, page.url);
   const sha = createHash('sha256').update(page.body, 'utf8').digest('hex');
+  // The same page again is the same evidence: reuse the newest unexpired row rather than adding one per press (#48
+  // audit P3-2: up to ~43k rows/day/org at the route's rate limit).
+  const same = (await tx.query(`SELECT id FROM evidence WHERE contact_id = $1 AND type = 'website' AND source_uri = $2 AND snapshot_sha = $3
+    AND expires_at > $4 ORDER BY fetched_at DESC LIMIT 1`, [contactId, page.url, sha, now])).rows[0];
+  if (same) return { evidenceId: same.id, facts, url: page.url, reused: true };
   const id = (await tx.query(
     `INSERT INTO evidence (org_id, workspace_id, contact_id, type, source_uri, fetched_at, snapshot_sha, facts, expires_at)
      VALUES ($1, $2, $3, 'website', $4, $5, $6, $7, $8) RETURNING id`,

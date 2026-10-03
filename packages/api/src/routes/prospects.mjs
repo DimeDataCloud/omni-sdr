@@ -86,8 +86,12 @@ export function registerProspects(r) {
       return { status: 200, body: { enriched: false, reason: 'site_unreachable' } };
     }
     const r2 = await ctx.tenant(async (tx, m) => {
-      const out = await enrichContact(tx, { orgId: m.orgId, workspaceId: m.workspaceId, contactId: ctx.params.id, now: ctx.now(), fetchPage: async () => page });
-      if (out.evidenceId) await audit(tx, m, 'enrich', 'contact', ctx.params.id);
+      const out = await enrichContact(tx, { orgId: m.orgId, workspaceId: m.workspaceId, contactId: ctx.params.id, now: ctx.now(), fetchPage: async (url) => {
+        // The address may have changed since the fetch: the page is evidence only for the site it came from (#48 audit P3-1).
+        if (url !== site) throw Object.assign(new Error('address changed'), { skip: 'address_changed' });
+        return page;
+      } });
+      if (out.evidenceId && !out.reused) await audit(tx, m, 'enrich', 'contact', ctx.params.id);
       return out;
     }, { action: 'build' });
     if (!r2.evidenceId) return { status: 200, body: { enriched: false, reason: /^http_/.test(r2.skipped ?? '') ? 'site_unreachable' : r2.skipped } };
