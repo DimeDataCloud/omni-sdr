@@ -111,12 +111,14 @@ export async function seedTenant(db, label, { cap = 5, trust = 1, heat = 1 } = {
     VALUES ($1, $2, $3, 'https://rival.test/', now(), repeat('a', 64), 'Rival answers calls.')`, [org, ws, comp]);
   await db.query(`INSERT INTO battlecards (org_id, workspace_id, competitor_id, version, doc, source_refs) VALUES ($1, $2, $3, 1, '{}', '[]')`, [org, ws, comp]);
   // 0015: the reply's conversation and a handoff per tenant, so the RLS matrix and the FK rule cover them.
-  const conversation = (await one(db, `INSERT INTO conversations (org_id, workspace_id, contact_id, channel, thread_key, state, closer_id, last_inbound_at)
-    VALUES ($1, $2, $3, 'email', $4, 'handed_off', $5, now()) RETURNING id`, [org, ws, contact, `contact:${contact}`, user])).id;
+  // A conversation starts with no closer; closer_id follows the handoff.
+  const conversation = (await one(db, `INSERT INTO conversations (org_id, workspace_id, contact_id, channel, thread_key, last_inbound_at)
+    VALUES ($1, $2, $3, 'email', $4, now()) RETURNING id`, [org, ws, contact, `contact:${contact}`])).id;
   await db.query(`UPDATE inbound_messages SET conversation_id = $2 WHERE id = $1`, [inbound, conversation]);
   // 0016: with an accept-by time.
   await db.query(`INSERT INTO handoffs (org_id, workspace_id, conversation_id, closer_id, reason, summary, created_by, due_at)
     VALUES ($1, $2, $3, $4, 'qualified', 'Wants a call next week.', $4, now() + interval '2 hours')`, [org, ws, conversation, user]);
+  await db.query(`UPDATE conversations SET state = 'handed_off', closer_id = $2 WHERE id = $1`, [conversation, user]);
   // 0017: a playbook reply, a qualification question and a pending reply draft per tenant (RLS matrix, FK rule).
   const playbook = (await one(db, `INSERT INTO playbook_replies (org_id, workspace_id, category, name, body)
     VALUES ($1, $2, 'not_interested', 'Polite close', 'Understood, {first_name}. Thanks for letting us know.') RETURNING id`, [org, ws])).id;

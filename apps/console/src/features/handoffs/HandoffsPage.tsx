@@ -17,6 +17,14 @@ export const REASON: Record<HandoffReason, string> = {
 };
 const ANSWER_LABEL: Record<string, string> = { need: 'What they need', timing: 'Timing', decisionMaker: 'Decision-maker', budget: 'Budget' };
 const OUTCOME: Record<HandoffOutcome, string> = { won: 'Won', lost: 'Lost', no_show: 'No-show', not_a_fit: 'Not a fit', reassigned: 'Reassigned' };
+// What recording each outcome does to the conversation (0015 handoffs_sync; it reopens when they write again).
+const OUTCOME_DONE: Record<HandoffOutcome, string> = {
+  won: 'Recorded: Won. It stays with you if they write again.',
+  lost: 'Recorded: Lost. If they write again, it goes back to the inbox.',
+  no_show: 'Recorded: No-show. If they write again, it goes back to the inbox.',
+  not_a_fit: 'Recorded: Not a fit. If they write again, it goes back to the inbox.',
+  reassigned: 'Reassigned. The conversation is back in the inbox to hand off again.',
+};
 
 /** Warmed on hover of the Handoffs nav link. */
 export const prefetch = (s: Scope) => prefetchQuery(`handoffs:${s.workspaceId}:open`, () => api.handoffs(s));
@@ -175,9 +183,10 @@ function HandoffDetail({ id }: { id: string }) {
             )}
             <div className="ml-auto flex items-end gap-2">
               <Select aria-label="Outcome" value={outcome} onChange={(e) => setOutcome(e.target.value as HandoffOutcome)}>
-                {(['won', 'lost', 'no_show', 'not_a_fit'] as const).map((o) => <option key={o} value={o}>{OUTCOME[o]}</option>)}
+                {(settings?.you.role === 'closer' ? ['won', 'lost', 'no_show', 'not_a_fit'] as const : ['won', 'lost', 'no_show', 'not_a_fit', 'reassigned'] as const)
+                  .map((o) => <option key={o} value={o}>{OUTCOME[o]}</option>)}
               </Select>
-              <Button loading={busy === 'outcome'} onClick={() => act('outcome', () => api.handoffOutcome(scope, h.id, outcome), `Recorded: ${OUTCOME[outcome]}. The conversation is closed.`)}>
+              <Button loading={busy === 'outcome'} onClick={() => act('outcome', () => api.handoffOutcome(scope, h.id, outcome), OUTCOME_DONE[outcome])}>
                 Record outcome
               </Button>
             </div>
@@ -186,6 +195,7 @@ function HandoffDetail({ id }: { id: string }) {
       </Card>
       <Card className="p-5">
         <h3 className="mb-3 text-base font-semibold">Conversation</h3>
+        {!h.conversation && <p className="text-sm text-muted">This conversation is no longer handed to you, so its messages aren’t shown.</p>}
         <ol className="space-y-3">
           {(h.conversation?.messages ?? []).map((m) => (
             <li key={m.id} className={cx('rounded-lg px-3 py-2', m.direction === 'in' ? 'bg-sunken' : 'border border-line')}>

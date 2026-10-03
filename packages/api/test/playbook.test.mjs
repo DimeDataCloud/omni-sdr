@@ -78,6 +78,6 @@ test('autonomy: only countable decisions, last 50 per category; never auto-send;
   const q = pb.body.autonomy.categories.find((c) => c.category === 'question');
   assert.deepEqual([q.decided, q.unedited, q.edited, q.eligible], [3, 2, 1, false], 'the form draft above never counts');
   // A closed conversation gets no draft (nor does a handed-off one: the closer owns it then).
-  await api.q(`UPDATE conversations SET state = 'closed' WHERE id = $1`, [conv]);
+  await api.q(`UPDATE conversations SET state = 'closed', closed_reason = 'outcome' WHERE id = $1`, [conv]);
   assert.equal((await api.call('POST', `${api.W}/conversations/${conv}/reply-draft`, { as: 'sam@example.com' })).status, 409);
 });

@@ -78,7 +78,8 @@ export interface ThreadMessage { id: Id; direction: 'in' | 'out'; at: Iso; chann
 export interface HandoffItem {
   id: Id; conversationId: Id; closerId: Id; reason: HandoffReason; summary: string; answers: Record<string, unknown>; createdBy: Id | null; createdAt: Iso;
   dueAt: Iso | null; acceptedAt: Iso | null; outcome: HandoffOutcome | null; outcomeAt: Iso | null; overdue: boolean;
-  channel: string; category: string | null; contactName: string | null; contactEmail: string | null; contactCompany: string | null;
+  // channel and contact are null for a closer whose handoff ended (not won): they keep the record, not the conversation.
+  channel: string | null; category: string | null; contactName: string | null; contactEmail: string | null; contactCompany: string | null;
 }
 // GET …/handoffs/:id
 export interface HandoffCard extends Omit<HandoffItem, 'channel' | 'category' | 'contactName' | 'contactEmail' | 'contactCompany'> {
