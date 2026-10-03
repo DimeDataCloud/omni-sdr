@@ -110,7 +110,15 @@ export async function seedTenant(db, label, { cap = 5, trust = 1, heat = 1 } = {
   await db.query(`INSERT INTO competitor_snapshots (org_id, workspace_id, competitor_id, url, fetched_at, sha, text)
     VALUES ($1, $2, $3, 'https://rival.test/', now(), repeat('a', 64), 'Rival answers calls.')`, [org, ws, comp]);
   await db.query(`INSERT INTO battlecards (org_id, workspace_id, competitor_id, version, doc, source_refs) VALUES ($1, $2, $3, 1, '{}', '[]')`, [org, ws, comp]);
-  return { ...t, message, inbound };
+  // 0015: the reply's conversation and a handoff per tenant, so the RLS matrix and the FK rule cover them.
+  // A conversation starts with no closer; closer_id follows the handoff.
+  const conversation = (await one(db, `INSERT INTO conversations (org_id, workspace_id, contact_id, channel, thread_key, last_inbound_at)
+    VALUES ($1, $2, $3, 'email', $4, now()) RETURNING id`, [org, ws, contact, `contact:${contact}`])).id;
+  await db.query(`UPDATE inbound_messages SET conversation_id = $2 WHERE id = $1`, [inbound, conversation]);
+  await db.query(`INSERT INTO handoffs (org_id, workspace_id, conversation_id, closer_id, reason, summary, created_by)
+    VALUES ($1, $2, $3, $4, 'qualified', 'Wants a call next week.', $4)`, [org, ws, conversation, user]);
+  await db.query(`UPDATE conversations SET state = 'handed_off', closer_id = $2 WHERE id = $1`, [conversation, user]);
+  return { ...t, message, inbound, conversation };
 }
 
 // A new draft for the tenant's enrollment, passed through the gate and approved.

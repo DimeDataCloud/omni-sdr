@@ -2,13 +2,14 @@
 // The prospect's text is hostile input. Classification can only push toward the safe side: suppress on
 // anything that looks like an opt-out, stop the sequence on any real reply, and hand everything to a human
 // (rule confidence is 0.6, below the guide's 0.8 "needs you" line). Nothing here drafts or sends.
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { withoutTenant, withService } from '../../../db/src/context.mjs';
 
 const sha = (s) => createHash('sha256').update(s, 'utf8').digest('hex');
 
 import { classifyReply, cleanReplyBody, addBusinessMinutes, SLA_MINUTES, returnDateFrom, OOO_DEFAULT_SNOOZE_DAYS } from './reply-rules.mjs';
 import { offDecider } from '../../../ai/src/decide.mjs';
+import { threadFor, emailThreadKey } from './conversations.mjs';
 import { REPLY_TRIAGE } from '../../../ai/src/registry.mjs';
 export { classifyReply, cleanReplyBody, addBusinessMinutes, SLA_MINUTES };
 
@@ -42,13 +43,16 @@ export async function ingestReply(client, msg, { classify = classifyReply } = {}
     }
     const tz = (await tx.query(`SELECT timezone FROM workspaces WHERE id = $1`, [hit.workspace_id])).rows[0]?.timezone ?? 'America/Chicago';
     const slaDueAt = verdict.intent === 'meeting_request' ? addBusinessMinutes(msg.receivedAt, SLA_MINUTES, tz) : null;
+    // The reply joins its conversation (0015): one per contact on email, so the closer sees the whole thread.
+    const conversation = await threadFor(tx, { orgId: hit.org_id, workspaceId: hit.workspace_id, channel: msg.channel ?? 'email',
+      threadKey: emailThreadKey(hit.contact_id), contactId: hit.contact_id, at: msg.receivedAt, category: verdict.intent });
     const id = (await tx.query(
       `INSERT INTO inbound_messages (org_id, workspace_id, contact_id, message_id, channel, from_address, subject, body,
-         received_at, intent, intent_confidence, classified_by, sla_due_at, external_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
+         received_at, intent, intent_confidence, classified_by, sla_due_at, external_id, conversation_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
       [hit.org_id, hit.workspace_id, hit.contact_id, hit.message_id, msg.channel ?? 'email', msg.from?.slice(0, 320) ?? null,
         msg.subject?.slice(0, 998) ?? null, String(msg.body ?? '').slice(0, 100000), msg.receivedAt, verdict.intent,
-        verdict.confidence, verdict.by, slaDueAt, msg.externalId ?? null])).rows[0].id;
+        verdict.confidence, verdict.by, slaDueAt, msg.externalId ?? null, conversation.id])).rows[0].id;
 
     // Safe-side effects only.
     if (verdict.intent === 'unsubscribe' || verdict.intent === 'bounce') {
@@ -75,7 +79,7 @@ export async function ingestReply(client, msg, { classify = classifyReply } = {}
     if (slaDueAt) await notifyInApp(tx, { orgId: hit.org_id, workspaceId: hit.workspace_id, inboundId: id, at: msg.receivedAt });
     await tx.query(`INSERT INTO outbox (org_id, topic, key, payload) VALUES ($1, 'inbound.received', $2, $3)`,
       [hit.org_id, id, JSON.stringify({ inbound_id: id, intent: verdict.intent, sla_due_at: slaDueAt })]);
-    return { outcome: 'recorded', id, intent: verdict.intent, slaDueAt: slaDueAt?.toISOString() ?? null,
+    return { outcome: 'recorded', id, conversationId: conversation.id, intent: verdict.intent, slaDueAt: slaDueAt?.toISOString() ?? null,
       ...(snoozedUntil ? { snoozedUntil: snoozedUntil.toISOString() } : {}) };
   });
 }
@@ -222,18 +226,22 @@ export async function ingestForm(client, hook, msg, { classify = classifyReply, 
     const tz = (await tx.query(`SELECT timezone FROM workspaces WHERE id = $1`, [hit.workspace_id])).rows[0]?.timezone ?? 'America/Chicago';
     const slaDueAt = verdict.intent === 'meeting_request' ? addBusinessMinutes(msg.receivedAt, SLA_MINUTES, tz) : null;
     const subject = msg.page ? `Form: ${String(msg.page).slice(0, 200)}` : 'Form submission';
+    // The submission joins its conversation (0015): one per contact on the form channel; without an address, its own.
+    const conversation = await threadFor(tx, { orgId: hit.org_id, workspaceId: hit.workspace_id, channel: 'form',
+      threadKey: contactId ? emailThreadKey(contactId) : `submission:${msg.externalId ?? randomUUID()}`, contactId,
+      at: msg.receivedAt, category: verdict.intent });
     const recent = (await tx.query(`SELECT count(*)::int AS n FROM inbound_messages WHERE workspace_id = $1 AND channel = 'form'
       AND received_at > $2::timestamptz - interval '24 hours'`, [hit.workspace_id, msg.receivedAt])).rows[0].n;
     const capped = recent >= dailyCap;
     // ON CONFLICT: two concurrent retries with one externalId record one row (#85 audit P3-1).
     const ins = (await tx.query(
       `INSERT INTO inbound_messages (org_id, workspace_id, contact_id, channel, from_address, subject, body, received_at,
-         intent, intent_confidence, classified_by, sla_due_at, external_id, decision, decided_at)
-       VALUES ($1, $2, $3, 'form', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+         intent, intent_confidence, classified_by, sla_due_at, external_id, decision, decided_at, conversation_id)
+       VALUES ($1, $2, $3, 'form', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
        ON CONFLICT (workspace_id, channel, external_id) DO NOTHING RETURNING id`,
       [hit.org_id, hit.workspace_id, contactId, email, subject, String(msg.body ?? '').slice(0, 100000), msg.receivedAt,
         verdict.intent, verdict.confidence, verdict.by, slaDueAt, msg.externalId ?? null,
-        capped ? JSON.stringify({ skipped: 'form_daily_cap', cap: dailyCap }) : null, capped ? msg.receivedAt : null])).rows[0];
+        capped ? JSON.stringify({ skipped: 'form_daily_cap', cap: dailyCap }) : null, capped ? msg.receivedAt : null, conversation.id])).rows[0];
     if (!ins) {
       const dup = (await tx.query(`SELECT id FROM inbound_messages WHERE workspace_id = $1 AND channel = 'form' AND external_id = $2`,
         [hit.workspace_id, msg.externalId])).rows[0];
@@ -253,6 +261,6 @@ export async function ingestForm(client, hook, msg, { classify = classifyReply, 
     if (slaDueAt) await notifyInApp(tx, { orgId: hit.org_id, workspaceId: hit.workspace_id, inboundId: id, at: msg.receivedAt });
     await tx.query(`INSERT INTO outbox (org_id, topic, key, payload) VALUES ($1, 'inbound.received', $2, $3)`,
       [hit.org_id, id, JSON.stringify({ inbound_id: id, channel: 'form', intent: verdict.intent, sla_due_at: slaDueAt })]);
-    return { outcome: 'recorded', id, intent: verdict.intent, slaDueAt: slaDueAt?.toISOString() ?? null };
+    return { outcome: 'recorded', id, conversationId: conversation.id, intent: verdict.intent, slaDueAt: slaDueAt?.toISOString() ?? null };
   });
 }
