@@ -54,7 +54,7 @@ test('the right login gets a strict, host-only, http-only session that opens the
   assert.equal(r.status, 303);
   assert.equal(r.headers.get('location'), '/w/x/inbox');
   const sc = r.headers.get('set-cookie');
-  for (const attr of ['__Host-omni_session=', 'Path=/', 'Secure', 'HttpOnly', 'SameSite=Strict', 'Max-Age=43200']) assert.ok(sc.includes(attr), attr);
+  for (const attr of ['__Host-omni_session=', 'Path=/', 'Secure', 'HttpOnly', 'SameSite=Lax', 'Max-Age=43200']) assert.ok(sc.includes(attr), attr);
   assert.ok(!/Domain=/i.test(sc));
   const app = await get('/w/x/inbox', { cookie: cookieOf(r) });
   assert.equal(app.status, 200);

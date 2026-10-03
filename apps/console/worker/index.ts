@@ -7,7 +7,7 @@
 //   AUTH (KV) "password"         the password the owner set in /auth/password; wins over PASSWORD_HASH once present
 //   AUTH (KV) "pwver"            bumped on every password change; sessions carry it, so a change signs everyone else out
 // Hash format:   pbkdf2-sha256$<iterations>$<salt b64>$<hash b64>   (100,000 iterations is the Workers maximum)
-// Session:       __Host-omni_session = v2.<expires ms>.<nonce>.<pwver>.<hmac b64url>   (HttpOnly, Secure, SameSite=Strict, Path=/)
+// Session:       __Host-omni_session = v2.<expires ms>.<nonce>.<pwver>.<hmac b64url>   (HttpOnly, Secure, SameSite=Lax, Path=/)
 
 import { appCsp } from './csp.ts';
 
@@ -78,7 +78,10 @@ async function validSession(env: Env, cookie: string | undefined) {
 }
 const readCookie = (req: Request, name: string) =>
   req.headers.get('cookie')?.split(/;\s*/).find((c) => c.startsWith(`${name}=`))?.slice(name.length + 1);
-const sessionCookie = (token: string) => `${COOKIE}=${token}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=${SESSION_MS / 1000}`;
+// Lax, not Strict: Google's OAuth redirect back to /connect/google is a cross-site navigation, and a Strict cookie is
+// withheld from it, so the gate bounced every Gmail connect to /auth/login (2026-10-03). Lax still keeps the cookie off
+// cross-site POSTs and subrequests; the POST handlers below also check the origin.
+const sessionCookie = (token: string) => `${COOKIE}=${token}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=${SESSION_MS / 1000}`;
 
 /** Only same-site relative paths; never `//host` or a scheme. */
 const safeNext = (n: string | null) => (n && /^\/(?![/\\])[\w\-./?=&%#]*$/.test(n) && !n.startsWith('/auth/') ? n : '/');
@@ -197,7 +200,7 @@ export default {
     }
 
     if (path.startsWith('/auth/') && req.method === 'POST') {
-      // CSRF: SameSite=Strict plus the request's origin. Browsers that withhold the origin ("null") still say where the
+      // CSRF: the request's origin (SameSite=Lax already withholds the cookie from cross-site POSTs). Browsers that withhold the origin ("null") still say where the
       // request came from in Sec-Fetch-Site, which a page can't forge.
       const origin = req.headers.get('origin');
       const sameSite = origin === url.origin || ((origin === null || origin === 'null') && req.headers.get('sec-fetch-site') === 'same-origin');

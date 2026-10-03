@@ -3,7 +3,8 @@
 # Run once as root on a fresh Debian 12 VM, by claude-local after Christian's go (rails §3.2). Idempotent: safe to
 # run again after a fix.
 #
-#   OMNI_OWNER_PASSWORD   the migration owner's password (from Secret Manager `omni-db-owner`; never echoed)
+#   OMNI_OWNER_PASSWORD   the migration owner's password (the password inside Secret Manager `omni-db-url-owner`; never echoed.
+#                         `omni-db-owner` held a copy until 2026-10-03, retired to free a free-tier secret slot)
 #   ALLOW_CIDR            the only source allowed to connect: Cloud Run's Direct VPC egress subnet range
 #   SKIP_INSTALL=1        config only (Postgres 16 already installed)
 #   SKIP_SWAP=1           no swap file (containers: infra/db-vm/test/run-in-docker.sh)
