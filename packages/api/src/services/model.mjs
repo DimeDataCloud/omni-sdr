@@ -97,6 +97,9 @@ export function geminiApiModel({ key, models, fetchImpl = fetch, timeoutMs = 600
       // [VERIFY] endpoint and header: https://ai.google.dev/api/generate-content
       const res = await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
         method: 'POST',
+        // A redirect would carry the custom key header to wherever it points (fetch strips only Authorization on a
+        // cross-origin redirect; #62 audit P3-2), so a redirect is an error.
+        redirect: 'error',
         signal: AbortSignal.timeout(timeoutMs),
         headers: { 'x-goog-api-key': key, 'content-type': 'application/json' },
         body: JSON.stringify({

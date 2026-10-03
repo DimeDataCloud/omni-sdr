@@ -2,7 +2,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 import { geminiApiModel, ModelError } from '../src/services/model.mjs';
 
 const MODELS = { flash_lite: 'lite-x', flash: 'flash-x', pro: 'pro-x' };
@@ -15,6 +14,7 @@ test('gemini_api: the request shape, the key only in its header, the tier picks 
   assert.deepEqual(out, { text: 'Hello there', model: 'pro-x', usage: { inputTokens: 5, outputTokens: 2 } });
   assert.equal(seen.url, 'https://generativelanguage.googleapis.com/v1beta/models/pro-x:generateContent');
   assert.equal(seen.init.headers['x-goog-api-key'], 'k-test-not-real');
+  assert.equal(seen.init.redirect, 'error', 'the key header never follows a redirect');
   assert.ok(!seen.url.includes('k-test') && !seen.init.body.includes('k-test'), 'the key is never in the URL or body');
   assert.deepEqual(JSON.parse(seen.init.body).contents, [{ role: 'user', parts: [{ text: 'Hi' }] }]);
 });
@@ -37,7 +37,8 @@ test('gemini_api: stops at its daily budget per model and starts again the next 
 });
 
 test('server.mjs refuses gemini_api unless the deployment says its data is demo-only', () => {
-  const server = fileURLToPath(new URL('../src/server.mjs', import.meta.url));
+  // A file: URL, not a path: import() of a C:\… path fails on Windows (#62 audit P3-1).
+  const server = new URL('../src/server.mjs', import.meta.url).href;
   const run = (extra) => spawnSync(process.execPath, ['-e', `import(${JSON.stringify(server)}).then((m) => m.main?.())`], {
     env: { PATH: process.env.PATH, DATABASE_URL: 'postgres://nobody@127.0.0.1:1/none', OMNI_MODEL: 'gemini_api', ...extra }, encoding: 'utf8', timeout: 20000 });
   const r = run({});
