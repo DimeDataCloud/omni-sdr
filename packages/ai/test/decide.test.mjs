@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { layaDecider, offDecider, DecideError } from '../src/decide.mjs';
-import { REPLY_TRIAGE } from '../src/registry.mjs';
+import { REPLY_TRIAGE, CATEGORIES, pickCategory } from '../src/registry.mjs';
 
 const noul = (p) => ({ type: 'noul', noul: p, answer_confidence: Math.max(p, 1 - p) });
 const none = { intent: 'question', suppressed: false, stopped: true, slaDueAt: null };
@@ -73,3 +73,34 @@ test('layaDecider fails closed: a non-200, a missing answer, no revision or a ne
 
 const pick = ({ suppress, stop, startSla }) => ({ suppress, stop, startSla });
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+
+// ─── reply_triage@3 categories (SDR-PIVOT P2): shadow only ───────────────────────────────────────────────────────
+const cats = (over = {}) => Object.fromEntries(Object.keys(CATEGORIES).map((k) => [k, noul(over[k] ?? 0.01)]));
+
+test('categories: asked only on request; every category has a question; stop and meet keep their @2 wording', () => {
+  assert.deepEqual(Object.keys(REPLY_TRIAGE.questions()), ['stop', 'meet']);
+  const q = REPLY_TRIAGE.questions({ categories: true });
+  assert.deepEqual(Object.keys(q).sort(), Object.keys(CATEGORIES).sort());
+  assert.equal(q.stop.instructions, CATEGORIES.stop.question);
+  assert.equal(q.meet.instructions, CATEGORIES.meet.question);
+  for (const c of Object.values(CATEGORIES)) assert.ok(c.threshold > 0 && c.threshold < 1 && c.question.endsWith('?'));
+});
+
+test('pickCategory: safety categories win in order; else the one furthest above its own threshold; none above → unclassified', () => {
+  assert.equal(pickCategory(cats({ stop: 0.95, meet: 0.99, interested: 0.99 })).category, 'stop', 'an opt-out is an opt-out, however keen the rest reads');
+  assert.equal(pickCategory(cats({ ooo: 0.9, spam: 0.95 })).category, 'ooo');
+  assert.equal(pickCategory(cats({ question: CATEGORIES.question.threshold + 0.2, interested: CATEGORIES.interested.threshold + 0.01 })).category, 'question');
+  assert.deepEqual(pickCategory(cats()), { category: 'unclassified', intent: 'unclassified', p: null });
+  assert.equal(pickCategory({}).category, 'unclassified', 'no answers: unclassified, not a guess');
+});
+
+test('categories never act: the effects are the @2 safety effects whatever the category says', () => {
+  const keen = { ...cats({ interested: 0.99, meet: 0.25, spam: 0.99, decline: 0.99 }) };
+  const fx = REPLY_TRIAGE.effects(keen, none);
+  assert.deepEqual(pick(fx), { suppress: false, stop: false, startSla: REPLY_TRIAGE.thresholds.meet <= 0.25 });
+  assert.equal(fx.record.category, 'spam', 'recorded for review');
+  assert.equal(typeof fx.record.category_scores.interested, 'number');
+  assert.deepEqual(Object.keys(fx).sort(), ['record', 'startSla', 'stop', 'suppress']);
+  const partial = REPLY_TRIAGE.effects({ stop: noul(0.1), meet: noul(0.1), interested: noul(0.9) }, none);
+  assert.equal(partial.record.category, undefined, 'a partial set of answers records no category');
+});
