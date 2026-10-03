@@ -19,7 +19,7 @@ import { pgPool } from './pool.mjs';
 import { firebaseVerifier } from './auth.mjs';
 import { offModel, vertexModel } from './services/model.mjs';
 import { offPlaces, googlePlaces } from './services/places.mjs';
-import { offVerifier } from './services/verify.mjs';
+import { offVerifier, zeroBounceVerifier } from './services/verify.mjs';
 
 const env = process.env;
 const need = (k) => { if (!env[k]) { console.error(`missing ${k}`); process.exit(1); } return env[k]; };
@@ -42,8 +42,9 @@ export async function main() {
       unsubscribeBase: env.OMNI_UNSUBSCRIBE_BASE ?? 'https://app.omnisdr.com',
       inboundSecret: env.OMNI_INBOUND_SECRET || null,
       places,
-      // Mailbox verification ships off until Christian picks a vendor [VERIFY vendor + unit price]; free checks still run.
-      verifier: offVerifier(),
+      // Mailbox verification: ZeroBounce (Christian 2026-10-03), on when OMNI_VERIFIER=zerobounce and its key is set
+      // (OMNI_ZEROBOUNCE_KEY, from a secret, by name). Otherwise off; free checks still run.
+      verifier: env.OMNI_VERIFIER === 'zerobounce' ? zeroBounceVerifier({ key: need('OMNI_ZEROBOUNCE_KEY') }) : offVerifier(),
       // Shared with the api.omnisdr.com Worker, which signs the caller's address (app.mjs edgeIp). Unset: not trusted.
       edgeSecret: env.OMNI_EDGE_SECRET || null,
       // Number of proxies that append to X-Forwarded-For (see OMNI_TRUST_PROXY above: 1 unless run.app ingress is closed).

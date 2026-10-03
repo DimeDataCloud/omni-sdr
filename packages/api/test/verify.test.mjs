@@ -2,7 +2,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startApi } from './helpers.mjs';
-import { fakeVerifier, mxOk } from '../src/services/verify.mjs';
+import { fakeVerifier, mxOk, zeroBounceVerifier } from '../src/services/verify.mjs';
 
 const MX = { 'clinic.example': [{ exchange: 'mx.clinic.example', priority: 10 }], 'nullmx.example': [{ exchange: '.', priority: 0 }] };
 const resolveMx = async (d) => {
@@ -94,4 +94,30 @@ test('vendor off: free checks still run and nothing is charged; short balance re
   for (const who of ['riley@example.com', 'client@example.com']) assert.equal((await verify([x], who)).status, 403, who);
   const other = (await api.call('POST', `${api.ws(1)}/contacts`, { body: { contacts: [{ email: 'w2.v3@clinic.example' }] } })).body.created[0].id;
   assert.deepEqual((await verify([other], 'sam@example.com')).body.results[0].outcome, 'not_found');
+});
+
+test('zerobounce: the key goes in the body, never the URL; only "valid" is valid; catch-all and role inboxes are risky', async () => {
+  const sent = [];
+  const answer = { 'a@x.example': ['valid', ''], 'b@x.example': ['invalid', 'mailbox_not_found'], 'c@x.example': ['catch-all', ''],
+    'd@x.example': ['do_not_mail', 'role_based'], 'e@x.example': ['spamtrap', ''], 'f@x.example': ['do_not_mail', 'global_suppression'],
+    'g@x.example': ['unknown', 'timeout_exceeded'], 'h@x.example': ['something_new', ''] };
+  const zb = zeroBounceVerifier({ key: 'zb-test-not-real', fetchImpl: async (url, init) => {
+    sent.push({ url, init });
+    const { email_batch: [{ email_address: e }] } = JSON.parse(init.body);
+    return new Response(JSON.stringify({ email_batch: [{ address: e, status: answer[e][0], sub_status: answer[e][1] }], errors: [] }));
+  } });
+  const got = {};
+  for (const e of Object.keys(answer)) got[e] = (await zb.check(e)).verdict;
+  assert.deepEqual(got, { 'a@x.example': 'valid', 'b@x.example': 'invalid', 'c@x.example': 'risky', 'd@x.example': 'risky',
+    'e@x.example': 'invalid', 'f@x.example': 'invalid', 'g@x.example': 'unknown', 'h@x.example': 'unknown' });
+  for (const s of sent) {
+    assert.equal(s.url, 'https://bulkapi.zerobounce.net/v2/validatebatch');
+    assert.ok(!s.url.includes('zb-test'), 'never in the URL');
+    assert.equal(JSON.parse(s.init.body).api_key, 'zb-test-not-real');
+  }
+  const refused = zeroBounceVerifier({ key: 'k', fetchImpl: async () => new Response(JSON.stringify({ email_batch: [], errors: [{ error: 'Invalid API Key k' }] })) });
+  await assert.rejects(refused.check('a@x.example'), (e) => /refused the request/.test(e.message) && !/Invalid API Key/.test(e.message), 'the vendor\'s message (which can echo the key) is not passed on');
+  const down = zeroBounceVerifier({ key: 'k', fetchImpl: async () => new Response('', { status: 500 }) });
+  await assert.rejects(down.check('a@x.example'), /http 500/);
+  assert.throws(() => zeroBounceVerifier({}), /needs a key/);
 });
