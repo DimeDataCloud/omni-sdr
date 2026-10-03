@@ -1,6 +1,7 @@
 -- Omni-SDR 0014: inbound webhooks, the second channel of the SDR buffer (docs/claude/SDR-PIVOT.md §7, P5).
--- A workspace creates a hook and gets a URL plus a token, shown once. Its website form, chat widget or a Zapier step
--- POSTs each submission there with `Authorization: Bearer <token>`. The submission becomes an inbound message
+-- A workspace creates a hook and gets a URL plus a token, shown once. A server-side caller (the website's form backend,
+-- a Zapier step) POSTs each submission there with `Authorization: Bearer <token>`. Not a browser: the token would be
+-- public. A browser chat widget needs a publishable-key design of its own. The submission becomes an inbound message
 -- (channel 'form') and runs the same triage as an email reply: rules first, then Laya.
 --
 --   * Only the token's sha256 is stored. app_rw never reads it back; only the resolver compares it.
@@ -50,4 +51,24 @@ REVOKE EXECUTE ON FUNCTION inbox_resolve_hook(uuid, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION inbox_resolve_hook(uuid, text) TO inbox_svc;
 GRANT CREATE ON SCHEMA public TO inbox_owner;  -- PG15+: a new owner needs CREATE on the schema (no superuser on Cloud SQL)
 ALTER FUNCTION inbox_resolve_hook(uuid, text) OWNER TO inbox_owner;
+REVOKE CREATE ON SCHEMA public FROM inbox_owner;
+
+-- ─── fair triage across tenants (#85 audit P2) ──────────────────────────────────────────────────────────────────
+-- inbox_undecided (0006) takes the oldest undecided rows across all tenants. Before hooks, inbound volume was bounded
+-- by our own sends; a public hook is not, so one tenant's flood could starve everyone else's triage. This version takes
+-- rows round-robin by workspace (each workspace's oldest first), so one busy workspace waits behind the others, not the
+-- reverse. A new name: 0006's function belongs to inbox_owner and a migration can't replace it on a managed Postgres.
+CREATE FUNCTION inbox_undecided_fair(p_limit int)
+RETURNS TABLE (id uuid, org_id uuid, workspace_id uuid)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT q.id, q.org_id, q.workspace_id FROM (
+    SELECT i.id, i.org_id, i.workspace_id, i.received_at,
+           row_number() OVER (PARTITION BY i.workspace_id ORDER BY i.received_at) AS turn
+    FROM inbound_messages i WHERE i.decided_at IS NULL
+  ) q ORDER BY q.turn, q.received_at LIMIT least(greatest(p_limit, 1), 500)
+$$;
+REVOKE EXECUTE ON FUNCTION inbox_undecided_fair(int) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION inbox_undecided_fair(int) TO inbox_svc;
+GRANT CREATE ON SCHEMA public TO inbox_owner;
+ALTER FUNCTION inbox_undecided_fair(int) OWNER TO inbox_owner;
 REVOKE CREATE ON SCHEMA public FROM inbox_owner;

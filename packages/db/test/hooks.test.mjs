@@ -48,3 +48,17 @@ test('inbox_svc adds a contact for a new submitter only inside the scoped worksp
   assert.match(await refused(as(db, 'inbox_svc', { org: a.org, ws: [a.ws] }, () => db.query(
     `INSERT INTO contacts (org_id, workspace_id, email, email_status) VALUES ($1, $2, 'y@lead.example', 'valid')`, [a.org, a.ws]))) ?? '', /permission denied/);
 });
+
+test('inbox_undecided_fair: a flood in one tenant cannot starve another tenant\'s triage (#85 audit P2)', async () => {
+  const db = await freshDb();
+  const a = await seedTenant(db, 'alpha'); const b = await seedTenant(db, 'beta');
+  // claude-cloud's repro: 600 form rows in A, then one email reply in B.
+  await db.query(`INSERT INTO inbound_messages (org_id, workspace_id, channel, body, received_at)
+    SELECT $1, $2, 'form', 'spam ' || g, now() - interval '1 hour' + g * interval '1 second' FROM generate_series(1, 600) g`, [a.org, a.ws]);
+  await db.query(`INSERT INTO inbound_messages (org_id, workspace_id, channel, body, received_at) VALUES ($1, $2, 'email', 'real reply', now())`, [b.org, b.ws]);
+  const rows = (await as(db, 'inbox_svc', null, () => db.query(`SELECT * FROM inbox_undecided_fair(50)`))).rows;
+  assert.equal(rows.length, 50);
+  assert.ok(rows.some((r) => r.workspace_id === b.ws), `B's reply is in the first pass (got ${rows.filter((r) => r.workspace_id === b.ws).length})`);
+  assert.equal(rows.findIndex((r) => r.workspace_id === b.ws) < 2, true, 'and near the front: one turn per workspace');
+  assert.match(await refused(as(db, 'app_rw', { org: a.org, ws: [a.ws] }, () => db.query(`SELECT * FROM inbox_undecided_fair(5)`))) ?? 'ran', /permission denied/);
+});

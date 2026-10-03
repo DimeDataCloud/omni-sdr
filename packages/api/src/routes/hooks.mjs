@@ -1,5 +1,5 @@
-// Inbound webhooks (0014; docs/claude/SDR-PIVOT.md P5): a website form, chat widget or Zapier step posts each
-// submission to /v1/hooks/:id with `Authorization: Bearer <token>`. Managing hooks needs the `connections` permission.
+// Inbound webhooks (0014; docs/claude/SDR-PIVOT.md P5): a server-side caller (a website's form backend, a Zapier step)
+// posts each submission to /v1/hooks/:id with `Authorization: Bearer <token>`. Never a browser: the token would be public. Managing hooks needs the `connections` permission.
 // The token is shown once, at creation; only its sha256 is stored.
 import { randomBytes, createHash } from 'node:crypto';
 import { T, camel, audit } from './index.mjs';

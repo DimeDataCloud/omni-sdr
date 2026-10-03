@@ -20,7 +20,7 @@ const EXPECTED = {
   app_closer_contact: ['app_rw', 'gate_svc', 'inbox_svc', 'sender_svc'], app_closer_enrollment: ['app_rw', 'gate_svc', 'inbox_svc', 'sender_svc'],
   app_closer_draft: ['app_rw', 'gate_svc', 'inbox_svc', 'sender_svc'],
   inbox_resolve_reply: ['inbox_svc'], inbox_undecided: ['inbox_svc'], inbox_wake_snoozed: ['inbox_svc'], inbox_sla_due: ['inbox_svc'],
-  inbox_resolve_hook: ['inbox_svc'],   // 0014
+  inbox_resolve_hook: ['inbox_svc'], inbox_undecided_fair: ['inbox_svc'],   // 0014
   sender_due_workspaces: ['sender_svc'],
   send_guard: [], send_guard_enrollment: [],  // trigger-only
 };
