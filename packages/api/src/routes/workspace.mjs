@@ -26,8 +26,8 @@ export function registerWorkspace(r) {
     const o = (await tx.query(`SELECT id, name, account_type, subscription_status, trial_ends_at, feature_flags FROM orgs WHERE id = $1`,
       [m.orgId])).rows[0];
     // A client viewer (an outside party) sees what their screens need, not the agency's plan, trial, flags, Trust Dial,
-    // postal address or Auto-adjust setup (bug bounty 2026-10-02 #4).
-    if (m.role === 'client_viewer') {
+    // postal address or Auto-adjust setup (bug bounty 2026-10-02 #4). A closer (0015) gets the same narrow view.
+    if (m.role === 'client_viewer' || m.role === 'closer') {
       return { workspace: { id: w.id, name: w.name, timezone: w.timezone, clientApprovalsEnabled: w.client_approvals_enabled },
         org: { id: o.id, name: o.name, accountType: o.account_type }, you: { userId: m.userId, role: m.role } };
     }

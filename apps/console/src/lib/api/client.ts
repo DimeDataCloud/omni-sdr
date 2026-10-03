@@ -3,7 +3,7 @@
 import type {
   Me, Settings, Members, ApprovalsList, ApprovalCard, InboxItem, Meeting, Agent, ChatMessage, Routine, Capacity,
   Analytics, Credits, Connector, Contact, ContactDetail, Role, ModelTier, DraftStatus, Id, About, AskMode, Pipeline,
-  Autonomy, AgentStats, Dataset,
+  Autonomy, AgentStats, Dataset, HandoffItem, HandoffCard, HandoffDraft, HandoffReason, HandoffOutcome,
   Asset, AssetKind, AssetStatus, Aspect, Edits, GenMode, Ingredient, MotionKey, Product, Project, Scene, SequenceClip, StudioCaps,
 } from './types';
 
@@ -44,6 +44,16 @@ export interface Client {
   handle(s: Scope, id: Id): Promise<void>;
   bookFromReply(s: Scope, id: Id, body: { startsAt: string; endsAt: string; meetUrl?: string | null }): Promise<Meeting>;
   meetings(s: Scope, range?: 'upcoming' | 'past' | 'all'): Promise<Meeting[]>;
+
+  // Handoffs (SDR-PIVOT P4). Hand off: `handoff` (operator, admin). Work them: `handoff_work` (closer, operator, admin).
+  handoffDraft(s: Scope, conversationId: Id): Promise<HandoffDraft>;
+  createHandoff(s: Scope, conversationId: Id, body: { closerId: Id; reason: HandoffReason; summary: string; answers?: Record<string, string> }): Promise<{ id: Id }>;
+  handoffs(s: Scope, q?: { open?: boolean }): Promise<HandoffItem[]>;
+  handoff(s: Scope, id: Id): Promise<HandoffCard>;
+  acceptHandoff(s: Scope, id: Id): Promise<void>;
+  handoffOutcome(s: Scope, id: Id, outcome: HandoffOutcome): Promise<void>;
+  bookingLink(s: Scope): Promise<{ url: string | null }>;
+  setBookingLink(s: Scope, url: string | null): Promise<{ url: string | null }>;
   patchMeeting(s: Scope, id: Id, patch: { status?: Meeting['status'] }): Promise<Meeting>;
 
   agents(s: Scope): Promise<Agent[]>;

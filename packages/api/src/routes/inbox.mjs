@@ -16,7 +16,7 @@ const affected = (r) => r.affectedRows ?? r.rowCount ?? 0;
 
 const INBOX_SQL = `
   SELECT i.id, i.channel, i.from_address, i.subject, i.body, i.received_at, i.intent, i.intent_confidence,
-         i.classified_by, i.sla_due_at, i.handled_at, i.handled_by, i.message_id,
+         i.classified_by, i.sla_due_at, i.handled_at, i.handled_by, i.message_id, i.conversation_id,
          c.id AS contact_id, c.name AS contact_name, c.company AS contact_company, c.title AS contact_title
   FROM inbound_messages i LEFT JOIN contacts c ON c.id = i.contact_id`;
 

@@ -4,7 +4,8 @@
 import { can } from '@db/permissions.mjs';
 import { CONNECTORS, freeEmailChecks } from '@rules/catalog.mjs';
 import { ApiError, invalidate, type Client, type Scope, type Campaign, type Icp } from '../client';
-import type { Dataset, ApprovalCard, Agent, ChatMessage, Contact, InboxItem, Meeting, Routine, Role, Analytics, Me, Pipeline, AboutKind, AskMode } from '../types';
+import type { Dataset, ApprovalCard, Agent, ChatMessage, Contact, InboxItem, Meeting, Routine, Role, Analytics, Me, Pipeline, AboutKind, AskMode, HandoffItem, HandoffCard, ThreadMessage } from '../types';
+import { addBusinessMinutes, SLA_MINUTES } from '@rules/reply-rules.mjs';
 import { load, save, gate, newId, personaEmail, convertOnMeeting } from './store';
 import { think } from './brain';
 import { studioDemo, mediaCounts } from './studio';
@@ -22,11 +23,11 @@ function me(w: World): MemberRow {
 }
 
 /** withTenant + can(): the membership must reach the workspace, and the role must allow the action. */
-function tenant(w: World, s: Scope, action: string) {
+function tenant(w: World, s: Scope, action: string | null) {
   const m = me(w);
   const ws = w.workspaces.find((x) => x.id === s.workspaceId);
   if (s.orgId !== w.org.id || !ws || (m.workspaceIds && !m.workspaceIds.includes(ws.id))) throw new ApiError(404, 'not_found', 'workspace not found');
-  if (!can({ role: m.role, clientApprovalsEnabled: ws.clientApprovalsEnabled }, action)) throw new ApiError(403, 'forbidden', 'your role cannot do that here');
+  if (action && !can({ role: m.role, clientApprovalsEnabled: ws.clientApprovalsEnabled }, action)) throw new ApiError(403, 'forbidden', 'your role cannot do that here');
   return { m, ws };
 }
 
@@ -109,6 +110,30 @@ const routineOut = (w: World, r: World['routines'][number]): Routine => ({ id: r
   name: r.name, category: r.category, schedule: r.schedule, active: r.active, pausedReason: r.pausedReason, pausedByOps: Boolean(r.pausedReason?.startsWith('ops:')),
   lastRunAt: r.lastRunAt, nextRunAt: r.nextRunAt, createdAt: r.createdAt });
 const chatOut = (m: World['chat'][number]): ChatMessage => ({ id: m.id, sender: m.sender, authorId: m.authorId, body: m.body, meta: m.meta as ChatMessage['meta'], createdAt: m.createdAt });
+// Conversations in the demo: one per contact (email), as the API threads email replies (0015).
+const convId = (contactId: string) => `conv-${contactId}`;
+const contactOfConv = (id: string) => (id.startsWith('conv-') ? id.slice(5) : '');
+function thread(w: World, ws: string, contactId: string): ThreadMessage[] {
+  const inbound = w.inbound.filter((r) => r.ws === ws && r.contactId === contactId)
+    .map((r): ThreadMessage => ({ id: r.id, direction: 'in', at: r.receivedAt, channel: r.channel, subject: r.subject, body: r.body, category: r.intent }));
+  const enr = new Set(w.enrollments.filter((e) => e.contactId === contactId).map((e) => e.id));
+  const out = w.sent.filter((x) => x.ws === ws).flatMap((x) => {
+    const d = w.drafts.find((y) => y.id === x.draftId);
+    return d && enr.has(d.enrollmentId) ? [{ id: x.id, direction: 'out' as const, at: x.sentAt, channel: 'email', subject: d.subject, body: d.body }] : [];
+  });
+  return [...inbound, ...out].sort((a, b) => a.at.localeCompare(b.at));
+}
+function handoffOut(w: World, h: World['handoffs'][number]): HandoffItem {
+  const c = w.contacts.find((x) => x.id === h.contactId);
+  const last = [...w.inbound].filter((r) => r.contactId === h.contactId).sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))[0];
+  return { id: h.id, conversationId: convId(h.contactId), closerId: h.closerId, reason: h.reason, summary: h.summary, answers: h.answers, createdBy: h.createdBy,
+    createdAt: h.createdAt, dueAt: h.dueAt, acceptedAt: h.acceptedAt, outcome: h.outcome, outcomeAt: h.outcomeAt,
+    overdue: !h.acceptedAt && !h.outcome && Boolean(h.dueAt && h.dueAt <= nowIso()), channel: 'email', category: last?.intent ?? null,
+    contactName: c?.name ?? null, contactEmail: c?.email ?? null, contactCompany: c?.company ?? null };
+}
+/** What a person may see: a closer only their own handoffs (0015 closer_scope). */
+const visibleHandoffs = (w: World, ws: string, m: MemberRow) => w.handoffs.filter((h) => h.ws === ws && (m.role !== 'closer' || h.closerId === m.userId));
+
 function meetingOut(w: World, m: World['meetings'][number]): Meeting {
   const c = w.contacts.find((x) => x.id === m.contactId);
   return { id: m.id, contactId: m.contactId, contactName: c?.name ?? null, contactCompany: c?.company ?? null, inboundMessageId: m.inboundMessageId, provider: m.provider,
@@ -151,7 +176,7 @@ export const demoClient: Client = {
   }),
 
   settings: (s) => read((w) => {
-    const { m, ws } = tenant(w, s, 'reports_view');
+    const { m, ws } = tenant(w, s, null);   // every member, as the API's GET …/settings
     return { workspace: { id: ws.id, name: ws.name, timezone: ws.timezone, trustLevel: ws.trustLevel, clientApprovalsEnabled: ws.clientApprovalsEnabled,
       autoAdjustEnabled: ws.autoAdjustEnabled, autoAdjustSources: ws.autoAdjustSources as never, postalAddress: ws.postalAddress, customDomain: ws.customDomain, createdAt: ws.createdAt },
       org: { id: w.org.id, name: w.org.name, accountType: w.org.accountType, subscriptionStatus: w.org.subscriptionStatus, trialEndsAt: w.org.trialEndsAt, featureFlags: w.org.featureFlags },
@@ -268,7 +293,8 @@ export const demoClient: Client = {
           intentConfidence: r.intentConfidence, classifiedBy: r.classifiedBy, slaDueAt: r.slaDueAt,
           slaMinutesRemaining: r.slaDueAt && !r.handledAt ? Math.round((new Date(r.slaDueAt).getTime() - now) / 60000) : null,
           needsHuman: r.intentConfidence === null || r.intentConfidence < 0.8, handledAt: r.handledAt, handledBy: r.handledBy, messageId: r.messageId,
-          contactId: r.contactId, contactName: c?.name ?? null, contactCompany: c?.company ?? null, contactTitle: c?.title ?? null };
+          contactId: r.contactId, contactName: c?.name ?? null, contactCompany: c?.company ?? null, contactTitle: c?.title ?? null,
+          conversationId: r.contactId ? convId(r.contactId) : null };
       });
   }),
   handle: (s, id) => write((w) => {
@@ -293,6 +319,80 @@ export const demoClient: Client = {
     convertOnMeeting(w, r.contactId);
     audit(w, s.workspaceId, m.userId, 'book', 'meeting', row.id);
     return meetingOut(w, row);
+  }),
+  handoffDraft: (s, id) => read((w) => {
+    const { ws } = tenant(w, s, 'handoff');
+    const contactId = contactOfConv(id);
+    const c = w.contacts.find((x) => x.id === contactId && x.ws === ws.id);
+    if (!c) throw nf('conversation');
+    const msgs = thread(w, ws.id, contactId);
+    const lastIn = [...msgs].reverse().find((x) => x.direction === 'in');
+    const meeting = lastIn?.category === 'meeting_request';
+    const n = msgs.filter((x) => x.direction === 'in').length;
+    const summary = `${c.name ?? c.email ?? 'This person'}${c.company ? ` (${c.company})` : ''} ${meeting ? 'asked for a meeting' : 'replied'} via email; `
+      + `${n} message${n === 1 ? '' : 's'} from them so far.${lastIn ? ` Last message: "${lastIn.body.replace(/\s+/g, ' ').trim().slice(0, 280)}"` : ''}`;
+    const closers = w.members.filter((x) => ['closer', 'operator', 'admin'].includes(x.role) && (!x.workspaceIds || x.workspaceIds.includes(ws.id)))
+      .sort((a, b) => Number(b.role === 'closer') - Number(a.role === 'closer') || a.email.localeCompare(b.email))
+      .map((x) => ({ id: x.userId, email: x.email, role: x.role, hasBookingLink: Boolean(x.bookingUrl) }));
+    return { reason: meeting ? 'meeting_request' as const : 'qualified' as const, summary, closers };
+  }),
+  createHandoff: (s, id, body) => write((w) => {
+    const { m, ws } = tenant(w, s, 'handoff');
+    const contactId = contactOfConv(id);
+    if (!w.contacts.some((x) => x.id === contactId && x.ws === ws.id)) throw nf('conversation');
+    const closer = w.members.find((x) => x.userId === body.closerId);
+    if (!closer || !['closer', 'operator', 'admin'].includes(closer.role) || (closer.workspaceIds && !closer.workspaceIds.includes(ws.id))) {
+      throw new ApiError(400, 'bad_request', 'that person can\'t take handoffs in this workspace', { field: 'closerId' });
+    }
+    if (!body.summary.trim() || body.summary.length > 4000) throw new ApiError(400, 'bad_request', 'summary: 1 to 4000 characters');
+    if (w.handoffs.some((h) => h.ws === ws.id && h.contactId === contactId && !h.outcome)) throw conflict('this conversation already has an open handoff');
+    const now = new Date();
+    const h = { id: newId(), ws: ws.id, contactId, closerId: body.closerId, reason: body.reason, summary: body.summary, answers: body.answers ?? {},
+      createdBy: m.userId, createdAt: now.toISOString(), dueAt: addBusinessMinutes(now, SLA_MINUTES, ws.timezone).toISOString(), acceptedAt: null, outcome: null, outcomeAt: null };
+    w.handoffs.push(h);
+    audit(w, ws.id, m.userId, 'handoff', 'conversation', id);
+    return { id: h.id };
+  }),
+  handoffs: (s, q = {}) => read((w) => {
+    const { m, ws } = tenant(w, s, 'handoff_work');
+    return visibleHandoffs(w, ws.id, m).filter((h) => q.open === false || !h.outcome).map((h) => handoffOut(w, h))
+      .sort((a, b) => Number(!a.outcome) === Number(!b.outcome) ? (Number(!b.acceptedAt) - Number(!a.acceptedAt) || (a.dueAt ?? '~').localeCompare(b.dueAt ?? '~'))
+        : Number(!b.outcome) - Number(!a.outcome));
+  }),
+  handoff: (s, id) => read((w): HandoffCard => {
+    const { m, ws } = tenant(w, s, 'handoff_work');
+    const h = visibleHandoffs(w, ws.id, m).find((x) => x.id === id);
+    if (!h) throw nf('handoff');
+    const { channel, category, contactName, contactEmail, contactCompany, ...rest } = handoffOut(w, h);
+    const closer = w.members.find((x) => x.userId === h.closerId);
+    return { ...rest, closerEmail: closer?.email ?? null, bookingUrl: closer?.bookingUrl ?? null,
+      contact: { name: contactName, email: contactEmail, company: contactCompany },
+      conversation: { id: convId(h.contactId), channel, category, messages: thread(w, ws.id, h.contactId) } };
+  }),
+  acceptHandoff: (s, id) => write((w) => {
+    const { m, ws } = tenant(w, s, 'handoff_work');
+    const h = visibleHandoffs(w, ws.id, m).find((x) => x.id === id);
+    if (!h) throw nf('handoff');
+    if (h.closerId !== m.userId) throw new ApiError(403, 'forbidden', 'only the closer it was handed to can accept it');
+    if (h.outcome) throw conflict('this handoff is already closed');
+    if (!h.acceptedAt) { h.acceptedAt = nowIso(); audit(w, ws.id, m.userId, 'handoff_accept', 'handoff', h.id); }
+  }),
+  handoffOutcome: (s, id, outcome) => write((w) => {
+    const { m, ws } = tenant(w, s, 'handoff_work');
+    const h = visibleHandoffs(w, ws.id, m).find((x) => x.id === id);
+    if (!h) throw nf('handoff');
+    if (m.role === 'closer' && h.closerId !== m.userId) throw new ApiError(403, 'forbidden', 'not your handoff');
+    if (h.outcome) throw conflict('this handoff already has an outcome');
+    h.outcome = outcome; h.outcomeAt = nowIso();
+    audit(w, ws.id, m.userId, `handoff_${outcome}`, 'handoff', h.id);
+  }),
+  bookingLink: (s) => read((w) => { const { m } = tenant(w, s, 'handoff_work'); return { url: m.bookingUrl ?? null }; }),
+  setBookingLink: (s, url) => write((w) => {
+    const { m, ws } = tenant(w, s, 'handoff_work');
+    if (url !== null && !/^https:\/\/[^\s<>"]+$/.test(url)) throw new ApiError(400, 'bad_request', 'the booking link must be an https:// address', { field: 'url' });
+    m.bookingUrl = url;
+    audit(w, ws.id, m.userId, 'booking_link', 'membership', m.userId);
+    return { url };
   }),
   meetings: (s, range = 'upcoming') => read((w) => {
     tenant(w, s, 'reports_view');

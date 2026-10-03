@@ -6,7 +6,7 @@ import type { Role } from '../types';
 export interface Row { id: string }
 export interface WorkspaceRow extends Row { name: string; timezone: string; trustLevel: 1 | 2 | 3; clientApprovalsEnabled: boolean; autoAdjustEnabled: boolean;
   autoAdjustSources: string[]; postalAddress: string | null; customDomain: string | null; createdAt: string }
-export interface MemberRow { userId: string; email: string; name: string; role: Role; workspaceIds: string[] | null }
+export interface MemberRow { userId: string; email: string; name: string; role: Role; workspaceIds: string[] | null; bookingUrl?: string | null }
 export interface InviteRow extends Row { email: string; role: Role; workspaceIds: string[] | null; expiresAt: string; createdAt: string; revokedAt: string | null; acceptedAt: string | null }
 export interface AgentRow extends Row { ws: string; name: string; station: string; badge: string; modelTier: 'flash_lite' | 'flash' | 'pro'; systemPrompt: string;
   contextSources: string[]; autonomousMode: boolean; appearance: Record<string, unknown>; archivedAt: string | null; createdBy: string | null; createdAt: string }
@@ -31,6 +31,9 @@ export interface InboundRow extends Row { ws: string; contactId: string | null; 
   handledAt: string | null; handledBy: string | null }
 export interface MeetingRow extends Row { ws: string; contactId: string | null; inboundMessageId: string | null; provider: 'native' | 'calendly' | 'cal_com'; externalId: string | null;
   startsAt: string; endsAt: string; meetUrl: string | null; status: 'booked' | 'completed' | 'no_show' | 'canceled'; createdBy: string | null; createdAt: string }
+export interface HandoffRow extends Row { ws: string; contactId: string; closerId: string; reason: 'qualified' | 'meeting_request' | 'asked_for_human' | 'escalation';
+  summary: string; answers: Record<string, string>; createdBy: string | null; createdAt: string; dueAt: string | null; acceptedAt: string | null;
+  outcome: 'won' | 'lost' | 'no_show' | 'not_a_fit' | null; outcomeAt: string | null }
 export interface AuditRow { id: string; ws: string | null; actor: string; action: string; entityType: string; entityId: string; at: string }
 
 export interface World {
@@ -39,10 +42,10 @@ export interface World {
   workspaces: WorkspaceRow[]; members: MemberRow[]; invites: InviteRow[]; agents: AgentRow[]; chat: ChatRow[]; routines: RoutineRow[];
   mailboxes: MailboxRow[]; holds: HoldRow[]; suppression: string[]; contacts: ContactRow[]; evidence: EvidenceRow[]; icps: IcpRow[];
   campaigns: CampaignRow[]; enrollments: EnrollmentRow[]; drafts: DraftRow[]; sent: SentRow[]; inbound: InboundRow[]; meetings: MeetingRow[];
-  audit: AuditRow[]; credits: { data: number; action: number; media: number };
+  audit: AuditRow[]; credits: { data: number; action: number; media: number }; handoffs: HandoffRow[];
 }
 
-export const WORLD_VERSION = 7;
+export const WORLD_VERSION = 8;
 
 // Deterministic randomness so the demo looks the same on every device.
 function rng(seed: number) {
@@ -64,6 +67,7 @@ export const PERSONAS: { email: string; name: string; role: Role; firstWorkspace
   { email: 'sam@example.com', name: 'Sam Rivera', role: 'operator', blurb: 'Runs campaigns and approvals' },
   { email: 'riley@example.com', name: 'Riley Brooks', role: 'reviewer', blurb: 'Approves drafts, reads the inbox' },
   { email: 'client@example.com', name: 'Dr. Lena Ortiz (client)', role: 'client_viewer', firstWorkspaceOnly: true, blurb: 'A client: sees results' },
+  { email: 'cole@example.com', name: 'Cole Park (closer)', role: 'closer', firstWorkspaceOnly: true, blurb: 'Takes the conversations handed to them' },
 ];
 
 const AGENTS: [string, string, string, 'flash_lite' | 'flash' | 'pro', string, string[]][] = [
@@ -131,7 +135,7 @@ export function buildWorld(now = new Date()): World {
   const maya = members[0].userId;
 
   const w: World = { version: WORLD_VERSION, org, workspaces, members, invites: [], agents: [], chat: [], routines: [], mailboxes: [], holds: [], suppression: [],
-    contacts: [], evidence: [], icps: [], campaigns: [], enrollments: [], drafts: [], sent: [], inbound: [], meetings: [], audit: [], credits: { data: 30000, action: 38420, media: 0 } };
+    contacts: [], evidence: [], icps: [], campaigns: [], enrollments: [], drafts: [], sent: [], inbound: [], meetings: [], audit: [], credits: { data: 30000, action: 38420, media: 0 }, handoffs: [] };
 
   // Agents
   const agentIds: Record<string, string> = {};

@@ -5,7 +5,7 @@
 import { ApiError, invalidate, type Client, type Scope, type Campaign, type Icp, type ActivityItem, type ImportResult } from './client';
 import type {
   Me, Settings, Members, ApprovalsList, ApprovalCard, InboxItem, Meeting, Agent, ChatMessage, Routine, Capacity, Analytics, Credits,
-  Connector, Contact, ContactDetail, StudioCaps,
+  Connector, Contact, ContactDetail, StudioCaps, HandoffItem, HandoffCard, HandoffDraft,
 } from './types';
 import { DEV_AS, idToken, signOut } from '../auth';
 
@@ -76,6 +76,15 @@ export const httpClient: Client = {
   bookFromReply: (s, id, body) => write<Meeting>('POST', `${t(s)}/inbox/${enc(id)}/meeting`, body),
   meetings: (s, range) => items<Meeting>(`${t(s)}/meetings${qs({ range })}`),
   patchMeeting: (s, id, patch) => write<Meeting>('PATCH', `${t(s)}/meetings/${enc(id)}`, patch),
+
+  handoffDraft: (s, id) => get<HandoffDraft>(`${t(s)}/conversations/${enc(id)}/handoff-draft`),
+  createHandoff: (s, id, body) => write('POST', `${t(s)}/conversations/${enc(id)}/handoff`, body),
+  handoffs: (s, q = {}) => items<HandoffItem>(`${t(s)}/handoffs${qs({ open: q.open === false ? 'false' : undefined })}`),
+  handoff: (s, id) => get<HandoffCard>(`${t(s)}/handoffs/${enc(id)}`),
+  acceptHandoff: async (s, id) => { await write('POST', `${t(s)}/handoffs/${enc(id)}/accept`); },
+  handoffOutcome: async (s, id, outcome) => { await write('POST', `${t(s)}/handoffs/${enc(id)}/outcome`, { outcome }); },
+  bookingLink: (s) => get<{ url: string | null }>(`${t(s)}/me/booking-link`),
+  setBookingLink: (s, url) => write('PUT', `${t(s)}/me/booking-link`, { url }),
 
   agents: (s) => items<Agent>(`${t(s)}/agents`),
   createAgent: (s, body) => write<Agent>('POST', `${t(s)}/agents`, body),
