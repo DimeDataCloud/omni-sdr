@@ -30,17 +30,26 @@ async function raw(as, path) {
 }
 /** A route that isn't on this server yet answers 404 with no handler; the step reports NOT BUILT instead of FAIL. */
 const absent = (r) => r.status === 404 && /not.?found/i.test(JSON.stringify(r.body ?? '')) && !/contact|campaign|workspace/i.test(JSON.stringify(r.body ?? ''));
-const ok = (r, want, what) => { if (r.status !== want) throw new Error(`${what}: ${r.status} ${JSON.stringify(r.body)?.slice(0, 200)}`); return r.body; };
+// No trial for now (DECISIONS 2026-10-02): a new org has no credits until ops grants some, so metered work answers 402.
+// That is OFF here, not a failure. The dev server's OMNI_DEV_CREDITS=<n> grants n of each meter to every new org.
+class NoCredits extends Error {}
+const ok = (r, want, what) => { if (r.status === 402 && want !== 402) throw new NoCredits(`${what}: no credits (no trial: DECISIONS 2026-10-02; dev: OMNI_DEV_CREDITS=<n>)`);
+  if (r.status !== want) throw new Error(`${what}: ${r.status} ${JSON.stringify(r.body)?.slice(0, 200)}`); return r.body; };
 
 async function step(id, title, fn) {
   try {
     const note = await fn();
-    results.push({ id, title, state: note?.notBuilt ? 'NOT BUILT' : 'PASS', note: note?.notBuilt ?? note?.partial ?? '' });
+    results.push({ id, title, state: note?.notBuilt ? 'NOT BUILT' : note?.off ? 'OFF' : 'PASS', note: note?.notBuilt ?? note?.off ?? note?.partial ?? '' });
   } catch (e) {
-    results.push({ id, title, state: 'FAIL', note: e.message });
+    results.push({ id, title, state: e instanceof NoCredits ? 'OFF' : 'FAIL', note: e.message });
   }
 }
 const notBuilt = (what) => ({ notBuilt: what });
+// Every key in a JSON value, at any depth (#56 audit P3: look for an open-rate field, not the word in a name).
+const keysOf = (x) => (x && typeof x === 'object' ? Object.entries(x).flatMap(([k, v]) => [...(Array.isArray(x) ? [] : [k]), ...keysOf(v)]) : []);
+// Built, but switched off here: it needs a credential, a vendor or spend this environment doesn't have (Christian's
+// call). Locally, OMNI_DEV_MODEL=rules and OMNI_DEV_FIXTURES=1 on the dev server turn the model and sites on.
+const off = (what) => ({ off: what });
 const f0 = (a) => Array.isArray(a) && a.length > 0;
 const partial = (what) => ({ partial: `partial: ${what}` });
 
@@ -55,18 +64,19 @@ await step('M1', 'Signs up as Owner; 7-day trial', async () => {
   const me = ok(await call(maya, 'GET', '/v1/me'), 200, 'me');
   const o = me.orgs.find((x) => x.id === M.org);
   if (o?.accountType !== 'owner' || o.subscriptionStatus !== 'trialing' || o.role !== 'admin') throw new Error(`org ${JSON.stringify(o)}`);
-  return partial('Stripe Checkout (card-required trial) not wired');
+  return partial('no trial for now (DECISIONS 2026-10-02): a new org starts with no credits, and Stripe checkout is not built');
 });
 await step('M2', 'Composer asks one question at a time; every question skippable', async () => {
   const first = await call(maya, 'GET', `${T()}/onboarding`);
-  if (absent(first)) return notBuilt('onboarding API (PR #50) not on this server; composer UI');
-  const q1 = ok(first, 200, 'onboarding').next;
-  if (!q1?.key || !q1.skippable) throw new Error(`first question ${JSON.stringify(q1)}`);
-  const after = ok(await call(maya, 'POST', `${T()}/onboarding`, { key: q1.key, skip: true }), 200, 'skip');
-  if (after.next?.key === q1.key || !after.skipped.includes(q1.key)) throw new Error(`skip did not move on: ${JSON.stringify(after.next)}`);
-  const answered = ok(await call(maya, 'POST', `${T()}/onboarding`, { key: 'offer', value: 'Same-day dental booking for busy families in Nashville.' }), 200, 'answer');
-  if (!answered.answered.includes('offer')) throw new Error('offer not recorded');
-  return partial('the composer UI that asks them (console)');
+  if (absent(first)) return notBuilt('onboarding API (#50)');
+  const o = ok(first, 200, 'onboarding');
+  if (o.next?.key !== 'website' || o.next.skippable !== true) throw new Error(`first question ${JSON.stringify(o.next)}`);
+  const a = ok(await call(maya, 'POST', `${T()}/onboarding`, { key: 'offer', value: 'We answer after-hours calls for dental offices in Nashville.' }), 200, 'answer offer');
+  let st = a;
+  for (const key of ['website', 'voice', 'postal_address', 'icp', 'connections']) st = ok(await call(maya, 'POST', `${T()}/onboarding`, { key, skip: true }), 200, `skip ${key}`);
+  if (!st.done || st.next !== null) throw new Error('skipping everything must finish onboarding');
+  if (!st.missing.some((x) => x.key === 'website')) throw new Error('a skipped answer must still be listed as missing');
+  return partial('the composer UI that asks them (console); voice note input is text here, audio intake comes with the media pipeline (Station 18)');
 });
 await step('M3', 'ICP v1 → v2; the campaign stays pinned to v1', async () => {
   const v1 = ok(await call(maya, 'POST', `${T()}/icps`, { name: 'Dental practices', data: { region: 'Nashville' } }), 201, 'icp v1');
@@ -76,9 +86,39 @@ await step('M3', 'ICP v1 → v2; the campaign stays pinned to v1', async () => {
   const camps = ok(await call(maya, 'GET', `${T()}/campaigns`), 200, 'campaigns').items;
   if (camps.find((x) => x.id === c.id)?.icpId !== v1.id) throw new Error('campaign moved off v1');
   M.campaign = c.id;
-  return partial('CSV of past clients + chat → ICP with citations (sprint 3)');
+  const prop = await call(maya, 'POST', `${T()}/icps/propose`, { clients: [
+    { company: 'Harbor Dental', title: 'Owner', industry: 'Dental', city: 'Nashville' }, { company: 'Oak Pediatric Dentistry', title: 'Owner', industry: 'Dental', city: 'Nashville' },
+    { company: 'Brightline Family Dental', title: 'Practice manager', industry: 'Dental', city: 'Franklin' }], notes: 'Owner-run practices do best.' });
+  if (prop.status === 404) return notBuilt('ICP proposal from past clients (#51)');
+  if (prop.status === 503) return off('ICP proposal from past clients: built (#51), model not configured here');
+  const pb = ok(prop, 200, 'propose');
+  if (!pb.proposal.traits.length || pb.proposal.traits.some((t) => !t.rows.length && !t.notes)) throw new Error('every trait must cite rows or notes');
+  const saved = ok(await call(maya, 'POST', `${T()}/icps`, { name: pb.proposal.name, data: pb.data }), 201, 'save proposal');
+  if (saved.version !== 1 || !saved.data.sources?.length) throw new Error('the saved ICP keeps its sources');
 });
-await step('M4', 'Competitors: battlecards and a gap map', async () => notBuilt('competitor research with grounding (sprint 4)'));
+await step('M4', 'Competitors: battlecards and a gap map', async () => {
+  const add = await call(maya, 'POST', `${T()}/competitors`, { url: 'https://rival-two.example', name: 'Rival Two' });
+  if (add.status === 404) return notBuilt('competitor research (#54)');
+  ok(add, 201, 'add competitor');
+  ok(await call(maya, 'POST', `${T()}/competitors`, { url: 'rival-three.example', name: 'Rival Three' }), 201, 'add competitor 2');
+  const sug = await call(maya, 'POST', `${T()}/competitors/suggest`);
+  if (sug.status === 503) return off('competitor suggestions and battlecards: built (#54), model not configured here');
+  const sb = ok(sug, 201, 'suggest');
+  for (const x of sb.suggestions) {
+    if (!x.reason) throw new Error('a suggestion must carry its reason');
+    const early = await call(maya, 'POST', `${T()}/competitors/research`, { ids: [x.id] });
+    if (early.status !== 409) throw new Error(`research before confirming → ${early.status}`);
+    ok(await call(maya, 'POST', `${T()}/competitors/${x.id}/status`, { status: 'confirmed' }), 200, 'confirm');
+  }
+  const res = ok(await call(maya, 'POST', `${T()}/competitors/research`, {}), 201, 'research');
+  const done = res.results.filter((r) => r.outcome === 'ok');
+  if (!done.length) return off(`research ran but no site was reachable here (${res.results.map((r) => r.outcome).join(', ')}); fixture sites: OMNI_DEV_FIXTURES=1`);
+  const gap = ok(await call(maya, 'GET', `${T()}/competitors/gap-map`), 200, 'gap map');
+  for (const row of gap.rows) for (const sec of ['targets', 'pricing', 'where_we_win']) for (const st of row[sec]) {
+    if (!st.quote || !st.url) throw new Error(`gap-map statement without its source: ${JSON.stringify(st)}`);
+  }
+  return partial('Places review summary and content cadence (Station 10 extras) not built');
+});
 await step('M5', 'Leads with free checks on every email', async () => {
   const r = ok(await call(maya, 'POST', `${T()}/contacts`, { contacts: [
     { name: 'Lena Ortiz', email: `lena.${RUN}@brightline-dental.example`, company: 'Brightline Family Dental' },
@@ -105,12 +145,20 @@ await step('M6', 'Campaign: a 3-step sequence, gated before review', async () =>
   const d = ok(await call(maya, 'POST', `${T()}/drafts`, { enrollmentId: M.enrollment, step: 1, subject: 'Re: Quick question',
     body: 'Hi Lena, just bringing this back to the top of your inbox. Is next week any better?' }), 201, 'follow-up');
   M.draft = d.id; M.draftGate = d.gate;
-  const enr = await call(maya, 'POST', `${T()}/contacts/${M.contacts[0]}/enrich`);
-  if (absent(enr)) return notBuilt('enricher route (PR #48) and generation (PR #47) not on this server');
-  if (![200, 201].includes(enr.status)) throw new Error(`enrich → ${enr.status} ${JSON.stringify(enr.body)?.slice(0, 160)}`);
-  const est = await call(maya, 'GET', `${T()}/campaigns/${M.campaign}/generate/estimate`);
-  if (absent(est)) return notBuilt('generation (PR #47); the enricher answers (example domains are never fetched)');
-  return notBuilt('generation runs only with a model on; this server has OMNI_MODEL off ($0)');
+  // Evidence comes only from the enricher, then generation writes the sequence through the gate.
+  const en = await call(maya, 'POST', `${T()}/contacts/${M.contacts[0]}/enrich`);
+  if (absent(en)) return notBuilt('enrich route (#48): no evidence, so no first touch can pass the gate yet');
+  if (!en.body?.enriched) return off(`enrichment ran but found nothing here (${en.body?.reason}); fixture sites: OMNI_DEV_FIXTURES=1`);
+  const camp2 = ok(await call(maya, 'POST', `${T()}/campaigns`, { name: `Generated ${RUN}` }), 201, 'campaign 2');
+  ok(await call(maya, 'POST', `${T()}/campaigns/${camp2.id}/enrollments`, { contactIds: [M.contacts[0]] }), 201, 'enroll 2');
+  const est = await call(maya, 'GET', `${T()}/campaigns/${camp2.id}/generate/estimate`);
+  if (absent(est)) return notBuilt('generation (#47)');
+  if (!ok(est, 200, 'estimate').available) return off('generation: built (#47), model not configured here');
+  const g = ok(await call(maya, 'POST', `${T()}/campaigns/${camp2.id}/generate`, { steps: 3 }), 201, 'generate');
+  const seq = g.generated[0]?.drafts ?? [];
+  if (seq.length !== 3) throw new Error(`expected 3 drafts, got ${seq.length}: ${JSON.stringify(g.skipped)}`);
+  if (seq[0].gate !== 'passed') throw new Error(`the generated first touch was ${seq[0].gate}: ${JSON.stringify(seq[0].findings)}`);
+  M.genDraft = seq[0].id;
 });
 await step('M7', 'Approvals: edit re-gates, approve; sends from her Gmail under window, ramp and cap', async () => {
   if (!M.draft) throw new Error('no draft from M6');
@@ -120,12 +168,21 @@ await step('M7', 'Approvals: edit re-gates, approve; sends from her Gmail under 
   ok(await call(maya, 'POST', `${T()}/approvals/${M.draft}/approve`), 200, 'approve');
   const a = ok(await call(maya, 'GET', `${T()}/approvals/${M.draft}`), 200, 'card');
   if (a.status !== 'approved') throw new Error(`status ${a.status}`);
-  return notBuilt('the send: Gmail connect + send job (PR #36 part 1 of 2); approval itself passes');
+  return notBuilt('the send: Gmail connect + send job (#42, open; then the OAuth client from Christian). Edit re-gates and approval pass');
 });
 await step('M8', 'Inbound: reply via reply.omnisdr.com → classified → SLA → booked → sequence stops', async () =>
-  notBuilt('needs a real send (a reply is routed by its Reply-To token); built: email-worker → /internal/inbound, rules, SLA escalation (0008)'));
-await step('M9', 'Follow-up: steps 2–3 go out; out-of-office snoozes; no-show gets a reschedule draft', async () =>
-  notBuilt('needs a real send; built: send loop with step waits (#36/#42), OOO snooze + wake and no-show reschedule (#45)'));
+  notBuilt('end to end needs a real send; the reply path itself is live (email-worker → /internal/inbound, verified 2026-10-02)'));
+await step('M9', 'Follow-up: steps 2–3 go out; out-of-office snoozes; no-show gets a reschedule draft', async () => {
+  // No-show: a booked meeting for an enrolled contact, marked no-show, reopens the sequence with a gated note.
+  const contact = M.contacts[1];
+  const start = new Date(Date.now() + 86400e3);
+  const mt = ok(await call(maya, 'POST', `${T()}/meetings`, { contactId: contact, startsAt: start.toISOString(), endsAt: new Date(start.getTime() + 18e5).toISOString() }), 201, 'book');
+  const ns = ok(await call(maya, 'PATCH', `${T()}/meetings/${mt.id}`, { status: 'no_show' }), 200, 'no-show');
+  if (!ns.reschedule) return notBuilt('no-show reschedule draft (#45)');
+  const card = ok(await call(maya, 'GET', `${T()}/approvals/${ns.reschedule.draftId}`), 200, 'reschedule card');
+  if (card.status !== 'review' || card.purpose !== 'reschedule') throw new Error(`reschedule card ${card.status}/${card.purpose}`);
+  return off('no-show reschedule passes; steps 2–3 going out and the out-of-office snooze end to end need a real send from a connected Gmail (OAuth client: Christian)');
+});
 await step('M10', 'Analytics: sends, replies, meetings, rate by step; no open rate', async () => {
   const a = ok(await call(maya, 'GET', `${T()}/analytics?days=30`), 200, 'analytics');
   for (const k of ['sent', 'replies', 'positive', 'meetings']) if (typeof a.totals?.[k] !== 'number') throw new Error(`totals.${k}`);
@@ -136,7 +193,7 @@ await step('M10', 'Analytics: sends, replies, meetings, rate by step; no open ra
 });
 await step('M11', 'Reports and export: PDF + Doc, leads to CSV/Sheets, meetings to the CRM', async () => {
   const rep = ok(await call(maya, 'GET', `${T()}/reports/campaigns/${M.campaign}`), 200, 'report');
-  if (!rep.totals || JSON.stringify(rep).match(/open/i)) throw new Error('report totals missing, or an open rate');
+  if (!rep.totals || keysOf(rep).some((k) => /open/i.test(k))) throw new Error('report totals missing, or an open-rate field');
   const page = await raw(maya, `${T()}/reports/campaigns/${M.campaign}?format=html`);
   if (page.status !== 200 || !page.type.startsWith('text/html') || /<script/i.test(page.text) || !/default-src 'none'/.test(page.csp)) {
     throw new Error(`printable report: ${page.status} ${page.type} csp=${page.csp}`);
@@ -199,5 +256,5 @@ await step('A4', 'Reports carry the agency brand on the agency domain (white-lab
 // ── Report ─────────────────────────────────────────────────────────────────────────────────────
 const n = (s) => results.filter((r) => r.state === s).length;
 for (const r of results) console.log(`${r.state.padEnd(9)} ${r.id.padEnd(3)} ${r.title}${r.note ? `\n            ${r.note}` : ''}`);
-console.log(`\n${n('PASS')} pass · ${n('FAIL')} fail · ${n('NOT BUILT')} not built · of ${results.length} steps (run ${RUN}, ${API})`);
+console.log(`\n${n('PASS')} pass · ${n('FAIL')} fail · ${n('OFF')} built but off here · ${n('NOT BUILT')} not built · of ${results.length} steps (run ${RUN}, ${API})`);
 process.exitCode = n('FAIL') ? 1 : 0;
