@@ -39,33 +39,3 @@ export function fakeVerifier(decide = () => 'valid') {
   const calls = [];
   return { name: 'fake', calls, async check(email) { calls.push(email); return { verdict: await decide(email) }; } };
 }
-
-// ZeroBounce (Christian 2026-10-03: "lets go with zero bounce"). The batch endpoint is used even for one address
-// because it takes the key in the request body; the single-address endpoint takes it in the URL, and a secret never
-// goes in a URL (rails §3.6). [VERIFY https://www.zerobounce.net/docs/email-validation-api-quickstart/ for the
-// endpoint, field names and statuses.] Only 'valid' becomes valid: a catch-all domain accepts any address, so it can't
-// prove this one exists ('risky'); role inboxes and spam traps are never mailed.
-const ZB_VERDICT = { valid: 'valid', invalid: 'invalid', 'catch-all': 'risky', unknown: 'unknown', spamtrap: 'invalid', abuse: 'invalid', do_not_mail: 'invalid' };
-export function zeroBounceVerifier({ key, fetchImpl = fetch, timeoutMs = 30000 }) {
-  if (!key) throw new Error('zeroBounceVerifier needs a key');
-  return {
-    name: 'zerobounce',
-    async check(email) {
-      const res = await fetchImpl('https://bulkapi.zerobounce.net/v2/validatebatch', {
-        method: 'POST',
-        signal: AbortSignal.timeout(timeoutMs),
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ api_key: key, email_batch: [{ email_address: email, ip_address: null }] }),
-      });
-      if (!res.ok) throw new Error(`zerobounce http ${res.status}`);
-      const d = await res.json();
-      if (d.errors?.length) throw new Error('zerobounce refused the request');   // its message can echo input; not passed on
-      const row = (d.email_batch ?? []).find((x) => String(x.address ?? '').toLowerCase() === email.toLowerCase());
-      if (!row) throw new Error('zerobounce returned no result for this address');
-      const status = String(row.status ?? '').toLowerCase();
-      // A role inbox (info@, office@) is do_not_mail/role_based: not a dead address, but not one we write to cold.
-      const verdict = status === 'do_not_mail' && /role/i.test(String(row.sub_status ?? '')) ? 'risky' : (ZB_VERDICT[status] ?? 'unknown');
-      return { verdict, detail: { status, subStatus: row.sub_status ?? null } };
-    },
-  };
-}
