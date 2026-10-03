@@ -6,6 +6,8 @@
 //   OMNI_DECIDER_URL              the decider service (IAM-only: the job's service account needs run.invoker on it)
 //   OMNI_REFINE_LIMIT             replies per pass, default 50
 //   OMNI_DECIDER_SHADOW_LABEL=1   also ask the label question; the answer is stored and never acted on
+//   OMNI_TRIAGE_CATEGORIES=shadow also ask the reply_triage@3 category questions (~5x the decider time); the chosen
+//                                 category is stored in the decision and never acted on (SDR-PIVOT P2)
 //
 // Exit 1 when the decider failed, so a down decider shows as a failed execution, not a quiet success. Exit 2 on
 // missing config. Logs counts only: never a reply's text or address.
@@ -31,7 +33,8 @@ export async function runRefine(env, { pool, decider, log = (e) => console.log(J
     const escalated = await escalateSla(client);
     const handoffsOverdue = await escalateHandoffs(client);   // 0016: handoffs no closer accepted in time
     log({ job: 'followup', woke, escalated, handoffsOverdue });
-    tally = await refinePending(client, { decider, limit, shadowLabel: env.OMNI_DECIDER_SHADOW_LABEL === '1' });
+    tally = await refinePending(client, { decider, limit, shadowLabel: env.OMNI_DECIDER_SHADOW_LABEL === '1',
+      categories: env.OMNI_TRIAGE_CATEGORIES === 'shadow' });
   } finally {
     release();
     if (ownPool) await pool.end();
