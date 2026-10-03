@@ -6,7 +6,7 @@
 --   * memberships.booking_url: https only; written only by its own member, through app_set_booking_url().
 --   * notifications may now be about a handoff instead of an inbound message (exactly one of the two).
 --   * inbox_handoffs_overdue(): the escalation job's cross-tenant finder, ids and times only (like inbox_sla_due).
---   * A closer sees no workspace notifications (RESTRICTIVE, as in 0015): their alerts are their open handoffs.
+--   * A closer sees no workspace notifications (0015's closer_scope): their alerts are their open handoffs.
 
 -- ─── accept-by ────────────────────────────────────────────────────────────────────────────────────────────────────
 ALTER TABLE handoffs ADD COLUMN due_at timestamptz;
@@ -45,7 +45,7 @@ ALTER TABLE notifications ADD CONSTRAINT notifications_kind_subject
   CHECK ((kind = 'handoff_overdue') = (handoff_id IS NOT NULL));
 CREATE UNIQUE INDEX notifications_handoff_once ON notifications (handoff_id, kind, channel) WHERE handoff_id IS NOT NULL;
 
-CREATE POLICY closer_scope ON notifications AS RESTRICTIVE TO app_rw, gate_svc, sender_svc, inbox_svc USING (NOT app_is_closer(org_id));
+-- (A closer sees no workspace notifications: 0015's catalog-wide closer_scope already covers this table.)
 
 -- The handoffs not accepted by their due time and not yet escalated, across tenants. The job then writes each alert
 -- inside that handoff's own tenant scope as inbox_svc.

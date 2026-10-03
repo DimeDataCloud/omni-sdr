@@ -84,7 +84,7 @@ CREATE TABLE handoffs (
   created_by       uuid REFERENCES users(id),  -- NULL: Omni handed it off on its own (an earned category)
   created_at       timestamptz NOT NULL DEFAULT now(),
   accepted_at      timestamptz,
-  outcome          text CHECK (outcome IS NULL OR outcome IN ('won', 'lost', 'no_show', 'not_a_fit')),
+  outcome          text CHECK (outcome IS NULL OR outcome IN ('won', 'lost', 'no_show', 'not_a_fit', 'reassigned')),
   outcome_at       timestamptz,
   FOREIGN KEY (org_id, workspace_id) REFERENCES workspaces(org_id, id),
   FOREIGN KEY (org_id, workspace_id, conversation_id) REFERENCES conversations(org_id, workspace_id, id),
@@ -123,6 +123,49 @@ GRANT CREATE ON SCHEMA public TO tenancy_owner;
 ALTER FUNCTION app_closer_owns(uuid) OWNER TO tenancy_owner;
 REVOKE CREATE ON SCHEMA public FROM tenancy_owner;
 
+-- A closer's view of the rest of the tenant (#87 audit P2): the contact of a conversation handed to them, that contact's
+-- enrollments, and the drafts and sent messages of those enrollments (the outbound half of the thread). Definer helpers
+-- owned by tenancy_owner, like app_closer_owns; they run under the tenant policy of the request (app.org_id/workspace_ids).
+CREATE FUNCTION app_closer_contact(p_contact uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS
+$$ SELECT p_contact IS NOT NULL AND app_user() IS NOT NULL
+     AND EXISTS (SELECT 1 FROM conversations c WHERE c.contact_id = p_contact AND c.closer_id = app_user()) $$;
+CREATE FUNCTION app_closer_enrollment(p_enrollment uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS
+$$ SELECT p_enrollment IS NOT NULL AND app_user() IS NOT NULL
+     AND EXISTS (SELECT 1 FROM enrollments e JOIN conversations c ON c.contact_id = e.contact_id
+                 WHERE e.id = p_enrollment AND c.closer_id = app_user()) $$;
+CREATE FUNCTION app_closer_draft(p_draft uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS
+$$ SELECT p_draft IS NOT NULL AND app_user() IS NOT NULL
+     AND EXISTS (SELECT 1 FROM drafts d JOIN enrollments e ON e.id = d.enrollment_id JOIN conversations c ON c.contact_id = e.contact_id
+                 WHERE d.id = p_draft AND c.closer_id = app_user()) $$;
+GRANT SELECT (contact_id) ON conversations TO tenancy_owner;
+GRANT SELECT (id, contact_id) ON enrollments TO tenancy_owner;
+GRANT SELECT (id, enrollment_id) ON drafts TO tenancy_owner;
+REVOKE EXECUTE ON FUNCTION app_closer_contact(uuid), app_closer_enrollment(uuid), app_closer_draft(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app_closer_contact(uuid), app_closer_enrollment(uuid), app_closer_draft(uuid) TO app_rw, gate_svc, sender_svc, inbox_svc;
+GRANT CREATE ON SCHEMA public TO tenancy_owner;
+ALTER FUNCTION app_closer_contact(uuid) OWNER TO tenancy_owner;
+ALTER FUNCTION app_closer_enrollment(uuid) OWNER TO tenancy_owner;
+ALTER FUNCTION app_closer_draft(uuid) OWNER TO tenancy_owner;
+REVOKE CREATE ON SCHEMA public FROM tenancy_owner;
+
+-- conversations.closer_id follows the open handoff (#87 audit Q2): it can only be set to that handoff's closer, and
+-- cleared only when none is open. Reassigning = close the open handoff with outcome 'reassigned', then hand off again,
+-- so the record shows who had it and when.
+CREATE FUNCTION conversations_closer_check() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.closer_id IS DISTINCT FROM OLD.closer_id THEN
+    IF NEW.closer_id IS NULL THEN
+      IF EXISTS (SELECT 1 FROM handoffs h WHERE h.conversation_id = NEW.id AND h.outcome IS NULL) THEN
+        RAISE EXCEPTION 'conversation: closer_id follows the open handoff; close it first' USING ERRCODE = 'P0001';
+      END IF;
+    ELSIF NOT EXISTS (SELECT 1 FROM handoffs h WHERE h.conversation_id = NEW.id AND h.outcome IS NULL AND h.closer_id = NEW.closer_id) THEN
+      RAISE EXCEPTION 'conversation: closer_id follows the open handoff; hand it off instead' USING ERRCODE = 'P0001';
+    END IF;
+  END IF;
+  RETURN NEW;
+END $$;
+CREATE TRIGGER conversations_closer_check BEFORE UPDATE OF closer_id ON conversations FOR EACH ROW EXECUTE FUNCTION conversations_closer_check();
+
 -- ─── row-level security ──────────────────────────────────────────────────────────────────────────────────────────
 DO $$
 DECLARE t text;
@@ -147,6 +190,33 @@ CREATE POLICY closer_scope ON handoffs AS RESTRICTIVE TO app_rw, gate_svc, sende
   USING (NOT app_is_closer(org_id) OR closer_id = app_user());
 CREATE POLICY closer_scope ON inbound_messages AS RESTRICTIVE TO app_rw, gate_svc, sender_svc, inbox_svc
   USING (NOT app_is_closer(org_id) OR app_closer_owns(conversation_id));
+-- The rest of the tenant (#87 audit P2): the conversation's contact and its outbound thread; their own membership; the
+-- workspace and org rows (settings). Every other table with an org_id: nothing. Generated from the catalog so a table
+-- added later is covered by default (conversations.test checks the catalog, not a hand list). WITH CHECK (true): a
+-- closer's writes (an audit row on accept) are still bounded by grants, the tenant policy and can().
+CREATE POLICY closer_scope ON contacts AS RESTRICTIVE TO app_rw, gate_svc, sender_svc, inbox_svc
+  USING (NOT app_is_closer(org_id) OR app_closer_contact(id)) WITH CHECK (true);
+CREATE POLICY closer_scope ON enrollments AS RESTRICTIVE TO app_rw, gate_svc, sender_svc, inbox_svc
+  USING (NOT app_is_closer(org_id) OR app_closer_contact(contact_id)) WITH CHECK (true);
+CREATE POLICY closer_scope ON drafts AS RESTRICTIVE TO app_rw, gate_svc, sender_svc, inbox_svc
+  USING (NOT app_is_closer(org_id) OR app_closer_enrollment(enrollment_id)) WITH CHECK (true);
+CREATE POLICY closer_scope ON messages AS RESTRICTIVE TO app_rw, gate_svc, sender_svc, inbox_svc
+  USING (NOT app_is_closer(org_id) OR app_closer_owns(conversation_id) OR app_closer_draft(draft_id)) WITH CHECK (true);
+CREATE POLICY closer_scope ON memberships AS RESTRICTIVE TO app_rw, gate_svc, sender_svc, inbox_svc
+  USING (NOT app_is_closer(org_id) OR user_id = app_user()) WITH CHECK (true);
+DO $$
+DECLARE t text;
+BEGIN
+  FOR t IN SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+           WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relrowsecurity
+             AND EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = c.oid AND a.attname = 'org_id' AND NOT a.attisdropped)
+             AND c.relname NOT IN ('conversations', 'handoffs', 'inbound_messages', 'contacts', 'enrollments', 'drafts', 'messages',
+                                   'memberships', 'workspaces')
+           ORDER BY 1 LOOP
+    EXECUTE format('CREATE POLICY closer_scope ON %I AS RESTRICTIVE TO app_rw, gate_svc, sender_svc, inbox_svc
+                    USING (NOT app_is_closer(org_id)) WITH CHECK (true)', t);
+  END LOOP;
+END $$;
 
 -- ─── grants ──────────────────────────────────────────────────────────────────────────────────────────────────────
 GRANT SELECT, INSERT ON conversations TO app_rw;

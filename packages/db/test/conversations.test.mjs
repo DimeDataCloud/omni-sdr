@@ -90,3 +90,57 @@ test('the inbox services still read inbound messages through the closer policy (
   const und = await as(db, 'inbox_svc', null, async () => (await db.query(`SELECT * FROM inbox_undecided(10)`)).rows.length);
   assert.ok(und >= 3, 'the cross-tenant job function still lists undecided replies');
 });
+
+test('the catalog: every RLS table with an org_id carries the closer policy, so a table added later can\'t be missed', async () => {
+  const { db } = await setup();
+  const missing = (await db.query(`SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relrowsecurity
+      AND EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = c.oid AND a.attname = 'org_id' AND NOT a.attisdropped)
+      AND c.relname <> 'workspaces'
+      AND NOT EXISTS (SELECT 1 FROM pg_policies p WHERE p.tablename = c.relname AND p.policyname = 'closer_scope' AND p.permissive = 'RESTRICTIVE')
+    ORDER BY 1`)).rows.map((r) => r.relname);
+  assert.deepEqual(missing, [], 'add a closer_scope policy to each of these');
+});
+
+test('a closer reads nothing else of the tenant: every org table, row by row; their contact\'s thread only', async () => {
+  const { db, a, closer, other, asUser } = await setup();
+  const tables = (await db.query(`SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relrowsecurity
+      AND EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = c.oid AND a.attname = 'org_id') ORDER BY 1`)).rows.map((r) => r.relname);
+  // Expected for a closer with nothing handed to them: their own membership and the workspace rows; nothing else.
+  const allowed = { memberships: 1, workspaces: 1 };
+  for (const t of tables) {
+    // A table app_rw has no grant on reads as nothing.
+    const n = await asUser(other, async () => Number((await db.query(`SELECT count(*) AS n FROM ${t}`)).rows[0].n))
+      .catch((e) => { if (/permission denied/.test(e.message)) return 0; throw e; });
+    assert.equal(n, allowed[t] ?? 0, `${t} as a closer with nothing handed to them`);
+  }
+  // Hand the seed contact's conversation to `closer`: now its contact, enrollment, draft and sent message are visible.
+  await db.query(`UPDATE handoffs SET outcome = 'reassigned', outcome_at = now() WHERE conversation_id = $1`, [a.conversation]);
+  await db.query(`INSERT INTO handoffs (org_id, workspace_id, conversation_id, closer_id, reason, summary) VALUES ($1, $2, $3, $4, 'qualified', 'x')`,
+    [a.org, a.ws, a.conversation, closer]);
+  await db.query(`UPDATE conversations SET closer_id = $2 WHERE id = $1`, [a.conversation, closer]);
+  const seen = async (t) => asUser(closer, async () => Number((await db.query(`SELECT count(*) AS n FROM ${t}`)).rows[0].n));
+  assert.equal(await seen('contacts'), 1);
+  assert.ok(await seen('enrollments') >= 1);
+  assert.ok(await seen('drafts') >= 1);
+  assert.equal(await seen('messages'), 1, 'the email sent to that contact');
+  for (const t of ['campaigns', 'evidence', 'mailboxes', 'audit_log', 'meetings', 'notifications', 'icps']) assert.equal(await seen(t), 0, t);
+  // A closer's own audit row still writes (accepting a handoff records one).
+  await asUser(closer, () => db.query(`INSERT INTO audit_log (org_id, actor, action, entity_type, entity_id) VALUES ($1, $2, 'handoff_accept', 'handoff', $3)`,
+    [a.org, closer, a.conversation]));
+});
+
+test('closer_id follows the open handoff: no bare reassignment; reassign = close as reassigned, hand off again', async () => {
+  const { db, a, closer, other, open, asUser } = await setup();
+  assert.match(await refused(asUser(a.user, () => db.query(`UPDATE conversations SET closer_id = $1 WHERE id = $2`, [closer, open]))) ?? '', /follows the open handoff/);
+  await asUser(a.user, () => db.query(`INSERT INTO handoffs (org_id, workspace_id, conversation_id, closer_id, reason, summary, created_by) VALUES ($1, $2, $3, $4, 'qualified', 'x', $5)`,
+    [a.org, a.ws, open, closer, a.user]));
+  await asUser(a.user, () => db.query(`UPDATE conversations SET closer_id = $1, state = 'handed_off' WHERE id = $2`, [closer, open]));
+  assert.match(await refused(asUser(a.user, () => db.query(`UPDATE conversations SET closer_id = $1 WHERE id = $2`, [other, open]))) ?? '', /follows the open handoff/);
+  await asUser(a.user, () => db.query(`UPDATE handoffs SET outcome = 'reassigned', outcome_at = now() WHERE conversation_id = $1 AND outcome IS NULL`, [open]));
+  await asUser(a.user, () => db.query(`INSERT INTO handoffs (org_id, workspace_id, conversation_id, closer_id, reason, summary, created_by) VALUES ($1, $2, $3, $4, 'qualified', 'y', $5)`,
+    [a.org, a.ws, open, other, a.user]));
+  await asUser(a.user, () => db.query(`UPDATE conversations SET closer_id = $1 WHERE id = $2`, [other, open]));
+  assert.equal((await one(db, `SELECT count(*)::int AS n FROM handoffs WHERE conversation_id = $1`, [open])).n, 2, 'the record shows both');
+});
