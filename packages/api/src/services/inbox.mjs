@@ -188,3 +188,56 @@ export async function escalateSla(client, { now = new Date(), limit = 500 } = {}
   }
   return tally;
 }
+
+/**
+ * A website form or chat submission through an inbound webhook (0014; SDR-PIVOT P5). Resolved by hook id + token
+ * hash only; the submitter becomes (or matches) a contact in the hook's workspace; then the same triage as an email
+ * reply: rules now, Laya on the next refine pass (inbox_undecided lists every channel).
+ * @param hook { id, tokenHash }
+ * @param msg { body, email?, name?, phone?, page?, externalId?, receivedAt: Date }
+ * @returns { outcome: 'recorded'|'duplicate'|'unknown_hook', id?, intent?, slaDueAt? }
+ */
+export async function ingestForm(client, hook, msg, { classify = classifyReply } = {}) {
+  const hit = await withoutTenant(client, { role: 'inbox_svc' }, async (tx) =>
+    (await tx.query(`SELECT * FROM inbox_resolve_hook($1, $2)`, [hook.id, hook.tokenHash])).rows[0]);
+  if (!hit) return { outcome: 'unknown_hook' };
+  const email = msg.email ? String(msg.email).trim().toLowerCase() : null;
+  const verdict = classify({ subject: '', body: msg.body ?? '', from: email ?? '' });
+  return withService(client, { orgId: hit.org_id, workspaceId: hit.workspace_id, role: 'inbox_svc' }, async (tx) => {
+    if (msg.externalId) {
+      const dup = (await tx.query(`SELECT id FROM inbound_messages WHERE workspace_id = $1 AND channel = 'form' AND external_id = $2`,
+        [hit.workspace_id, msg.externalId])).rows[0];
+      if (dup) return { outcome: 'duplicate', id: dup.id };
+    }
+    let contactId = null;
+    if (email) {
+      await tx.query(`INSERT INTO contacts (org_id, workspace_id, name, email, phone) VALUES ($1, $2, $3, $4, $5)
+                      ON CONFLICT (workspace_id, email) DO NOTHING`,
+      [hit.org_id, hit.workspace_id, msg.name?.slice(0, 200) ?? null, email, msg.phone?.slice(0, 40) ?? null]);
+      contactId = (await tx.query(`SELECT id FROM contacts WHERE workspace_id = $1 AND email = $2`, [hit.workspace_id, email])).rows[0]?.id ?? null;
+    }
+    const tz = (await tx.query(`SELECT timezone FROM workspaces WHERE id = $1`, [hit.workspace_id])).rows[0]?.timezone ?? 'America/Chicago';
+    const slaDueAt = verdict.intent === 'meeting_request' ? addBusinessMinutes(msg.receivedAt, SLA_MINUTES, tz) : null;
+    const subject = msg.page ? `Form: ${String(msg.page).slice(0, 200)}` : 'Form submission';
+    const id = (await tx.query(
+      `INSERT INTO inbound_messages (org_id, workspace_id, contact_id, channel, from_address, subject, body, received_at,
+         intent, intent_confidence, classified_by, sla_due_at, external_id)
+       VALUES ($1, $2, $3, 'form', $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
+      [hit.org_id, hit.workspace_id, contactId, email, subject, String(msg.body ?? '').slice(0, 100000), msg.receivedAt,
+        verdict.intent, verdict.confidence, verdict.by, slaDueAt, msg.externalId ?? null])).rows[0].id;
+    // Safe-side effects only, as for an email reply: an opt-out suppresses the address, and a real message stops any
+    // sequence the person is in.
+    if (verdict.intent === 'unsubscribe' && email) {
+      await tx.query(`INSERT INTO suppression (scope_org_id, value_hash, kind, reason) VALUES ($1, value_hash($2), 'email', 'form_unsubscribe')
+                      ON CONFLICT DO NOTHING`, [hit.org_id, email]);
+    }
+    if (contactId && verdict.intent !== 'out_of_office') {
+      await tx.query(`UPDATE enrollments SET state = 'stopped', stop_reason = $2, next_run_at = NULL
+                      WHERE contact_id = $1 AND state NOT IN ${TERMINAL}`, [contactId, `form:${verdict.intent}`]);
+    }
+    if (slaDueAt) await notifyInApp(tx, { orgId: hit.org_id, workspaceId: hit.workspace_id, inboundId: id, at: msg.receivedAt });
+    await tx.query(`INSERT INTO outbox (org_id, topic, key, payload) VALUES ($1, 'inbound.received', $2, $3)`,
+      [hit.org_id, id, JSON.stringify({ inbound_id: id, channel: 'form', intent: verdict.intent, sla_due_at: slaDueAt })]);
+    return { outcome: 'recorded', id, intent: verdict.intent, slaDueAt: slaDueAt?.toISOString() ?? null };
+  });
+}
