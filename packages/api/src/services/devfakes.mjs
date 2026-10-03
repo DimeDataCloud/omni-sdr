@@ -58,6 +58,17 @@ export const FIXTURE_SITES = {
     + '<a href="https://calendly.com/brightline">Book online</a><form><input type="email"><textarea></textarea></form>',
 };
 
+// Lead finding (OMNI_DEV_FIXTURES=1): eight Nashville dental practices, six with a site to read, one site down.
+const PRACTICES = ['Music Row Dental', 'Belmont Family Dentistry', 'East Nashville Smiles', 'Germantown Dental Studio', 'Sylvan Park Dental',
+  'Twelve South Dental', 'Hillsboro Village Dentistry', 'Midtown Kids Dental'];
+export const FIXTURE_PLACES = PRACTICES.map((name, i) => ({ placeId: `fixture_place_${i}_nashville`, name, address: `${200 + i} Broadway, Nashville, TN`,
+  website: i === 6 ? null : `https://practice-${i}.example/` }));
+for (const [i, name] of PRACTICES.entries()) {
+  if (i === 6 || i === 7) continue;   // 6 has no site; 7's is down
+  FIXTURE_SITES[`https://practice-${i}.example/`] = `<title>${name} | Nashville, TN</title><h1>Family dental care in Nashville</h1>`
+    + `<a href="mailto:${i % 2 ? 'frontdesk' : 'dr.patel'}@practice-${i}.example">Email</a>${i % 3 ? '' : '<a href="https://calendly.com/x">Book online</a>'}`;
+}
+
 export async function fixtureFetch(url) {
   const key = url.endsWith('/') || /\.[a-z]+\/[a-z]/i.test(url) ? url : `${url}/`;
   const body = FIXTURE_SITES[key];
