@@ -1,5 +1,5 @@
-// 0014: conversations, handoffs and the closer role. A closer sees only what was handed to them; nothing else in the
-// tenant, whatever the query.
+// 0014: conversations, handoffs and the closer role. In the database a closer sees only the conversations, handoffs
+// and inbound messages handed to them; the other tenant tables are closed to them by can() in the API (no route).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { freshDb, seedTenant, as, refused } from './helpers.mjs';
