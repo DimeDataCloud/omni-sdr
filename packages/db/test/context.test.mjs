@@ -68,23 +68,25 @@ test('withTenant: an error inside fn rolls back everything fn wrote', async () =
 
 test('permissions: the SPEC §7 matrix, cell by cell', () => {
   const Y = true, N = false;
-  // action:               admin operator reviewer client_viewer(toggle off)
+  // action:               admin operator reviewer client_viewer(toggle off) closer
   const expected = {
-    billing:            [Y, N, N, N],
-    members:            [Y, N, N, N],
-    connections:        [Y, N, N, N],
-    workspace_settings: [Y, N, N, N],
-    build:              [Y, Y, N, N],
-    approve:            [Y, Y, Y, N],
-    inbox_read:         [Y, Y, Y, N],
-    inbox_draft:        [Y, Y, N, N],
-    clear_hold:         [Y, N, N, N],
-    reports_view:       [Y, Y, Y, Y],
-    team_view:          [Y, Y, Y, N],
-    export_pii:         [Y, Y, N, N],
+    billing:            [Y, N, N, N, N],
+    members:            [Y, N, N, N, N],
+    connections:        [Y, N, N, N, N],
+    workspace_settings: [Y, N, N, N, N],
+    build:              [Y, Y, N, N, N],
+    approve:            [Y, Y, Y, N, N],
+    inbox_read:         [Y, Y, Y, N, N],
+    inbox_draft:        [Y, Y, N, N, N],
+    clear_hold:         [Y, N, N, N, N],
+    reports_view:       [Y, Y, Y, Y, N],
+    team_view:          [Y, Y, Y, N, N],
+    export_pii:         [Y, Y, N, N, N],
+    handoff:            [Y, Y, N, N, N],
+    handoff_work:       [Y, Y, N, N, Y],
   };
   assert.deepEqual(Object.keys(expected).sort(), [...ACTIONS].sort(), 'matrix test must cover every action');
-  const roles = ['admin', 'operator', 'reviewer', 'client_viewer'];
+  const roles = ['admin', 'operator', 'reviewer', 'client_viewer', 'closer'];
   let cells = 0;
   for (const [action, row] of Object.entries(expected)) {
     roles.forEach((role, i) => {

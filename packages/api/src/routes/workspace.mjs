@@ -7,7 +7,7 @@ import { notFound, badRequest } from '../errors.mjs';
 
 const TIMEZONES = new Set(Intl.supportedValuesOf('timeZone'));
 const AUTO_ADJUST_SOURCES = ['booked_meetings', 'positive_replies', 'objections', 'unsubscribes_bounces', 'sops', 'won_lost', 'draft_edits', 'rejections'];
-const ROLES = ['admin', 'operator', 'reviewer', 'client_viewer'];
+const ROLES = ['admin', 'operator', 'reviewer', 'client_viewer', 'closer'];
 
 // Request field → column. Only these are writable, and the DB grants match (0002, 0004).
 const SETTINGS = {
