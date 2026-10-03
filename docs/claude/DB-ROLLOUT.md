@@ -49,7 +49,7 @@ values never appear in commands, logs or chat (rails §3.6).
 | 1 | Enable the Cloud SQL Admin API (and Secret Manager if not on) in project `omni-sdr` | `gcloud services list --enabled` lists them |
 | 2 | Create the instance: Postgres 16, `us-central1`, the size from §1.1, backups + PITR on, deletion protection on | `gcloud sql instances describe <instance>` shows `RUNNABLE`, backups enabled |
 | 3 | Create database `omni` | `gcloud sql databases list` |
-| 4 | Create the **migration owner** login (a built-in Cloud SQL user; password straight into Secret Manager as `omni-db-owner`, never printed). It is not a superuser: §5 shows the migrations now run as one | the secret exists; the value was never echoed |
+| 4 | Create the **migration owner** login (a built-in Cloud SQL user; password straight into Secret Manager as `omni-db-owner`, never printed; retired 2026-10-03: the same password lives in `omni-db-url-owner`). It is not a superuser: §5 shows the migrations now run as one | the secret exists; the value was never echoed |
 | 5 | **Backup before the first migration** (on-demand) | `gcloud sql backups list` shows it |
 | 6 | Run `node packages/db/src/migrate-cli.mjs` (dry run), then `--apply`, as the owner: a one-off Cloud Run job from the G2 image | the runner prints `applied 6 of 6`; a second run prints `nothing pending` |
 | 7 | Create the **API login** `omni_api` **in SQL as the owner** (`CREATE ROLE omni_api LOGIN PASSWORD …`, value from Secret Manager `omni-db-api`), not with `gcloud sql users create`: Cloud SQL makes its built-in users members of `cloudsqlsuperuser` [VERIFY]. Grant `app_rw, gate_svc, sender_svc, inbox_svc` and nothing else | `migrate-cli.mjs --check-login=omni_api` prints PASS |
