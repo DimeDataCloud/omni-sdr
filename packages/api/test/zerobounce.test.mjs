@@ -13,6 +13,7 @@ test('mapping: catch-all, accept-all and unknown never become valid; traps, abus
     [{ status: 'valid', sub_status: '', catchall_domain: 'true' }, 'risky'],
     [{ status: 'valid', sub_status: 'accept_all' }, 'risky'],
     [{ status: 'valid', sub_status: 'role_based_catch_all' }, 'risky'],
+    [{ status: 'valid', sub_status: 'role_based_accept_all' }, 'risky'],   // seen from the live API's sandbox, 2026-10-03
     [{ status: 'catch-all', sub_status: '' }, 'risky'],
     [{ status: 'unknown', sub_status: 'greylisted' }, 'unknown'],
     [{ status: 'invalid', sub_status: 'mailbox_not_found' }, 'invalid'],

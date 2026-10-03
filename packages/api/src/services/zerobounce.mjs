@@ -7,7 +7,9 @@
 // we build, so it can't reach a log line. ZeroBounce charges no credit for an `unknown` result.
 
 const ENDPOINT = 'https://api.zerobounce.net/v2/validate';
-const NEVER_VALID = new Set(['accept_all', 'role_based_catch_all']);
+// Any accept-all / catch-all sub-status. The real API returns `role_based_accept_all` (sandbox, 2026-10-03), which a
+// hand-listed set missed: a domain that accepts every address proves nothing about this mailbox.
+const NEVER_VALID = /accept_all|catch_all/;
 const NOT_SENDABLE = new Set(['invalid', 'spamtrap', 'abuse', 'do_not_mail']);
 
 /** ZeroBounce's answer → our verdict. Anything we don't recognise is 'unknown' (never 'valid'). */
@@ -18,7 +20,7 @@ export function verdictOf(r) {
   if (status === 'catch-all') return 'risky';
   if (status === 'valid') {
     // A catch-all domain accepts every address, so "valid" there proves nothing about this mailbox.
-    if (NEVER_VALID.has(sub) || r?.catchall_domain === true || r?.catchall_domain === 'true') return 'risky';
+    if (NEVER_VALID.test(sub) || r?.catchall_domain === true || r?.catchall_domain === 'true') return 'risky';
     return 'valid';
   }
   return 'unknown';
