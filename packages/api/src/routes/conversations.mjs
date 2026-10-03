@@ -9,14 +9,33 @@
 //   GET  …/handoffs/:id                     the handoff and its thread (handoff_work)
 //   POST …/handoffs/:id/accept              the closer takes it (handoff_work, the closer only)
 //   POST …/handoffs/:id/outcome             { outcome } closes it (handoff_work)
+//   GET  …/conversations/:id/handoff-draft  the card's first draft + who can take it (handoff; 0016)
+//   GET  …/me/booking-link                  your booking link in this org (handoff_work; 0016)
+//   PUT  …/me/booking-link                  { url | null } (handoff_work; 0016)
 import { T, camel, audit } from './index.mjs';
 import { v, parse } from '../validate.mjs';
 import { notFound, conflict, HttpError } from '../errors.mjs';
-import { CHANNELS, STATES, timeline } from '../services/conversations.mjs';
+import { CHANNELS, STATES, timeline, draftHandoff } from '../services/conversations.mjs';
+import { addBusinessMinutes, SLA_MINUTES } from '../services/reply-rules.mjs';
 
 const REASONS = ['qualified', 'meeting_request', 'asked_for_human', 'escalation'];
 const OUTCOMES = ['won', 'lost', 'no_show', 'not_a_fit'];
 const SNIPPET = 160;
+// How long a closer has to accept a handoff before it escalates: the meeting SLA's clock (business minutes in the
+// workspace's timezone). Proposal (SDR-PIVOT P4), not a decision.
+export const HANDOFF_ACCEPT_MINUTES = SLA_MINUTES;
+const BOOKING_URL = /^https:\/\/[^\s<>"]+$/;
+
+// The handoff with what a closer needs on one card: the person, the thread, and the closer's own booking link.
+async function handoffCard(tx, h) {
+  const c = await conversationRow(tx, h.conversation_id);
+  const closer = (await tx.query(`SELECT u.email, m.booking_url FROM users u LEFT JOIN memberships m ON m.user_id = u.id AND m.org_id = $2
+    WHERE u.id = $1`, [h.closer_id, h.org_id])).rows[0];
+  return { ...camel(h), overdue: !h.accepted_at && !h.outcome && h.due_at && new Date(h.due_at) <= new Date(),
+    closerEmail: closer?.email ?? null, bookingUrl: closer?.booking_url ?? null,
+    contact: c ? { name: c.contact_name, email: c.contact_email, company: c.contact_company } : null,
+    conversation: c ? { ...camel(c), messages: (await timeline(tx, c)).map(camel) } : null };
+}
 
 async function conversationRow(tx, id) {
   return (await tx.query(`SELECT c.*, k.name AS contact_name, k.email AS contact_email, k.company AS contact_company
@@ -62,6 +81,8 @@ export function registerConversations(r) {
     }
     return ctx.tenant(async (tx, m) => {
       const c = (await tx.query(`SELECT id, state FROM conversations WHERE id = $1 FOR UPDATE`, [ctx.params.id])).rows[0];
+      const tz = (await tx.query(`SELECT timezone FROM workspaces WHERE id = $1`, [m.workspaceId])).rows[0]?.timezone ?? 'America/Chicago';
+      const dueAt = addBusinessMinutes(ctx.now(), HANDOFF_ACCEPT_MINUTES, tz);
       if (!c) throw notFound('conversation not found');
       if (['closed', 'spam'].includes(c.state)) throw conflict(`a ${c.state} conversation can't be handed off`);
       if ((await tx.query(`SELECT 1 FROM handoffs WHERE conversation_id = $1 AND outcome IS NULL`, [c.id])).rows.length) {
@@ -69,15 +90,18 @@ export function registerConversations(r) {
       }
       let h;
       try {
-        h = (await tx.query(`INSERT INTO handoffs (org_id, workspace_id, conversation_id, closer_id, reason, summary, answers, created_by)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-        [m.orgId, m.workspaceId, c.id, b.closerId, b.reason, b.summary, JSON.stringify(b.answers ?? {}), m.userId])).rows[0];
+        h = (await tx.query(`INSERT INTO handoffs (org_id, workspace_id, conversation_id, closer_id, reason, summary, answers, created_by, due_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+        [m.orgId, m.workspaceId, c.id, b.closerId, b.reason, b.summary, JSON.stringify(b.answers ?? {}), m.userId, dueAt])).rows[0];
       } catch (e) {
         if (/not a closer, operator or admin/.test(e.message)) throw new HttpError(400, 'bad_request', 'that person can\'t take handoffs in this workspace', { field: 'closerId' });
         throw e;
       }
       await tx.query(`UPDATE conversations SET state = 'handed_off', closer_id = $2, updated_at = now() WHERE id = $1`, [c.id, b.closerId]);
       await audit(tx, m, 'handoff', 'conversation', c.id);
+      // For the notify relay: tell the closer they have one (in the console, it's their open handoffs).
+      await tx.query(`INSERT INTO outbox (org_id, topic, key, payload) VALUES ($1, 'notify.handoff', $2, $3)`,
+        [m.orgId, `${h.id}:new`, JSON.stringify({ handoff_id: h.id, workspace_id: m.workspaceId, closer_id: b.closerId, kind: 'new' })]);
       return { status: 201, body: camel(h) };
     }, { action: 'handoff' });
   });
@@ -86,10 +110,13 @@ export function registerConversations(r) {
     const q = parse(v.object({ open: v.optional(v.oneOf(['true', 'false'])) }), ctx.query);
     return ctx.tenant(async (tx) => {
       // RLS already narrows a closer to their own; everyone else sees the workspace's.
-      const rows = (await tx.query(`SELECT h.*, c.channel, c.state AS conversation_state, k.name AS contact_name, k.email AS contact_email,
-          k.company AS contact_company
+      // Open first, the most urgent (earliest due, not yet accepted) on top.
+      const rows = (await tx.query(`SELECT h.*, c.channel, c.state AS conversation_state, c.category, k.name AS contact_name,
+          k.email AS contact_email, k.company AS contact_company,
+          (h.accepted_at IS NULL AND h.outcome IS NULL AND h.due_at <= now()) AS overdue
         FROM handoffs h JOIN conversations c ON c.id = h.conversation_id LEFT JOIN contacts k ON k.id = c.contact_id
-        ${q.open === 'false' ? '' : 'WHERE h.outcome IS NULL'} ORDER BY h.created_at DESC LIMIT 200`)).rows;
+        ${q.open === 'false' ? '' : 'WHERE h.outcome IS NULL'}
+        ORDER BY (h.outcome IS NULL) DESC, (h.accepted_at IS NULL) DESC, h.due_at ASC NULLS LAST, h.created_at DESC LIMIT 200`)).rows;
       return { items: rows.map(camel) };
     }, { action: 'handoff_work' });
   });
@@ -97,8 +124,7 @@ export function registerConversations(r) {
   r.get(`${T}/handoffs/:id`, (ctx) => ctx.tenant(async (tx) => {
     const h = (await tx.query(`SELECT * FROM handoffs WHERE id = $1`, [ctx.params.id])).rows[0];
     if (!h) throw notFound('handoff not found');
-    const c = await conversationRow(tx, h.conversation_id);
-    return { ...camel(h), conversation: { ...camel(c), messages: (await timeline(tx, c)).map(camel) } };
+    return handoffCard(tx, h);
   }, { action: 'handoff_work' }));
 
   r.post(`${T}/handoffs/:id/accept`, (ctx) => ctx.tenant(async (tx, m) => {
@@ -124,6 +150,33 @@ export function registerConversations(r) {
       await tx.query(`UPDATE conversations SET state = 'closed', updated_at = now() WHERE id = $1`, [h.conversation_id]);
       await audit(tx, m, `handoff_${b.outcome}`, 'handoff', h.id);
       return camel((await tx.query(`SELECT * FROM handoffs WHERE id = $1`, [h.id])).rows[0]);
+    }, { action: 'handoff_work' });
+  });
+
+  r.get(`${T}/conversations/:id/handoff-draft`, (ctx) => ctx.tenant(async (tx, m) => {
+    const c = await conversationRow(tx, ctx.params.id);
+    if (!c) throw notFound('conversation not found');
+    // Who can take it: the trigger's rule (0015), shown so the person handing off picks someone who can.
+    const closers = (await tx.query(`SELECT m.user_id AS id, u.email, m.role, m.booking_url IS NOT NULL AS has_booking_link
+      FROM memberships m JOIN users u ON u.id = m.user_id
+      WHERE m.org_id = $1 AND m.role IN ('closer', 'operator', 'admin') AND (m.workspace_ids IS NULL OR $2 = ANY (m.workspace_ids))
+      ORDER BY (m.role = 'closer') DESC, u.email`, [m.orgId, m.workspaceId])).rows;
+    return { ...draftHandoff(c, await timeline(tx, c)), closers: closers.map(camel) };
+  }, { action: 'handoff' }));
+
+  r.get(`${T}/me/booking-link`, (ctx) => ctx.tenant(async (tx, m) => {
+    const row = (await tx.query(`SELECT booking_url FROM memberships WHERE org_id = $1 AND user_id = $2`, [m.orgId, m.userId])).rows[0];
+    return { url: row?.booking_url ?? null };
+  }, { action: 'handoff_work' }));
+
+  r.put(`${T}/me/booking-link`, (ctx) => {
+    const b = parse(v.object({ url: v.nullable(v.string({ min: 1, max: 500 })) }), ctx.body ?? {});
+    if (b.url !== null && !BOOKING_URL.test(b.url)) throw new HttpError(400, 'bad_request', 'the booking link must be an https:// address', { field: 'url' });
+    return ctx.tenant(async (tx, m) => {
+      const ok = (await tx.query(`SELECT app_set_booking_url($1, $2) AS ok`, [m.orgId, b.url])).rows[0].ok;
+      if (!ok) throw notFound('membership not found');
+      await audit(tx, m, 'booking_link', 'membership', m.userId);
+      return { url: b.url };
     }, { action: 'handoff_work' });
   });
 }

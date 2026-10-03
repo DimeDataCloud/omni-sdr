@@ -114,8 +114,9 @@ export async function seedTenant(db, label, { cap = 5, trust = 1, heat = 1 } = {
   const conversation = (await one(db, `INSERT INTO conversations (org_id, workspace_id, contact_id, channel, thread_key, state, closer_id, last_inbound_at)
     VALUES ($1, $2, $3, 'email', $4, 'handed_off', $5, now()) RETURNING id`, [org, ws, contact, `contact:${contact}`, user])).id;
   await db.query(`UPDATE inbound_messages SET conversation_id = $2 WHERE id = $1`, [inbound, conversation]);
-  await db.query(`INSERT INTO handoffs (org_id, workspace_id, conversation_id, closer_id, reason, summary, created_by)
-    VALUES ($1, $2, $3, $4, 'qualified', 'Wants a call next week.', $4)`, [org, ws, conversation, user]);
+  // 0016: with an accept-by time.
+  await db.query(`INSERT INTO handoffs (org_id, workspace_id, conversation_id, closer_id, reason, summary, created_by, due_at)
+    VALUES ($1, $2, $3, $4, 'qualified', 'Wants a call next week.', $4, now() + interval '2 hours')`, [org, ws, conversation, user]);
   return { ...t, message, inbound, conversation };
 }
 
