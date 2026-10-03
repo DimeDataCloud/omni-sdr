@@ -66,6 +66,8 @@ export interface Client {
   createReplyDraft(s: Scope, conversationId: Id, playbookReplyId?: Id): Promise<ReplyDraft>;
   approveReplyDraft(s: Scope, id: Id, body?: string): Promise<ReplyDraft>;
   discardReplyDraft(s: Scope, id: Id): Promise<void>;
+  /** P7: a LinkedIn message the person pasted in (inbox_draft). Omni never reads or sends on LinkedIn. */
+  pasteLinkedIn(s: Scope, body: { name: string; profileUrl?: string | null; email?: string | null; body: string }): Promise<{ id: Id; conversationId: Id; intent: string }>;
   patchMeeting(s: Scope, id: Id, patch: { status?: Meeting['status'] }): Promise<Meeting>;
 
   agents(s: Scope): Promise<Agent[]>;

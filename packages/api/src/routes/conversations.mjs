@@ -10,6 +10,7 @@
 //   POST …/handoffs/:id/accept              the closer takes it (handoff_work, the closer only)
 //   POST …/handoffs/:id/outcome             { outcome } closes it (handoff_work); 'reassigned' not by a closer
 //   GET  …/conversations/:id/handoff-draft  the card's first draft + who can take it (handoff; 0016)
+//   POST …/conversations/paste             { name, profileUrl?, email?, body, receivedAt? } a pasted LinkedIn message (inbox_draft; P7)
 //   GET  …/me/booking-link                  your booking link in this org (handoff_work; 0016)
 //   PUT  …/me/booking-link                  { url | null } (handoff_work; 0016)
 import { T, camel, audit } from './index.mjs';
@@ -17,6 +18,7 @@ import { v, parse } from '../validate.mjs';
 import { notFound, conflict, HttpError } from '../errors.mjs';
 import { CHANNELS, STATES, timeline, draftHandoff } from '../services/conversations.mjs';
 import { addBusinessMinutes, SLA_MINUTES } from '../services/reply-rules.mjs';
+import { ingestPasted, normalizeLinkedIn } from '../services/inbox.mjs';
 
 const REASONS = ['qualified', 'meeting_request', 'asked_for_human', 'escalation'];
 const OUTCOMES = ['won', 'lost', 'no_show', 'not_a_fit', 'reassigned'];
@@ -167,6 +169,23 @@ export function registerConversations(r) {
       ORDER BY (m.role = 'closer') DESC, u.email`, [m.orgId, m.workspaceId])).rows;
     return { ...draftHandoff(c, await timeline(tx, c)), closers: closers.map(camel) };
   }, { action: 'handoff' }));
+
+  // Before …/conversations/:id so "paste" is never read as an id.
+  r.post(`${T}/conversations/paste`, async (ctx) => {
+    const b = parse(v.object({
+      name: v.string({ min: 1, max: 200 }), profileUrl: v.optional(v.nullable(v.string({ max: 300 }))), email: v.optional(v.nullable(v.email())),
+      body: v.string({ min: 1, max: 5000, trim: false }), receivedAt: v.optional(v.datetime()),
+    }), ctx.body ?? {});
+    if (b.profileUrl && !normalizeLinkedIn(b.profileUrl)) throw new HttpError(400, 'bad_request', 'use a linkedin.com/in/… or /company/… link', { field: 'profileUrl' });
+    const at = b.receivedAt ? new Date(b.receivedAt) : ctx.now();
+    if (at > new Date(ctx.now().getTime() + 5 * 60000)) throw new HttpError(400, 'bad_request', 'receivedAt is in the future', { field: 'receivedAt' });
+    // The member and their right to answer first; then the message is recorded as the inbox service would.
+    const m = await ctx.tenant(async (tx, mm) => mm, { action: 'inbox_draft' });
+    // The audit row (who pasted it) is written inside the same transaction as the message.
+    const out = await ingestPasted(ctx.client, { orgId: m.orgId, workspaceId: m.workspaceId, actor: m.userId },
+      { name: b.name, profileUrl: b.profileUrl ?? null, email: b.email ?? null, body: b.body, receivedAt: at });
+    return { status: 201, body: { id: out.id, conversationId: out.conversationId, intent: out.intent, slaDueAt: out.slaDueAt } };
+  });
 
   r.get(`${T}/me/booking-link`, (ctx) => ctx.tenant(async (tx, m) => {
     const row = (await tx.query(`SELECT booking_url FROM memberships WHERE org_id = $1 AND user_id = $2`, [m.orgId, m.userId])).rows[0];

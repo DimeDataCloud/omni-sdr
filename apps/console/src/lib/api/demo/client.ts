@@ -7,7 +7,7 @@ import { ApiError, invalidate, type Client, type Scope, type Campaign, type Icp 
 import type { Dataset, ApprovalCard, Agent, ChatMessage, Contact, InboxItem, Meeting, Routine, Role, Analytics, Me, Pipeline, AboutKind, AskMode, HandoffItem, HandoffCard, ThreadMessage, PlaybookReply, ReplyDraft, PlaybookCategory } from '../types';
 import { addBusinessMinutes, SLA_MINUTES } from '@rules/reply-rules.mjs';
 import { PLAYBOOK_CATEGORIES, unknownFields, render, firstName, AUTONOMY_WINDOW, AUTONOMY_RATE } from '@rules/playbook.mjs';
-import { load, save, gate, newId, personaEmail, convertOnMeeting } from './store';
+import { load, save, gate, newId, personaEmail, convertOnMeeting, recordReply } from './store';
 import { think } from './brain';
 import { studioDemo, mediaCounts } from './studio';
 
@@ -530,6 +530,26 @@ export const demoClient: Client = {
     if (d.status !== 'pending') throw conflict(`this draft is already ${d.status}`);
     d.status = 'discarded'; d.decidedBy = m.userId; d.decidedAt = nowIso();
     audit(w, ws.id, m.userId, 'discard', 'reply_draft', d.id);
+  }),
+  pasteLinkedIn: (s, body) => write((w) => {
+    const { m, ws } = tenant(w, s, 'inbox_draft');
+    if (!body.name.trim() || !body.body.trim()) throw new ApiError(400, 'bad_request', 'name and message are required');
+    const prof = body.profileUrl ? /^https:\/\/(?:[a-z]{2,3}\.)?(?:www\.)?linkedin\.com\/(in|company)\/([A-Za-z0-9_%-]{2,100})\/?(?:[?#].*)?$/i.exec(body.profileUrl.trim()) : null;
+    if (body.profileUrl && !prof) throw new ApiError(400, 'bad_request', 'use a linkedin.com/in/… or /company/… link', { field: 'profileUrl' });
+    const email = body.email?.trim().toLowerCase() || null;
+    // Same person: same address, or same profile. A name alone is not a person (#91 audit): a new contact and thread.
+    const profKey = prof ? `${prof[1]}/${prof[2]}`.toLowerCase() : null;
+    let c = (email && w.contacts.find((x) => x.ws === ws.id && x.email === email))
+      || (profKey ? w.contacts.find((x) => x.ws === ws.id && w.inbound.some((r) => r.contactId === x.id && r.channel === 'linkedin' && r.fromAddress === profKey)) : undefined);
+    if (!c) {
+      c = { id: newId(), ws: ws.id, name: body.name.trim(), email, emailStatus: 'unknown' as const, phone: null, company: null, title: null, fitScore: null, createdAt: nowIso() };
+      w.contacts.push(c);
+    }
+    const r = recordReply(w, { ws: ws.id, contactId: c.id, messageId: null, from: email ?? profKey ?? body.name, subject: `LinkedIn: ${body.name.trim()}`,
+      body: body.body, receivedAt: new Date() });
+    (r as { channel: string }).channel = 'linkedin';
+    audit(w, ws.id, m.userId, 'paste_linkedin', 'inbound_message', r.id);
+    return { id: r.id, conversationId: convId(c.id), intent: r.intent };
   }),
   meetings: (s, range = 'upcoming') => read((w) => {
     tenant(w, s, 'reports_view');

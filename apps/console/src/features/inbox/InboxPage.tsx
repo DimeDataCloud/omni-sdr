@@ -7,6 +7,8 @@ import { toast } from 'sonner';
 import { CalendarPlus, CheckCircle2, ArrowLeft, Inbox as InboxIcon, Info, Clock3, UserRound, ShieldOff, FileText, Handshake } from 'lucide-react';
 import { HandoffSheet } from '@/features/handoffs/HandoffSheet';
 import { ReplyPanel } from '@/features/playbook/ReplyPanel';
+import { PasteSheet } from './PasteSheet';
+import { ClipboardPaste } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { InboxItem } from '@/lib/api/types';
 import { bumpEdge, useArrivalFocus, useFillHeight, useHotkeys, useMedia, useNow, useQuery, useSelection, prefetchQuery, requestArrival } from '@/lib/hooks';
@@ -24,8 +26,9 @@ type Status = 'open' | 'handled' | 'all';
 export const prefetch = (s: Scope) => prefetchQuery(`inbox:${s.workspaceId}:open`, () => api.inbox(s, { status: 'open' }));
 
 export default function InboxPage() {
-  const { scope, tz } = useWorkspace();
+  const { scope, tz, can } = useWorkspace();
   const [params, setParams] = useSearchParams();
+  const [pasting, setPasting] = useState(false);
   const [listFill, listFillVar] = useFillHeight<HTMLDivElement>();
   const status = (params.get('s') as Status) ?? 'open';
   const since = params.get('since'); // from Home: only replies that arrived after this instant
@@ -67,7 +70,8 @@ export default function InboxPage() {
   );
 
   const header = (
-    <PageHeader title="Inbox" subtitle="Replies to your outreach, meeting requests first. The SLA counts business hours only.">
+    <PageHeader title="Inbox" subtitle="Replies to your outreach, meeting requests first. The SLA counts business hours only."
+      actions={can('inbox_draft') ? <Button icon={<ClipboardPaste className="size-4" aria-hidden />} onClick={() => setPasting(true)}>Paste a LinkedIn message</Button> : undefined}>
       <div className="w-full">
         <Segmented id="inbox-tabs" label="Reply status" value={status} onChange={(v) => { const p = new URLSearchParams(); if (v !== 'open') p.set('s', v); setParams(p); }}
           options={[{ value: 'open', label: 'Open', count: status === 'open' ? items.length : undefined }, { value: 'handled', label: 'Handled' }, { value: 'all', label: 'All' }]} />
@@ -89,6 +93,7 @@ export default function InboxPage() {
           <ErrorState error={inbox.error} onRetry={inbox.reload} />
           {inbox.loading ? <SkeletonList rows={5} /> : items.length ? <ReplyList items={items} selectedId={null} onSelect={(id) => setParam('r', id)} sel={sel} /> : empty}
           {bulkBar}
+          <PasteSheet open={pasting} onOpenChange={setPasting} onPasted={(id) => setParam('r', id)} />
         </>)}
       </Page>
     );
@@ -105,6 +110,7 @@ export default function InboxPage() {
           </div>
         )}
       {bulkBar}
+      <PasteSheet open={pasting} onOpenChange={setPasting} onPasted={(id) => setParam('r', id)} />
     </Page>
   );
 }

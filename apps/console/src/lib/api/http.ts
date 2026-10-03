@@ -95,6 +95,7 @@ export const httpClient: Client = {
   createReplyDraft: (s, id, playbookReplyId) => write<ReplyDraft>('POST', `${t(s)}/conversations/${enc(id)}/reply-draft`, playbookReplyId ? { playbookReplyId } : {}),
   approveReplyDraft: (s, id, body) => write<ReplyDraft>('POST', `${t(s)}/reply-drafts/${enc(id)}/approve`, body === undefined ? {} : { body }),
   discardReplyDraft: async (s, id) => { await write('POST', `${t(s)}/reply-drafts/${enc(id)}/discard`); },
+  pasteLinkedIn: (s, body) => write('POST', `${t(s)}/conversations/paste`, body),
 
   agents: (s) => items<Agent>(`${t(s)}/agents`),
   createAgent: (s, body) => write<Agent>('POST', `${t(s)}/agents`, body),
