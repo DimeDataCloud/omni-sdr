@@ -125,7 +125,20 @@ export async function seedTenant(db, label, { cap = 5, trust = 1, heat = 1 } = {
   await db.query(`INSERT INTO qualification_questions (org_id, workspace_id, position, key, question) VALUES ($1, $2, 1, 'timing', 'When are you hoping to start?')`, [org, ws]);
   await db.query(`INSERT INTO reply_drafts (org_id, workspace_id, conversation_id, inbound_message_id, playbook_reply_id, category, body_proposed)
     VALUES ($1, $2, $3, $4, $5, 'not_interested', 'Understood, Pat. Thanks for letting us know.')`, [org, ws, conversation, inbound, playbook]);
-  return { ...t, message, inbound, conversation, playbook };
+  // 0019: a sent reply per tenant (RLS matrix, FK rule), from its own mailbox so the outreach mailbox's cap is untouched.
+  const replyMailbox = (await one(db, `INSERT INTO mailboxes (org_id, workspace_id, provider, address) VALUES ($1, $2, 'gmail', $3) RETURNING id`,
+    [org, ws, `replies@${label}.test`])).id;
+  const formConv = (await one(db, `INSERT INTO conversations (org_id, workspace_id, contact_id, channel, thread_key, last_inbound_at)
+    VALUES ($1, $2, $3, 'form', 'seed-form', now()) RETURNING id`, [org, ws, contact])).id;
+  const formIn = (await one(db, `INSERT INTO inbound_messages (org_id, workspace_id, contact_id, conversation_id, channel, from_address, body, received_at, intent)
+    VALUES ($1, $2, $3, $4, 'form', $5, 'What does it cost?', now(), 'question') RETURNING id`, [org, ws, contact, formConv, `pat@${label}.test`])).id;
+  const replyDraft = (await one(db, `INSERT INTO reply_drafts (org_id, workspace_id, conversation_id, inbound_message_id, category, body_proposed)
+    VALUES ($1, $2, $3, $4, 'question', 'A flat monthly fee.') RETURNING id`, [org, ws, formConv, formIn])).id;
+  await db.query(`UPDATE reply_drafts SET status = 'approved', body_final = body_proposed, decided_by = $2, decided_at = now() WHERE id = $1`, [replyDraft, user]);
+  const replyMessage = (await as(db, 'sender_svc', { org, ws: [ws] }, () => one(db,
+    `INSERT INTO reply_messages (org_id, workspace_id, reply_draft_id, mailbox_id) VALUES ($1, $2, $3, $4) RETURNING id`,
+    [org, ws, replyDraft, replyMailbox]))).id;
+  return { ...t, message, inbound, conversation, playbook, replyMailbox, formConv, formIn, replyDraft, replyMessage };
 }
 
 // A new draft for the tenant's enrollment, passed through the gate and approved.
