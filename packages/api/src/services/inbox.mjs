@@ -91,14 +91,14 @@ export async function ingestReply(client, msg, { classify = classifyReply } = {}
  * decider can take a minute), and a failure leaves the reply undecided for the next pass.
  * @returns { outcome: 'decided'|'already_decided'|'not_found'|'decider_failed', effects?, reason? }
  */
-export async function refineReply(client, { id, orgId, workspaceId }, { decider = offDecider(), shadowLabel = false } = {}) {
+export async function refineReply(client, { id, orgId, workspaceId }, { decider = offDecider(), shadowLabel = false, categories = false } = {}) {
   const scope = { orgId, workspaceId, role: 'inbox_svc' };
   const row = await withService(client, scope, async (tx) => (await tx.query(
     `SELECT id, contact_id, subject, body, intent, sla_due_at, received_at, decided_at FROM inbound_messages WHERE id = $1`, [id])).rows[0]);
   if (!row) return { outcome: 'not_found' };
   if (row.decided_at) return { outcome: 'already_decided' };
 
-  const questions = REPLY_TRIAGE.questions({ shadowLabel });
+  const questions = REPLY_TRIAGE.questions({ shadowLabel, categories });
   let out;
   try {
     // The decider reads what the person wrote (reply-rules.mjs cleanReplyBody); one long reply went from 847 to 154 tokens (LAYA-PLAN 2a, n=4).
@@ -148,12 +148,12 @@ export async function refineReply(client, { id, orgId, workspaceId }, { decider 
 }
 
 // One pass over undecided replies, oldest first, one at a time (the decider runs one request per instance).
-export async function refinePending(client, { decider = offDecider(), limit = 50, shadowLabel = false } = {}) {
+export async function refinePending(client, { decider = offDecider(), limit = 50, shadowLabel = false, categories = false } = {}) {
   const ids = await withoutTenant(client, { role: 'inbox_svc' }, async (tx) =>
     (await tx.query(`SELECT * FROM inbox_undecided_fair($1)`, [limit])).rows);   // round-robin by workspace (0014)
   const tally = { decided: 0, failed: 0, skipped: 0 };
   for (const r of ids) {
-    const res = await refineReply(client, { id: r.id, orgId: r.org_id, workspaceId: r.workspace_id }, { decider, shadowLabel });
+    const res = await refineReply(client, { id: r.id, orgId: r.org_id, workspaceId: r.workspace_id }, { decider, shadowLabel, categories });
     if (res.outcome === 'decided') tally.decided++;
     else if (res.outcome === 'decider_failed') { tally.failed++; break; } // a down decider fails every reply; stop and retry later
     else tally.skipped++;

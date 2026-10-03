@@ -113,7 +113,7 @@ export default function OmniSdrLandingPage() {
             Omni SDR
           </h1>
           <p className="text-lg md:text-xl font-medium max-w-3xl mx-auto leading-relaxed text-[#333333]">
-            Your all-in-one AI SDR for outbound, inbound, and marketing—find new opportunities and never miss a lead.
+            The buffer between your first touch and your closer: Omni answers every message, qualifies the person, and hands the good ones to your closer, ready to book.
           </p>
         </header>
 
