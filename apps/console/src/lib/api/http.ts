@@ -5,7 +5,7 @@
 import { ApiError, invalidate, type Client, type Scope, type Campaign, type Icp, type ActivityItem, type ImportResult } from './client';
 import type {
   Me, Settings, Members, ApprovalsList, ApprovalCard, InboxItem, Meeting, Agent, ChatMessage, Routine, Capacity, Analytics, Credits,
-  Connector, Contact, ContactDetail, StudioCaps, HandoffItem, HandoffCard, HandoffDraft,
+  Connector, Contact, ContactDetail, StudioCaps, HandoffItem, HandoffCard, HandoffDraft, Playbook, PlaybookReply, ReplyDraft,
 } from './types';
 import { DEV_AS, idToken, signOut } from '../auth';
 
@@ -85,6 +85,16 @@ export const httpClient: Client = {
   handoffOutcome: async (s, id, outcome) => { await write('POST', `${t(s)}/handoffs/${enc(id)}/outcome`, { outcome }); },
   bookingLink: (s) => get<{ url: string | null }>(`${t(s)}/me/booking-link`),
   setBookingLink: (s, url) => write('PUT', `${t(s)}/me/booking-link`, { url }),
+
+  playbook: (s) => get<Playbook>(`${t(s)}/playbook`),
+  createPlaybookReply: (s, body) => write<PlaybookReply>('POST', `${t(s)}/playbook/replies`, body),
+  patchPlaybookReply: (s, id, patch) => write<PlaybookReply>('PATCH', `${t(s)}/playbook/replies/${enc(id)}`, patch),
+  archivePlaybookReply: async (s, id) => { await write('DELETE', `${t(s)}/playbook/replies/${enc(id)}`); },
+  setQuestions: async (s, questions) => { await write('PUT', `${t(s)}/playbook/questions`, { questions }); },
+  replyDraft: async (s, id) => (await get<{ draft: ReplyDraft | null }>(`${t(s)}/conversations/${enc(id)}/reply-draft`)).draft,
+  createReplyDraft: (s, id, playbookReplyId) => write<ReplyDraft>('POST', `${t(s)}/conversations/${enc(id)}/reply-draft`, playbookReplyId ? { playbookReplyId } : {}),
+  approveReplyDraft: (s, id, body) => write<ReplyDraft>('POST', `${t(s)}/reply-drafts/${enc(id)}/approve`, body === undefined ? {} : { body }),
+  discardReplyDraft: async (s, id) => { await write('POST', `${t(s)}/reply-drafts/${enc(id)}/discard`); },
 
   agents: (s) => items<Agent>(`${t(s)}/agents`),
   createAgent: (s, body) => write<Agent>('POST', `${t(s)}/agents`, body),

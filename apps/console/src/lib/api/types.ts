@@ -86,6 +86,17 @@ export interface HandoffCard extends Omit<HandoffItem, 'channel' | 'category' | 
   contact: { name: string | null; email: string | null; company: string | null } | null;
   conversation: { id: Id; channel: string; category: string | null; messages: ThreadMessage[] } | null;
 }
+// Playbook (0017; SDR-PIVOT P3). GET …/playbook
+export type PlaybookCategory = 'meeting_request' | 'positive_inquiry' | 'question' | 'objection' | 'referral' | 'out_of_office'
+  | 'not_interested' | 'wrong_person' | 'unclassified';
+export interface PlaybookReply { id: Id; category: PlaybookCategory; name: string; subject: string | null; body: string; asksNextQuestion: boolean; createdAt: Iso; updatedAt: Iso }
+export interface QualificationQuestion { position: number; key: string; question: string }
+export interface AutonomyRow { category: string; decided: number; unedited: number; edited: number; discarded: number; rate: number; eligible: boolean }
+export interface Playbook { replies: PlaybookReply[]; questions: QualificationQuestion[]; fields: string[];
+  autonomy: { window: number; rate: number; autoSend: false; categories: AutonomyRow[] } }
+export interface ReplyDraft { id: Id; conversationId: Id; playbookReplyId: Id | null; category: string; channel: string; questionKey: string | null;
+  subject: string | null; bodyProposed: string; bodyFinal: string | null; status: 'pending' | 'approved' | 'discarded'; edited: boolean | null;
+  countsForAutonomy: boolean; createdAt: Iso; decidedAt: Iso | null }
 // GET …/conversations/:id/handoff-draft
 export interface HandoffDraft { reason: HandoffReason; summary: string; closers: { id: Id; email: string; role: Role; hasBookingLink: boolean }[] }
 

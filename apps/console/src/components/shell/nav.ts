@@ -1,11 +1,11 @@
 // One nav list; each entry says who sees it (DESIGN 5.3). The shell, bottom bar, palette and route guards all read this.
 // Pages are grouped into six sections (DECISIONS 2026-10-01, WORKSPACE-PLAN.md): the top bar shows sections, and a
 // section with more than one page shows its pages as tabs under the bar. URLs stay one page each (/w/:ws/:page).
-import { Home, CheckCheck, Inbox, CalendarDays, Users, BarChart3, Sparkles, Bot, Plug, Database, Settings as Cog, Send, MessageSquareReply, Megaphone, SlidersHorizontal, Handshake, type LucideIcon } from 'lucide-react';
+import { Home, CheckCheck, Inbox, CalendarDays, Users, BarChart3, Sparkles, Bot, Plug, Database, Settings as Cog, Send, MessageSquareReply, Megaphone, SlidersHorizontal, Handshake, BookOpenText, type LucideIcon } from 'lucide-react';
 import type { Role } from '@/lib/api/types';
 import type { Action } from '@/lib/session';
 
-export type PageKey = 'home' | 'approvals' | 'inbox' | 'handoffs' | 'meetings' | 'leads' | 'analytics' | 'studio' | 'agents' | 'data' | 'connections' | 'settings';
+export type PageKey = 'home' | 'approvals' | 'inbox' | 'handoffs' | 'playbook' | 'meetings' | 'leads' | 'analytics' | 'studio' | 'agents' | 'data' | 'connections' | 'settings';
 export type SectionKey = 'home' | 'outbound' | 'inbound' | 'marketing' | 'results' | 'setup';
 export interface NavItem { key: PageKey; section: SectionKey; label: string; hint: string; icon: LucideIcon; shortcut?: string; visible: (role: Role, can: (a: Action) => boolean) => boolean }
 export interface Section { key: SectionKey; label: string; hint: string; icon: LucideIcon }
@@ -28,6 +28,7 @@ export const NAV: NavItem[] = [
   { key: 'leads', section: 'outbound', label: 'Leads', hint: 'Who to reach, campaigns and imports', icon: Users, shortcut: 'g l', visible: (_, can) => can('build') },
   { key: 'inbox', section: 'inbound', label: 'Inbox', hint: 'Replies, sorted by what they need', icon: Inbox, shortcut: 'g i', visible: (_, can) => can('inbox_read') },
   { key: 'handoffs', section: 'inbound', label: 'Handoffs', hint: 'Conversations passed to a closer', icon: Handshake, shortcut: 'g o', visible: (_, can) => can('handoff_work') },
+  { key: 'playbook', section: 'inbound', label: 'Playbook', hint: 'Your replies and qualification questions', icon: BookOpenText, shortcut: 'g p', visible: (_, can) => can('inbox_read') },
   { key: 'meetings', section: 'inbound', label: 'Meetings', hint: 'Booked calls and their outcomes', icon: CalendarDays, shortcut: 'g m', visible: (_, can) => can('reports_view') },
   { key: 'studio', section: 'marketing', label: 'Studio', hint: 'Make and review images and video', icon: Sparkles, shortcut: 'g s', visible: (r) => !OUTSIDE.includes(r) },
   { key: 'analytics', section: 'results', label: 'Analytics', hint: 'Replies, meetings and approval rates', icon: BarChart3, shortcut: 'g r', visible: (_, can) => can('reports_view') },
