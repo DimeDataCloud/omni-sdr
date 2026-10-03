@@ -67,3 +67,34 @@ test('enrich: builders only; another workspace\'s contact is 404 and never fetch
     assert.equal(fetched.length, 30);
   } finally { await api.stop(); }
 });
+
+test('enrich: the same page twice is one evidence row; a changed page is a new one (#48 audit P3-2)', async () => {
+  let body = PAGE;
+  const { api, id } = await withContact(async (url) => ({ url, status: 200, body }));
+  try {
+    const a = await api.call('POST', `${api.W}/contacts/${id}/enrich`);
+    const b = await api.call('POST', `${api.W}/contacts/${id}/enrich`);
+    assert.deepEqual([a.status, b.status, b.body.evidenceId], [201, 201, a.body.evidenceId]);
+    body = `${PAGE}<p>New hours.</p>`;
+    const c = await api.call('POST', `${api.W}/contacts/${id}/enrich`);
+    assert.notEqual(c.body.evidenceId, a.body.evidenceId);
+    const [{ n }] = await api.q(`SELECT count(*)::int AS n FROM evidence WHERE contact_id = $1`, [id]);
+    assert.equal(n, 2);
+    const [{ k }] = await api.q(`SELECT count(*)::int AS k FROM audit_log WHERE action = 'enrich' AND entity_id = $1`, [id]);
+    assert.equal(k, 2, 'a reused row is not a new audit entry');
+  } finally { await api.stop(); }
+});
+
+test('enrich: an address changed during the fetch stores nothing for the new address (#48 audit P3-1)', async () => {
+  let api, id;
+  ({ api, id } = await withContact(async (url) => {
+    await api.q(`UPDATE contacts SET email = 'lena@otherclinic.com' WHERE id = $1`, [id]);
+    return { url, status: 200, body: PAGE };
+  }));
+  try {
+    const r = await api.call('POST', `${api.W}/contacts/${id}/enrich`);
+    assert.deepEqual([r.status, r.body.enriched, r.body.reason], [200, false, 'address_changed']);
+    const [{ n }] = await api.q(`SELECT count(*)::int AS n FROM evidence WHERE contact_id = $1`, [id]);
+    assert.equal(n, 0);
+  } finally { await api.stop(); }
+});
