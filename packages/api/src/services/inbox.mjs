@@ -273,7 +273,7 @@ export async function ingestForm(client, hook, msg, { classify = classifyReply, 
  * @param msg { name, profileUrl?, email?, body, receivedAt: Date }
  * @returns { outcome: 'recorded', id, conversationId, intent, slaDueAt }
  */
-export async function ingestPasted(client, { orgId, workspaceId }, msg, { classify = classifyReply } = {}) {
+export async function ingestPasted(client, { orgId, workspaceId, actor }, msg, { classify = classifyReply } = {}) {
   const email = msg.email ? String(msg.email).trim().toLowerCase() : null;
   const profile = msg.profileUrl ? normalizeLinkedIn(msg.profileUrl) : null;
   const verdict = classify({ subject: '', body: msg.body ?? '', from: email ?? '' });
@@ -286,10 +286,11 @@ export async function ingestPasted(client, { orgId, workspaceId }, msg, { classi
     }
     const tz = (await tx.query(`SELECT timezone FROM workspaces WHERE id = $1`, [workspaceId])).rows[0]?.timezone ?? 'America/Chicago';
     const slaDueAt = verdict.intent === 'meeting_request' ? addBusinessMinutes(msg.receivedAt, SLA_MINUTES, tz) : null;
-    // One thread per person on LinkedIn: their profile, else their address, else their name as typed.
-    const threadKey = profile ? `profile:${profile}` : contactId ? emailThreadKey(contactId) : `name:${String(msg.name).trim().toLowerCase().slice(0, 200)}`;
-    // Without an address the person is still someone: the thread's contact, or a new one with the name they gave.
-    if (!contactId) {
+    // One thread per person on LinkedIn: their profile, else their address. With neither, a name is not an identity
+    // (two John Smiths are two people, #91 audit P3-1): the paste gets its own thread, like an anonymous form.
+    const threadKey = profile ? `profile:${profile}` : contactId ? emailThreadKey(contactId) : `paste:${randomUUID()}`;
+    // Without an address the person is still someone: the profile thread's contact, or a new one with the name they gave.
+    if (!contactId && profile) {
       contactId = (await tx.query(`SELECT contact_id FROM conversations WHERE workspace_id = $1 AND channel = 'linkedin' AND thread_key = $2`,
         [workspaceId, threadKey])).rows[0]?.contact_id ?? null;
     }
@@ -314,6 +315,9 @@ export async function ingestPasted(client, { orgId, workspaceId }, msg, { classi
                       WHERE contact_id = $1 AND state NOT IN ${TERMINAL}`, [contactId, `linkedin:${verdict.intent}`]);
     }
     if (slaDueAt) await notifyInApp(tx, { orgId, workspaceId, inboundId: id, at: msg.receivedAt });
+    // Who pasted it, in the same transaction as the message (0018).
+    await tx.query(`INSERT INTO audit_log (org_id, actor, action, entity_type, entity_id) VALUES ($1, $2, 'paste_linkedin', 'inbound_message', $3)`,
+      [orgId, actor, id]);
     await tx.query(`INSERT INTO outbox (org_id, topic, key, payload) VALUES ($1, 'inbound.received', $2, $3)`,
       [orgId, id, JSON.stringify({ inbound_id: id, channel: 'linkedin', intent: verdict.intent, sla_due_at: slaDueAt })]);
     return { outcome: 'recorded', id, conversationId: conversation.id, intent: verdict.intent, slaDueAt: slaDueAt?.toISOString() ?? null };

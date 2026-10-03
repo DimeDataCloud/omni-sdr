@@ -30,8 +30,8 @@ test('a pasted message: triaged, threaded per profile, in the inbox; only people
   assert.deepEqual([conv.channel, conv.thread_key], ['linkedin', 'profile:in/jo-rivera']);
   const inbox = await api.call('GET', `${api.W}/inbox`, { as: 'sam@example.com' });
   assert.ok(inbox.body.items.some((i) => i.id === r1.body.id && i.channel === 'linkedin'));
-  const [{ n }] = await api.q(`SELECT count(*)::int AS n FROM audit_log WHERE action = 'paste_linkedin' AND entity_id = $1`, [r1.body.id]);
-  assert.equal(n, 1);
+  const audits = await api.q(`SELECT a.actor, u.email FROM audit_log a JOIN users u ON u.id::text = a.actor::text WHERE a.action = 'paste_linkedin' AND a.entity_id = $1`, [r1.body.id]);
+  assert.deepEqual(audits.map((x) => x.email), ['sam@example.com'], 'one audit row, naming who pasted it');
   for (const who of ['riley@example.com', 'client@example.com']) {
     assert.equal((await api.call('POST', `${api.W}/conversations/paste`, { as: who, body })).status, 403, who);
   }
@@ -50,4 +50,33 @@ test('an opt-out pasted with an address suppresses it; a pasted message gets a p
   const d = await api.call('POST', `${api.W}/conversations/${q.body.conversationId}/reply-draft`, { as: 'sam@example.com' });
   assert.equal(d.status, 201, JSON.stringify(d.body));
   assert.deepEqual([d.body.channel, d.body.countsForAutonomy], ['linkedin', true]);
+});
+
+test('without a profile or address, a name is not a person: each paste is its own thread and contact (#91 audit P3-1)', async () => {
+  const paste = (body) => api.call('POST', `${api.W}/conversations/paste`, { as: 'sam@example.com', body: { name: 'John Smith', body } });
+  const a = await paste('hi, interested');
+  const b = await paste('unrelated: can you call me?');
+  assert.equal(a.status, 201); assert.equal(b.status, 201);
+  assert.notEqual(a.body.conversationId, b.body.conversationId, 'two John Smiths, two threads');
+  const rows = await api.q(`SELECT thread_key, contact_id FROM conversations WHERE id = ANY ($1)`, [[a.body.conversationId, b.body.conversationId]]);
+  assert.ok(rows.every((r) => /^paste:/.test(r.thread_key)));
+  assert.notEqual(rows[0].contact_id, rows[1].contact_id);
+});
+
+test('the message and its audit row are one transaction: if the audit write fails, nothing is recorded (#91 audit P3-2)', async () => {
+  const before = (await api.q(`SELECT count(*)::int AS n FROM inbound_messages WHERE channel = 'linkedin'`))[0].n;
+  // Make the audit insert fail inside the service transaction.
+  await api.q(`CREATE FUNCTION test_audit_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+    IF NEW.action = 'paste_linkedin' THEN RAISE EXCEPTION 'audit down'; END IF; RETURN NEW; END $$`);
+  await api.q(`CREATE TRIGGER test_audit_fail BEFORE INSERT ON audit_log FOR EACH ROW EXECUTE FUNCTION test_audit_fail()`);
+  try {
+    const r = await api.call('POST', `${api.W}/conversations/paste`, { as: 'sam@example.com',
+      body: { name: 'Ana Ruiz', profileUrl: 'https://www.linkedin.com/in/ana-ruiz', body: 'Is this still available?' } });
+    assert.notEqual(r.status, 201, 'the paste fails as a whole');
+    assert.equal((await api.q(`SELECT count(*)::int AS n FROM inbound_messages WHERE channel = 'linkedin'`))[0].n, before, 'no message without its audit row');
+    assert.equal((await api.q(`SELECT count(*)::int AS n FROM conversations WHERE thread_key = 'profile:in/ana-ruiz'`))[0].n, 0);
+  } finally {
+    await api.q(`DROP TRIGGER test_audit_fail ON audit_log`);
+    await api.q(`DROP FUNCTION test_audit_fail()`);
+  }
 });

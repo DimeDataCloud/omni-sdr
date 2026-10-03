@@ -181,9 +181,9 @@ export function registerConversations(r) {
     if (at > new Date(ctx.now().getTime() + 5 * 60000)) throw new HttpError(400, 'bad_request', 'receivedAt is in the future', { field: 'receivedAt' });
     // The member and their right to answer first; then the message is recorded as the inbox service would.
     const m = await ctx.tenant(async (tx, mm) => mm, { action: 'inbox_draft' });
-    const out = await ingestPasted(ctx.client, { orgId: m.orgId, workspaceId: m.workspaceId },
+    // The audit row (who pasted it) is written inside the same transaction as the message.
+    const out = await ingestPasted(ctx.client, { orgId: m.orgId, workspaceId: m.workspaceId, actor: m.userId },
       { name: b.name, profileUrl: b.profileUrl ?? null, email: b.email ?? null, body: b.body, receivedAt: at });
-    await ctx.tenant(async (tx, mm) => { await audit(tx, mm, 'paste_linkedin', 'inbound_message', out.id); }, { action: 'inbox_draft' });
     return { status: 201, body: { id: out.id, conversationId: out.conversationId, intent: out.intent, slaDueAt: out.slaDueAt } };
   });
 
