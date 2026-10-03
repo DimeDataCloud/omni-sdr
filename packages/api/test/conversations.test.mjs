@@ -125,3 +125,54 @@ test('form submissions thread too: one conversation per address on the form chan
   const q = await api.call('GET', `${api.W}/conversations?channel=form`);
   assert.equal(q.body.items.length, 2);
 });
+
+test('after an outcome, a new reply reopens the conversation; it can be handed off again; reassigning goes through the API (#87 audit P2-1)', async () => {
+  const email = 'tom@maplegrove-dental.example';
+  const reply = (body, n) => api.signedInbound({ ...thread, from: email, subject: 'Re: hi', body, receivedAt: new Date(Date.now() + 10000 * n).toISOString(), externalId: `<re${n}@x>` });
+  const state = async () => (await api.q(`SELECT state, closed_reason, closer_id FROM conversations WHERE id = $1`, [conversationId]))[0];
+  const inQueue = async () => (await api.call('GET', `${api.W}/conversations?state=open`)).body.items.some((x) => x.id === conversationId);
+  const handOff = (to, summary) => api.call('POST', `${api.W}/conversations/${conversationId}/handoff`, { as: 'sam@example.com', body: { closerId: to, reason: 'meeting_request', summary } });
+
+  // Won earlier: they write again, so it is back in the queue (the closer keeps it, the customer is theirs).
+  await reply('Thanks! One more question about the invoice.', 1);
+  assert.deepEqual(await state(), { state: 'open', closed_reason: null, closer_id: closerId });
+
+  // The local repro: hand off, no-show, then they ask to reschedule.
+  const h1 = await handOff(closerId, 'Wants a call.');
+  assert.equal(h1.status, 201, JSON.stringify(h1.body));
+  const ns = await api.call('POST', `${api.W}/handoffs/${h1.body.id}/outcome`, { as: 'cole.closer@example.com', body: { outcome: 'no_show' } });
+  assert.equal(ns.status, 200, JSON.stringify(ns.body));
+  assert.deepEqual(await state(), { state: 'closed', closed_reason: 'outcome', closer_id: null });
+  await reply('Sorry I missed it, can we reschedule for Friday?', 2);
+  assert.deepEqual(await state(), { state: 'open', closed_reason: null, closer_id: null });
+  assert.equal(await inQueue(), true, 'back in the open queue');
+  const old = await api.call('GET', `${api.W}/handoffs/${h1.body.id}`, { as: 'cole.closer@example.com' });
+  assert.deepEqual([old.status, old.body.conversation], [200, null], 'the old closer keeps the handoff record, not the new replies');
+
+  // Handed off again.
+  const h2 = await handOff(closerId, 'Reschedule for Friday.');
+  assert.equal(h2.status, 201, JSON.stringify(h2.body));
+
+  // Reassigning: not by the closer; an operator can, and it goes back to open for the next handoff.
+  assert.equal((await api.call('POST', `${api.W}/handoffs/${h2.body.id}/outcome`, { as: 'cole.closer@example.com', body: { outcome: 'reassigned' } })).status, 403);
+  const re = await api.call('POST', `${api.W}/handoffs/${h2.body.id}/outcome`, { as: 'sam@example.com', body: { outcome: 'reassigned' } });
+  assert.deepEqual([re.status, re.body.outcome], [200, 'reassigned']);
+  assert.deepEqual(await state(), { state: 'open', closed_reason: null, closer_id: null });
+  const dee = await closer('dee.closer@example.com');
+  assert.equal((await handOff(dee, 'Over to Dee.')).status, 201);
+  assert.deepEqual(await state(), { state: 'handed_off', closed_reason: null, closer_id: dee });
+  assert.equal((await api.call('GET', `${api.W}/handoffs?open=false`, { as: 'cole.closer@example.com' })).body.items.length, 3, 'cole keeps his three handoff records');
+  assert.equal((await api.call('GET', `${api.W}/conversations?state=handed_off`, { as: 'sam@example.com' })).status, 200);
+});
+
+test('an opt-out stays closed whatever they write next; an out-of-office reply doesn\'t reopen an outcome', async () => {
+  const email = 'aisha@crescent-ortho.example';
+  const [conv] = await api.q(`SELECT id, thread_key FROM conversations WHERE contact_id = (SELECT id FROM contacts WHERE email = $1)`, [email]);
+  const { threadFor } = await import('../src/services/conversations.mjs');
+  const run = (category) => threadFor(api.db, { orgId: api.demo.org, workspaceId: api.demo.workspaces[0], channel: 'email', threadKey: conv.thread_key, at: new Date(), category });
+  assert.equal((await run('positive_inquiry')).state, 'closed', 'opted out: never reopened');
+  const [o] = await api.q(`INSERT INTO conversations (org_id, workspace_id, channel, thread_key, state, closed_reason) VALUES ($1, $2, 'chat', 'chat:ooo', 'closed', 'outcome') RETURNING id`,
+    [api.demo.org, api.demo.workspaces[0]]);
+  const ooo = await threadFor(api.db, { orgId: api.demo.org, workspaceId: api.demo.workspaces[0], channel: 'chat', threadKey: 'chat:ooo', at: new Date(), category: 'out_of_office' });
+  assert.deepEqual([ooo.id, ooo.state], [o.id, 'closed']);
+});

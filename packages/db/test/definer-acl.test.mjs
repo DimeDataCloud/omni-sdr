@@ -22,7 +22,7 @@ const EXPECTED = {
   inbox_resolve_reply: ['inbox_svc'], inbox_undecided: ['inbox_svc'], inbox_wake_snoozed: ['inbox_svc'], inbox_sla_due: ['inbox_svc'],
   inbox_resolve_hook: ['inbox_svc'], inbox_undecided_fair: ['inbox_svc'],   // 0014
   sender_due_workspaces: ['sender_svc'],
-  send_guard: [], send_guard_enrollment: [],  // trigger-only
+  send_guard: [], send_guard_enrollment: [], handoffs_sync: [],  // trigger-only
 };
 
 async function asProdOwner() {

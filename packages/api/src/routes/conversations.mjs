@@ -8,14 +8,14 @@
 //   GET  …/handoffs                         yours if you're a closer, every open one otherwise (handoff_work)
 //   GET  …/handoffs/:id                     the handoff and its thread (handoff_work)
 //   POST …/handoffs/:id/accept              the closer takes it (handoff_work, the closer only)
-//   POST …/handoffs/:id/outcome             { outcome } closes it (handoff_work)
+//   POST …/handoffs/:id/outcome             { outcome } closes it (handoff_work); 'reassigned' not by a closer
 import { T, camel, audit } from './index.mjs';
 import { v, parse } from '../validate.mjs';
 import { notFound, conflict, HttpError } from '../errors.mjs';
 import { CHANNELS, STATES, timeline } from '../services/conversations.mjs';
 
 const REASONS = ['qualified', 'meeting_request', 'asked_for_human', 'escalation'];
-const OUTCOMES = ['won', 'lost', 'no_show', 'not_a_fit'];
+const OUTCOMES = ['won', 'lost', 'no_show', 'not_a_fit', 'reassigned'];
 const SNIPPET = 160;
 
 async function conversationRow(tx, id) {
@@ -76,7 +76,7 @@ export function registerConversations(r) {
         if (/not a closer, operator or admin/.test(e.message)) throw new HttpError(400, 'bad_request', 'that person can\'t take handoffs in this workspace', { field: 'closerId' });
         throw e;
       }
-      await tx.query(`UPDATE conversations SET state = 'handed_off', closer_id = $2, updated_at = now() WHERE id = $1`, [c.id, b.closerId]);
+      // The handoffs_sync trigger marks the conversation handed off to that closer.
       await audit(tx, m, 'handoff', 'conversation', c.id);
       return { status: 201, body: camel(h) };
     }, { action: 'handoff' });
@@ -85,10 +85,11 @@ export function registerConversations(r) {
   r.get(`${T}/handoffs`, (ctx) => {
     const q = parse(v.object({ open: v.optional(v.oneOf(['true', 'false'])) }), ctx.query);
     return ctx.tenant(async (tx) => {
-      // RLS already narrows a closer to their own; everyone else sees the workspace's.
+      // RLS already narrows a closer to their own; everyone else sees the workspace's. LEFT JOIN: a closer keeps the
+      // record of a handoff that ended (not won) but no longer sees its conversation.
       const rows = (await tx.query(`SELECT h.*, c.channel, c.state AS conversation_state, k.name AS contact_name, k.email AS contact_email,
           k.company AS contact_company
-        FROM handoffs h JOIN conversations c ON c.id = h.conversation_id LEFT JOIN contacts k ON k.id = c.contact_id
+        FROM handoffs h LEFT JOIN conversations c ON c.id = h.conversation_id LEFT JOIN contacts k ON k.id = c.contact_id
         ${q.open === 'false' ? '' : 'WHERE h.outcome IS NULL'} ORDER BY h.created_at DESC LIMIT 200`)).rows;
       return { items: rows.map(camel) };
     }, { action: 'handoff_work' });
@@ -97,8 +98,9 @@ export function registerConversations(r) {
   r.get(`${T}/handoffs/:id`, (ctx) => ctx.tenant(async (tx) => {
     const h = (await tx.query(`SELECT * FROM handoffs WHERE id = $1`, [ctx.params.id])).rows[0];
     if (!h) throw notFound('handoff not found');
+    // A closer whose handoff ended (other than won) no longer sees the conversation: the handoff, not the thread.
     const c = await conversationRow(tx, h.conversation_id);
-    return { ...camel(h), conversation: { ...camel(c), messages: (await timeline(tx, c)).map(camel) } };
+    return { ...camel(h), conversation: c ? { ...camel(c), messages: (await timeline(tx, c)).map(camel) } : null };
   }, { action: 'handoff_work' }));
 
   r.post(`${T}/handoffs/:id/accept`, (ctx) => ctx.tenant(async (tx, m) => {
@@ -119,9 +121,11 @@ export function registerConversations(r) {
       const h = (await tx.query(`SELECT id, closer_id, conversation_id, outcome FROM handoffs WHERE id = $1 FOR UPDATE`, [ctx.params.id])).rows[0];
       if (!h) throw notFound('handoff not found');
       if (m.role === 'closer' && h.closer_id !== m.userId) throw new HttpError(403, 'forbidden', 'not your handoff');
+      if (b.outcome === 'reassigned' && m.role === 'closer') throw new HttpError(403, 'forbidden', 'a closer can\'t reassign; ask an operator');
       if (h.outcome) throw conflict('this handoff already has an outcome');
       await tx.query(`UPDATE handoffs SET outcome = $2, outcome_at = now() WHERE id = $1`, [h.id, b.outcome]);
-      await tx.query(`UPDATE conversations SET state = 'closed', updated_at = now() WHERE id = $1`, [h.conversation_id]);
+      // The handoffs_sync trigger settles the conversation: reassigned → open; otherwise closed until they write again,
+      // and the closer keeps it only when won.
       await audit(tx, m, `handoff_${b.outcome}`, 'handoff', h.id);
       return camel((await tx.query(`SELECT * FROM handoffs WHERE id = $1`, [h.id])).rows[0]);
     }, { action: 'handoff_work' });

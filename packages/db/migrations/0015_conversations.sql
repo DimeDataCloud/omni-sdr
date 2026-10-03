@@ -49,6 +49,8 @@ CREATE TABLE conversations (
                      'meeting_request', 'positive_inquiry', 'question', 'objection', 'referral',
                      'out_of_office', 'not_interested', 'unsubscribe', 'wrong_person', 'bounce', 'unclassified')),
   closer_id        uuid REFERENCES users(id),   -- set when handed off
+  -- Why it is closed: an opt-out or a bounce ends it for good; a handoff outcome closes it until they write again.
+  closed_reason    text CHECK (closed_reason IN ('unsubscribe', 'bounce', 'outcome')),
   last_inbound_at  timestamptz,
   last_outbound_at timestamptz,
   created_at       timestamptz NOT NULL DEFAULT now(),
@@ -57,7 +59,8 @@ CREATE TABLE conversations (
   FOREIGN KEY (org_id, workspace_id, contact_id) REFERENCES contacts(org_id, workspace_id, id),
   UNIQUE (workspace_id, channel, thread_key),
   UNIQUE (org_id, workspace_id, id),
-  CHECK (state <> 'handed_off' OR closer_id IS NOT NULL)
+  CHECK (state <> 'handed_off' OR closer_id IS NOT NULL),
+  CHECK ((state = 'closed') = (closed_reason IS NOT NULL))
 );
 CREATE INDEX conversations_queue ON conversations (workspace_id, state, last_inbound_at DESC);
 CREATE INDEX conversations_closer ON conversations (closer_id, state) WHERE closer_id IS NOT NULL;
@@ -150,10 +153,14 @@ REVOKE CREATE ON SCHEMA public FROM tenancy_owner;
 
 -- conversations.closer_id follows the open handoff (#87 audit Q2): it can only be set to that handoff's closer, and
 -- cleared only when none is open. Reassigning = close the open handoff with outcome 'reassigned', then hand off again,
--- so the record shows who had it and when.
+-- so the record shows who had it and when. A new conversation has no handoff yet, so it starts with no closer.
 CREATE FUNCTION conversations_closer_check() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-  IF NEW.closer_id IS DISTINCT FROM OLD.closer_id THEN
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.closer_id IS NOT NULL THEN
+      RAISE EXCEPTION 'conversation: closer_id follows the open handoff; hand it off instead' USING ERRCODE = 'P0001';
+    END IF;
+  ELSIF NEW.closer_id IS DISTINCT FROM OLD.closer_id THEN
     IF NEW.closer_id IS NULL THEN
       IF EXISTS (SELECT 1 FROM handoffs h WHERE h.conversation_id = NEW.id AND h.outcome IS NULL) THEN
         RAISE EXCEPTION 'conversation: closer_id follows the open handoff; close it first' USING ERRCODE = 'P0001';
@@ -164,7 +171,42 @@ BEGIN
   END IF;
   RETURN NEW;
 END $$;
-CREATE TRIGGER conversations_closer_check BEFORE UPDATE OF closer_id ON conversations FOR EACH ROW EXECUTE FUNCTION conversations_closer_check();
+CREATE TRIGGER conversations_closer_check BEFORE INSERT OR UPDATE OF closer_id ON conversations FOR EACH ROW EXECUTE FUNCTION conversations_closer_check();
+
+-- The conversation follows its handoffs (#87 audit P2-1). A new handoff hands it off. An outcome settles it:
+--   reassigned            back to open with no closer, to be handed off again (not by a closer: an operator decides);
+--   won                   closed, and the closer keeps it (the customer is theirs);
+--   lost/no_show/not_a_fit closed, and the closer stops seeing it.
+-- A closed-by-outcome conversation opens again when the person writes again (threadFor). A definer (owner
+-- tenancy_owner, no EXECUTE grant: trigger-only) because a closer recording an outcome can't write a row they will no
+-- longer see; it still runs under the request's tenant policy.
+CREATE FUNCTION handoffs_sync() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    UPDATE conversations SET state = 'handed_off', closed_reason = NULL, closer_id = NEW.closer_id, updated_at = now()
+     WHERE id = NEW.conversation_id;
+  ELSIF OLD.outcome IS NULL AND NEW.outcome IS NOT NULL THEN
+    IF NEW.outcome = 'reassigned' AND app_is_closer(NEW.org_id) THEN
+      RAISE EXCEPTION 'handoff: a closer can''t reassign' USING ERRCODE = '42501';
+    END IF;
+    UPDATE conversations SET
+        state = CASE WHEN NEW.outcome = 'reassigned' THEN 'open' ELSE 'closed' END,
+        closed_reason = CASE WHEN NEW.outcome = 'reassigned' THEN NULL ELSE 'outcome' END,
+        closer_id = CASE WHEN NEW.outcome = 'won' THEN closer_id ELSE NULL END,
+        updated_at = now()
+     WHERE id = NEW.conversation_id;
+  END IF;
+  RETURN NULL;
+END $$;
+-- The trigger first: creating it needs EXECUTE, which the REVOKE below takes from the migration owner.
+CREATE TRIGGER handoffs_sync AFTER INSERT OR UPDATE OF outcome ON handoffs FOR EACH ROW EXECUTE FUNCTION handoffs_sync();
+GRANT SELECT (id, state, closed_reason, closer_id) ON conversations TO tenancy_owner;
+GRANT UPDATE (state, closed_reason, closer_id, updated_at) ON conversations TO tenancy_owner;
+GRANT SELECT (conversation_id, closer_id, outcome) ON handoffs TO tenancy_owner;
+REVOKE EXECUTE ON FUNCTION handoffs_sync() FROM PUBLIC;
+GRANT CREATE ON SCHEMA public TO tenancy_owner;
+ALTER FUNCTION handoffs_sync() OWNER TO tenancy_owner;
+REVOKE CREATE ON SCHEMA public FROM tenancy_owner;
 
 -- ─── row-level security ──────────────────────────────────────────────────────────────────────────────────────────
 DO $$
@@ -190,9 +232,16 @@ CREATE POLICY closer_scope ON handoffs AS RESTRICTIVE TO app_rw, gate_svc, sende
   USING (NOT app_is_closer(org_id) OR closer_id = app_user());
 CREATE POLICY closer_scope ON inbound_messages AS RESTRICTIVE TO app_rw, gate_svc, sender_svc, inbox_svc
   USING (NOT app_is_closer(org_id) OR app_closer_owns(conversation_id));
+-- A closer never creates a handoff (#87 audit P3-1). Without this, closer_scope's USING doubles as the insert check: a
+-- closer could hand themselves a conversation they can't see (the FK check bypasses RLS), and that open handoff would
+-- then block the real one. Conversations need no such policy: closer_scope's check wants closer_id = the closer, and
+-- conversations_closer_check wants a new conversation's closer_id NULL, so a closer can't insert one either.
+CREATE POLICY closer_no_insert ON handoffs AS RESTRICTIVE FOR INSERT TO app_rw, gate_svc, sender_svc, inbox_svc
+  WITH CHECK (NOT app_is_closer(org_id));
 -- The rest of the tenant (#87 audit P2): the conversation's contact and its outbound thread; their own membership; the
--- workspace and org rows (settings). Every other table with an org_id: nothing. Generated from the catalog so a table
--- added later is covered by default (conversations.test checks the catalog, not a hand list). WITH CHECK (true): a
+-- workspace and org rows (settings). Every other table with an org_id: nothing, from the catalog as it stands here.
+-- The loop runs once; a table added by a later migration is not covered by it. What catches that is conversations.test,
+-- which fails for any org table without closer_scope (the catalog, not a hand list). WITH CHECK (true): a
 -- closer's writes (an audit row on accept) are still bounded by grants, the tenant policy and can().
 CREATE POLICY closer_scope ON contacts AS RESTRICTIVE TO app_rw, gate_svc, sender_svc, inbox_svc
   USING (NOT app_is_closer(org_id) OR app_closer_contact(id)) WITH CHECK (true);
@@ -220,10 +269,10 @@ END $$;
 
 -- ─── grants ──────────────────────────────────────────────────────────────────────────────────────────────────────
 GRANT SELECT, INSERT ON conversations TO app_rw;
-GRANT UPDATE (state, category, closer_id, updated_at) ON conversations TO app_rw;
+GRANT UPDATE (state, closed_reason, category, closer_id, updated_at) ON conversations TO app_rw;
 GRANT SELECT ON handoffs TO app_rw;
 GRANT INSERT (org_id, workspace_id, conversation_id, closer_id, reason, summary, answers, created_by) ON handoffs TO app_rw;
 GRANT UPDATE (accepted_at, outcome, outcome_at) ON handoffs TO app_rw;
 -- Inbound threading: the inbox service finds or opens a conversation for each reply it records.
 GRANT SELECT, INSERT ON conversations TO inbox_svc;
-GRANT UPDATE (state, category, last_inbound_at, updated_at) ON conversations TO inbox_svc;
+GRANT UPDATE (state, closed_reason, category, last_inbound_at, updated_at) ON conversations TO inbox_svc;

@@ -7,8 +7,12 @@ export const STATES = Object.freeze(['open', 'qualifying', 'qualified', 'handed_
 /** The thread key of an email conversation: the contact, so every reply from them lands in one thread. */
 export const emailThreadKey = (contactId) => `contact:${contactId}`;
 
-// An opt-out or a bounce ends the conversation; nothing else a reply says changes its state on its own.
+// An opt-out or a bounce ends the conversation for good. A conversation closed by a handoff outcome (lost, no-show,
+// not a fit, won) opens again when the person writes again (#87 audit P2-1: a no-show asking to reschedule goes back
+// in the queue and can be handed off again), unless what came in is an out-of-office auto-reply. Nothing else a reply
+// says changes the state on its own.
 const CLOSING = new Set(['unsubscribe', 'bounce']);
+const NOT_A_PERSON = new Set(['out_of_office']);
 
 /**
  * Find or open the conversation for an inbound message, inside the caller's tenant transaction (inbox_svc or app_rw).
@@ -17,15 +21,20 @@ const CLOSING = new Set(['unsubscribe', 'bounce']);
 export async function threadFor(tx, { orgId, workspaceId, channel, threadKey, contactId = null, at, category = null }) {
   if (!CHANNELS.includes(channel)) throw new Error(`unknown channel ${channel}`);
   const row = (await tx.query(
-    `INSERT INTO conversations (org_id, workspace_id, contact_id, channel, thread_key, category, last_inbound_at, state)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, CASE WHEN $8 THEN 'closed' ELSE 'open' END)
+    `INSERT INTO conversations (org_id, workspace_id, contact_id, channel, thread_key, category, last_inbound_at, state, closed_reason)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, CASE WHEN $8 THEN 'closed' ELSE 'open' END, CASE WHEN $8 THEN $6 END)
      ON CONFLICT (workspace_id, channel, thread_key) DO UPDATE SET
        category = COALESCE(EXCLUDED.category, conversations.category),
        last_inbound_at = GREATEST(conversations.last_inbound_at, EXCLUDED.last_inbound_at),
-       state = CASE WHEN $8 THEN 'closed' ELSE conversations.state END,
+       state = CASE WHEN $8 THEN 'closed'
+                    WHEN $9 AND conversations.state = 'closed' AND conversations.closed_reason = 'outcome' THEN 'open'
+                    ELSE conversations.state END,
+       closed_reason = CASE WHEN $8 THEN EXCLUDED.closed_reason
+                            WHEN $9 AND conversations.state = 'closed' AND conversations.closed_reason = 'outcome' THEN NULL
+                            ELSE conversations.closed_reason END,
        updated_at = now()
      RETURNING id, state`,
-    [orgId, workspaceId, contactId, channel, String(threadKey).slice(0, 500), category, at, CLOSING.has(category)])).rows[0];
+    [orgId, workspaceId, contactId, channel, String(threadKey).slice(0, 500), category, at, CLOSING.has(category), !NOT_A_PERSON.has(category)])).rows[0];
   return row;
 }
 
