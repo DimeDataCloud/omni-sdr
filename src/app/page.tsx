@@ -3,6 +3,7 @@
 import React, { useState, useRef } from 'react';
 import Link from 'next/link';
 import { Sparkles, CheckCircle2, ArrowRight, User, Building2 } from 'lucide-react';
+import DemoVideo from '@/components/DemoVideo';
 
 export default function OmniSdrLandingPage() {
   const [formData, setFormData] = useState<{
@@ -25,7 +26,6 @@ export default function OmniSdrLandingPage() {
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
   const [discountCode, setDiscountCode] = useState('');
-  const [demoState, setDemoState] = useState<'ready' | 'clicked'>('ready');
 
   const nameInputRef = useRef<HTMLInputElement>(null);
   const headerRef = useRef<HTMLElement>(null);
@@ -63,14 +63,11 @@ export default function OmniSdrLandingPage() {
     }
   };
 
-  const handleDemoClick = () => {
-    setDemoState('clicked');
+  const scrollToForm = () => {
+    headerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     setTimeout(() => {
-      headerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      setTimeout(() => {
-        nameInputRef.current?.focus({ preventScroll: true });
-      }, 600);
-    }, 700);
+      nameInputRef.current?.focus({ preventScroll: true });
+    }, 600);
   };
 
   return (
@@ -332,10 +329,10 @@ export default function OmniSdrLandingPage() {
           </form>
         </section>
 
-        {/* See Omni in Action Section */}
+        {/* See Omni in Action: the animated demo; its last chapter sends people back up to the form */}
         <section
-          onClick={handleDemoClick}
-          className="w-full max-w-xl rounded-3xl p-8 md:p-10 mt-8 cursor-pointer transition-all duration-300 group hover:shadow-lg"
+          aria-labelledby="demo-heading"
+          className="w-full max-w-xl rounded-3xl p-5 md:p-8 mt-8"
           style={{
             background: 'rgba(253, 251, 248, 0.65)',
             backdropFilter: 'blur(20px)',
@@ -344,30 +341,14 @@ export default function OmniSdrLandingPage() {
             boxShadow: '0 15px 35px rgba(0, 0, 0, 0.04), inset 0 0 0 1px rgba(255, 255, 255, 0.3)'
           }}
         >
-          <div className="text-center">
-            <h2 
-              className="text-3xl font-semibold mb-4 text-[#111111]"
-              style={{ textShadow: '0 1px 1px rgba(255,255,255,0.8)' }}
-            >
-              See Omni in Action
-            </h2>
-
-            {demoState === 'ready' ? (
-              <div className="inline-block px-5 py-2 rounded-full bg-[#111111] text-[#a3ffb1] font-bold text-sm tracking-wide uppercase shadow-sm group-hover:scale-105 transition-transform duration-300">
-                Watch Demo
-              </div>
-            ) : (
-              <div className="inline-block px-5 py-2 rounded-full bg-[#a3ffb1] text-[#111111] font-bold text-sm tracking-wide uppercase shadow-sm transition-transform duration-300 animate-pulse">
-                Coming Soon...
-              </div>
-            )}
-
-            <p className="text-sm font-medium text-gray-500 mt-4 group-hover:text-gray-800 transition-colors">
-              {demoState === 'ready'
-                ? 'Click to view the interactive preview'
-                : 'Heading back up to secure your discount...'}
-            </p>
-          </div>
+          <h2
+            id="demo-heading"
+            className="text-3xl font-semibold mb-5 text-center text-[#111111]"
+            style={{ textShadow: '0 1px 1px rgba(255,255,255,0.8)' }}
+          >
+            See Omni in Action
+          </h2>
+          <DemoVideo onCta={scrollToForm} />
         </section>
 
         {/* Footer */}
