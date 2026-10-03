@@ -21,9 +21,9 @@ ALTER TABLE invites ADD CONSTRAINT invites_role_check CHECK (role IN ('admin', '
 CREATE FUNCTION app_is_closer(p_org uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS
 $$ SELECT app_user() IS NOT NULL AND EXISTS (SELECT 1 FROM memberships m
      WHERE m.org_id = p_org AND m.user_id = app_user() AND m.role = 'closer') $$;
--- Grants before the owner change (0008a). Every role that reads these tables evaluates the policy.
+-- Grants before the owner change (0008a). Exactly the roles the closer_scope policies below apply to.
 REVOKE EXECUTE ON FUNCTION app_is_closer(uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app_is_closer(uuid) TO app_rw, inbox_svc, sender_svc, gate_svc, ops, inbox_owner, sender_owner, guard_owner, unsub_owner, verify_owner;
+GRANT EXECUTE ON FUNCTION app_is_closer(uuid) TO app_rw, gate_svc, sender_svc, inbox_svc;
 GRANT CREATE ON SCHEMA public TO tenancy_owner;  -- PG15+: a new owner needs CREATE on the schema (no superuser on Cloud SQL)
 ALTER FUNCTION app_is_closer(uuid) OWNER TO tenancy_owner;
 REVOKE CREATE ON SCHEMA public FROM tenancy_owner;
@@ -118,7 +118,7 @@ $$ SELECT p_conversation IS NOT NULL AND app_user() IS NOT NULL
      AND EXISTS (SELECT 1 FROM conversations c WHERE c.id = p_conversation AND c.closer_id = app_user()) $$;
 GRANT SELECT (id, closer_id, org_id, workspace_id) ON conversations TO tenancy_owner;
 REVOKE EXECUTE ON FUNCTION app_closer_owns(uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app_closer_owns(uuid) TO app_rw, inbox_svc, sender_svc, gate_svc, ops, inbox_owner, sender_owner, guard_owner, unsub_owner, verify_owner;
+GRANT EXECUTE ON FUNCTION app_closer_owns(uuid) TO app_rw, gate_svc, sender_svc, inbox_svc;
 GRANT CREATE ON SCHEMA public TO tenancy_owner;
 ALTER FUNCTION app_closer_owns(uuid) OWNER TO tenancy_owner;
 REVOKE CREATE ON SCHEMA public FROM tenancy_owner;
@@ -136,12 +136,16 @@ BEGIN
   END LOOP;
 END $$;
 -- A closer sees only the conversations handed to them, their handoffs, and those conversations' messages. RESTRICTIVE:
--- ANDed with every other policy, so no permissive policy can widen it. Service roles have no app user, so they pass.
-CREATE POLICY closer_scope ON conversations AS RESTRICTIVE
+-- ANDed with every other policy, so no permissive policy can widen it. It applies to the roles a request can act as
+-- with an app user set (app_rw, gate_svc, sender_svc, inbox_svc); service roles with no app user pass. Not to every role: the migration owner,
+-- the definer owners and ops would then need EXECUTE on the helpers too, and a later migration's FK validation
+-- against these tables (run as the owner, under FORCE RLS) failed with "permission denied for function
+-- app_is_closer" (found by definer-acl.test as a non-superuser owner, 2026-10-03).
+CREATE POLICY closer_scope ON conversations AS RESTRICTIVE TO app_rw, gate_svc, sender_svc, inbox_svc
   USING (NOT app_is_closer(org_id) OR closer_id = app_user());
-CREATE POLICY closer_scope ON handoffs AS RESTRICTIVE
+CREATE POLICY closer_scope ON handoffs AS RESTRICTIVE TO app_rw, gate_svc, sender_svc, inbox_svc
   USING (NOT app_is_closer(org_id) OR closer_id = app_user());
-CREATE POLICY closer_scope ON inbound_messages AS RESTRICTIVE
+CREATE POLICY closer_scope ON inbound_messages AS RESTRICTIVE TO app_rw, gate_svc, sender_svc, inbox_svc
   USING (NOT app_is_closer(org_id) OR app_closer_owns(conversation_id));
 
 -- ─── grants ──────────────────────────────────────────────────────────────────────────────────────────────────────

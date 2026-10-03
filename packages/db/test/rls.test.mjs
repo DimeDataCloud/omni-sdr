@@ -34,7 +34,7 @@ test('RLS matrix: tenant A sees 0 of tenant B rows in every table, and its own r
   const b = await seedTenant(db, 'bravo');
   await db.exec(`CREATE ROLE rls_probe NOLOGIN; GRANT USAGE ON SCHEMA public TO rls_probe;
                  GRANT SELECT ON ALL TABLES IN SCHEMA public TO rls_probe;
-                 GRANT EXECUTE ON FUNCTION app_org(), app_ws(), app_is_closer(uuid), app_closer_owns(uuid) TO rls_probe;`);
+                 GRANT EXECUTE ON FUNCTION app_org(), app_ws() TO rls_probe;`);
   const scoped = (await tenantTables(db)).filter((t) => t.col);
 
   let checked = 0;
@@ -59,7 +59,7 @@ test('no request context means no rows (fail closed)', async () => {
   const scoped = (await tenantTables(db)).filter((t) => t.col);
   await db.exec(`CREATE ROLE rls_probe NOLOGIN; GRANT USAGE ON SCHEMA public TO rls_probe;
                  GRANT SELECT ON ALL TABLES IN SCHEMA public TO rls_probe;
-                 GRANT EXECUTE ON FUNCTION app_org(), app_ws(), app_is_closer(uuid), app_closer_owns(uuid) TO rls_probe;`);
+                 GRANT EXECUTE ON FUNCTION app_org(), app_ws() TO rls_probe;`);
   for (const { t } of scoped) {
     const n = await as(db, 'rls_probe', null, () => one(db, `SELECT count(*) AS n FROM ${t}`));
     assert.equal(Number(n.n), 0, `${t}: rows visible with no tenant context`);
