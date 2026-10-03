@@ -8,7 +8,8 @@
 //   OMNI_PGLITE_DIR=./.devdb             keep data between restarts (default: fresh every start)
 //   OMNI_DEV_MODEL=rules                 a deterministic stand-in model (services/devfakes.mjs) instead of none
 //   OMNI_DEV_CREDITS=<n>                every new org gets n action and data credits (there is no trial; DECISIONS 2026-10-02)
-//   OMNI_DEV_FIXTURES=1                  research, enrichment and lead finding read fixture sites and places instead of the network
+//   OMNI_DEV_FIXTURES=1                  research, enrichment, lead finding and email checks use fixtures instead of the network
+//                                        (the stand-in email vendor passes every address that isn't role@ or bounce@)
 import { createServer } from 'node:http';
 import { PGlite } from '@electric-sql/pglite';
 import { migrate } from '../../db/src/migrate.mjs';
@@ -16,7 +17,8 @@ import { createApp } from './app.mjs';
 import { pglitePool } from './pool.mjs';
 import { devVerifier, firebaseVerifier } from './auth.mjs';
 import { offModel } from './services/model.mjs';
-import { rulesModel, fixtureFetch, FIXTURE_PLACES } from './services/devfakes.mjs';
+import { rulesModel, fixtureFetch, fixtureMx, FIXTURE_PLACES } from './services/devfakes.mjs';
+import { fakeVerifier } from './services/verify.mjs';
 import { fakePlaces } from './services/places.mjs';
 import { seedDemo } from './seed-demo.mjs';
 
@@ -61,7 +63,8 @@ const app = createApp({
     appUrl: `http://${HOST}:${PORT}`,
     unsubscribeBase: `http://${HOST}:${PORT}`,
     inboundSecret: env.OMNI_INBOUND_SECRET || null,
-    ...(env.OMNI_DEV_FIXTURES === '1' ? { fetchPage: fixtureFetch, places: fakePlaces(FIXTURE_PLACES) } : {}),
+    ...(env.OMNI_DEV_FIXTURES === '1' ? { fetchPage: fixtureFetch, places: fakePlaces(FIXTURE_PLACES), resolveMx: fixtureMx,
+      verifier: fakeVerifier((e) => (/^bounce@/.test(e) ? 'invalid' : /^(info|office|frontdesk)@/.test(e) ? 'risky' : 'valid')) } : {}),
   },
   log: (e) => { if (e.level === 'error' || env.OMNI_LOG === '1') console.log(JSON.stringify(e)); },
 });
