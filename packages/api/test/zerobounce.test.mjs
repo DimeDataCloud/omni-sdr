@@ -21,6 +21,7 @@ test('mapping: catch-all, accept-all and unknown never become valid; traps, abus
     [{ status: 'spamtrap', sub_status: '' }, 'invalid'],
     [{ status: 'abuse', sub_status: '' }, 'invalid'],
     [{ status: 'do_not_mail', sub_status: 'disposable' }, 'invalid'],
+    [{ status: 'do_not_mail', sub_status: 'role_based' }, 'risky'],
     [{ status: 'VALID-ish' }, 'unknown'],
     [{}, 'unknown'],
     [null, 'unknown'],
@@ -31,7 +32,7 @@ test('mapping: catch-all, accept-all and unknown never become valid; traps, abus
 test('request: POST to ZeroBounce with the key in the body only; errors and non-answers throw (the route refunds them)', async () => {
   const calls = [];
   const reply = (body, status = 200) => async (url, init) => { calls.push({ url, init }); return new Response(JSON.stringify(body), { status }); };
-  const v = zeroBounceVerifier({ key: KEY, fetchImpl: reply({ status: 'valid', sub_status: '', catchall_domain: false }) });
+  const v = zeroBounceVerifier({ key: KEY, fetchImpl: reply({ address: 'pat@clinic.example', status: 'valid', sub_status: '', catchall_domain: false }) });
   assert.equal(v.name, 'zerobounce');
   assert.deepEqual(await v.check('pat@clinic.example'), { verdict: 'valid' });
   const [c] = calls;
@@ -41,7 +42,7 @@ test('request: POST to ZeroBounce with the key in the body only; errors and non-
   assert.equal(c.init.redirect, 'error', 'a redirect could carry the body elsewhere');
   const sent = new URLSearchParams(c.init.body);
   assert.deepEqual([sent.get('api_key'), sent.get('email')], [KEY, 'pat@clinic.example']);
-  for (const fetchImpl of [reply({ error: 'Invalid API key' }), reply({}), reply({ status: 'valid' }, 500)]) {
+  for (const fetchImpl of [reply({ error: 'Invalid API key' }), reply({}), reply({ status: 'valid' }, 500), reply({ address: 'other@clinic.example', status: 'valid' })]) {
     await assert.rejects(zeroBounceVerifier({ key: KEY, fetchImpl }).check('pat@clinic.example'));
   }
   const err = await zeroBounceVerifier({ key: KEY, fetchImpl: reply({}, 401) }).check('a@b.example').catch((e) => e);

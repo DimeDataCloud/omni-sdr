@@ -16,6 +16,8 @@ const NOT_SENDABLE = new Set(['invalid', 'spamtrap', 'abuse', 'do_not_mail']);
 export function verdictOf(r) {
   const status = String(r?.status ?? '').toLowerCase();
   const sub = String(r?.sub_status ?? '').toLowerCase();
+  // A role inbox (info@, sales@) exists; it isn't a bad address, only a poor first-touch target (#61 audit P3).
+  if (status === 'do_not_mail' && sub === 'role_based') return 'risky';
   if (NOT_SENDABLE.has(status)) return 'invalid';
   if (status === 'catch-all') return 'risky';
   if (status === 'valid') {
@@ -42,6 +44,8 @@ export function zeroBounceVerifier({ key, fetchImpl = fetch, timeoutS = 15 }) {
       const body = await res.json();
       // An account problem (bad key, no credits) comes back as { error } with 200: no answer, so the route refunds it.
       if (body?.error || !body?.status) throw new Error('zerobounce: no verdict');
+      // The verdict must be for the address we asked about (#61 audit P3).
+      if (String(body.address ?? '').toLowerCase() !== String(email).trim().toLowerCase()) throw new Error('zerobounce: verdict for another address');
       return { verdict: verdictOf(body) };
     },
   };
