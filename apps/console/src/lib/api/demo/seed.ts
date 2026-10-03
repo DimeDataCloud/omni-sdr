@@ -33,7 +33,7 @@ export interface MeetingRow extends Row { ws: string; contactId: string | null; 
   startsAt: string; endsAt: string; meetUrl: string | null; status: 'booked' | 'completed' | 'no_show' | 'canceled'; createdBy: string | null; createdAt: string }
 export interface HandoffRow extends Row { ws: string; contactId: string; closerId: string; reason: 'qualified' | 'meeting_request' | 'asked_for_human' | 'escalation';
   summary: string; answers: Record<string, string>; createdBy: string | null; createdAt: string; dueAt: string | null; acceptedAt: string | null;
-  outcome: 'won' | 'lost' | 'no_show' | 'not_a_fit' | null; outcomeAt: string | null }
+  outcome: 'won' | 'lost' | 'no_show' | 'not_a_fit' | 'reassigned' | null; outcomeAt: string | null }
 export interface AuditRow { id: string; ws: string | null; actor: string; action: string; entityType: string; entityId: string; at: string }
 
 export interface World {

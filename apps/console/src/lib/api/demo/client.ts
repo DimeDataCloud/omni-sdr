@@ -721,4 +721,4 @@ export const demoClient: Client = {
   ...studioDemo({ tenant, read, write, audit }),
 };
 
-export const ROLE_LABEL: Record<Role, string> = { admin: 'Admin', operator: 'Operator', reviewer: 'Reviewer', client_viewer: 'Client' };
+export const ROLE_LABEL: Record<Role, string> = { admin: 'Admin', operator: 'Operator', reviewer: 'Reviewer', client_viewer: 'Client', closer: 'Closer' };

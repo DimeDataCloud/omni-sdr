@@ -72,7 +72,7 @@ export interface InboxItem {
 
 // Handoffs (0015/0016; SDR-PIVOT P1, P4). A qualified conversation passed to a human closer.
 export type HandoffReason = 'qualified' | 'meeting_request' | 'asked_for_human' | 'escalation';
-export type HandoffOutcome = 'won' | 'lost' | 'no_show' | 'not_a_fit';
+export type HandoffOutcome = 'won' | 'lost' | 'no_show' | 'not_a_fit' | 'reassigned';
 export interface ThreadMessage { id: Id; direction: 'in' | 'out'; at: Iso; channel: string; subject: string | null; body: string; category?: string | null }
 // GET …/handoffs → { items: HandoffItem[] }
 export interface HandoffItem {
