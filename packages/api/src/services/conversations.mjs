@@ -1,7 +1,7 @@
-// Conversations (0014; SDR-PIVOT P1): one person on one channel. The messages stay in inbound_messages and messages;
+// Conversations (0015; SDR-PIVOT P1): one person on one channel. The messages stay in inbound_messages and messages;
 // a conversation is the thread they belong to, its state on the way to a closer, and its latest category.
 
-export const CHANNELS = Object.freeze(['email', 'linkedin', 'form', 'instagram', 'facebook', 'chat']);
+export const CHANNELS = Object.freeze(['email', 'linkedin', 'form', 'chat', 'instagram_comment', 'instagram_dm', 'facebook_comment', 'messenger']);
 export const STATES = Object.freeze(['open', 'qualifying', 'qualified', 'handed_off', 'closed', 'spam']);
 
 /** The thread key of an email conversation: the contact, so every reply from them lands in one thread. */

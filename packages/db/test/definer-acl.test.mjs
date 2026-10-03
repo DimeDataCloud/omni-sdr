@@ -15,9 +15,10 @@ const EXPECTED = {
   credit_reserve: ['ops'], credit_release: ['ops'],
   app_credit_reserve: ['app_rw'], app_credit_release: ['app_rw'], app_credit_settle: ['app_rw'],   // 0009 (#47)
   app_email_verified: ['app_rw'],
-  // 0014: read by RLS policies as every role that touches conversations / inbound messages; answer only about the acting user.
+  // 0015: read by RLS policies as every role that touches conversations / inbound messages; answer only about the acting user.
   app_is_closer: ['app_rw', 'gate_svc', 'inbox_owner', 'inbox_svc', 'ops', 'sender_owner', 'sender_svc', 'guard_owner', 'unsub_owner', 'verify_owner'], app_closer_owns: ['app_rw', 'gate_svc', 'inbox_owner', 'inbox_svc', 'ops', 'sender_owner', 'sender_svc', 'guard_owner', 'unsub_owner', 'verify_owner'],   // 0013 (#59): the only way to write email_status 'valid'
   inbox_resolve_reply: ['inbox_svc'], inbox_undecided: ['inbox_svc'], inbox_wake_snoozed: ['inbox_svc'], inbox_sla_due: ['inbox_svc'],
+  inbox_resolve_hook: ['inbox_svc'],   // 0014
   sender_due_workspaces: ['sender_svc'],
   send_guard: [], send_guard_enrollment: [],  // trigger-only
 };

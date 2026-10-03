@@ -20,7 +20,7 @@ export const ACTIONS = Object.freeze([
                         // credits. Not client viewers, an outside party (bug bounty 2026-10-02 #4; proposal defaulted
                         // to restrict by Christian's "you have control", acceptance A3)
   'export_pii',         // leads/messages exports
-  'handoff',            // pass a qualified conversation to a closer (0014; DECISIONS 2026-10-03 pivot)
+  'handoff',            // pass a qualified conversation to a closer (0015; DECISIONS 2026-10-03 pivot)
   'handoff_work',       // see and act on the handoffs given to you: accept, record the outcome
 ]);
 
@@ -30,7 +30,7 @@ const MATRIX = Object.freeze({
   reviewer:      new Set(['approve', 'inbox_read', 'reports_view', 'team_view']),
   client_viewer: new Set(['reports_view']),
   // A closer is the human the conversation is handed to: they see their handoffs and nothing else of the tenant. The
-  // database enforces the same line (0014 closer_scope RESTRICTIVE policies). Proposal (SDR-PIVOT P1), not a decision.
+  // database enforces the same line (0015 closer_scope RESTRICTIVE policies). Proposal (SDR-PIVOT P1), not a decision.
   closer:        new Set(['handoff_work']),
 });
 

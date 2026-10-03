@@ -1,4 +1,4 @@
--- Omni-SDR 0014: conversations and the handoff to a closer (DECISIONS 2026-10-03 pivot: "the buffer between the real
+-- Omni-SDR 0015: conversations and the handoff to a closer (DECISIONS 2026-10-03 pivot: "the buffer between the real
 -- closer and the initial outreach"; docs/claude/SDR-PIVOT.md P1).
 --
 -- A conversation is one person on one channel: an email thread with a contact, an Instagram DM thread, a chat. The
@@ -32,7 +32,7 @@ REVOKE CREATE ON SCHEMA public FROM tenancy_owner;
 -- Instagram and Facebook comments and DMs, and website chat, join email, LinkedIn (paste-in) and forms.
 ALTER TABLE inbound_messages DROP CONSTRAINT inbound_messages_channel_check;
 ALTER TABLE inbound_messages ADD CONSTRAINT inbound_messages_channel_check
-  CHECK (channel IN ('email', 'linkedin', 'form', 'instagram', 'facebook', 'chat'));
+  CHECK (channel IN ('email', 'linkedin', 'form', 'chat', 'instagram_comment', 'instagram_dm', 'facebook_comment', 'messenger'));
 
 -- ─── conversations ───────────────────────────────────────────────────────────────────────────────────────────────
 CREATE TABLE conversations (
@@ -40,7 +40,7 @@ CREATE TABLE conversations (
   org_id           uuid NOT NULL,
   workspace_id     uuid NOT NULL,
   contact_id       uuid,                 -- known for email; a social or chat thread may start without one
-  channel          text NOT NULL CHECK (channel IN ('email', 'linkedin', 'form', 'instagram', 'facebook', 'chat')),
+  channel          text NOT NULL CHECK (channel IN ('email', 'linkedin', 'form', 'chat', 'instagram_comment', 'instagram_dm', 'facebook_comment', 'messenger')),
   -- The channel's own thread identity: `contact:<uuid>` for email, the platform's thread or comment id otherwise.
   thread_key       text NOT NULL CHECK (length(thread_key) BETWEEN 1 AND 500),
   state            text NOT NULL DEFAULT 'open'

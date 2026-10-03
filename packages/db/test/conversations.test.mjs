@@ -1,4 +1,4 @@
-// 0014: conversations, handoffs and the closer role. In the database a closer sees only the conversations, handoffs
+// 0015: conversations, handoffs and the closer role. In the database a closer sees only the conversations, handoffs
 // and inbound messages handed to them; the other tenant tables are closed to them by can() in the API (no route).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -20,10 +20,10 @@ async function setup() {
   const reviewer = await mkUser('reviewer@alpha.test', 'reviewer');
   // Two more conversations in A: one handed to `closer`, one still open.
   const mine = (await one(db, `INSERT INTO conversations (org_id, workspace_id, channel, thread_key, state, closer_id)
-    VALUES ($1, $2, 'instagram', 'ig:thread-1', 'handed_off', $3) RETURNING id`, [a.org, a.ws, closer])).id;
+    VALUES ($1, $2, 'instagram_dm', 'ig:thread-1', 'handed_off', $3) RETURNING id`, [a.org, a.ws, closer])).id;
   const open = (await one(db, `INSERT INTO conversations (org_id, workspace_id, channel, thread_key) VALUES ($1, $2, 'chat', 'chat:42') RETURNING id`, [a.org, a.ws])).id;
   for (const [conv, body] of [[mine, 'how much is it?'], [open, 'hi there']]) {
-    await db.query(`INSERT INTO inbound_messages (org_id, workspace_id, channel, body, received_at, conversation_id) VALUES ($1, $2, 'instagram', $3, now(), $4)`,
+    await db.query(`INSERT INTO inbound_messages (org_id, workspace_id, channel, body, received_at, conversation_id) VALUES ($1, $2, 'instagram_dm', $3, now(), $4)`,
       [a.org, a.ws, body, conv]);
   }
   await db.query(`INSERT INTO handoffs (org_id, workspace_id, conversation_id, closer_id, reason, summary) VALUES ($1, $2, $3, $4, 'qualified', 'Ready')`,
@@ -74,13 +74,13 @@ test('handoffs: only to a closer, operator or admin of the workspace; in your ow
 
 test('channels and threads: the new channels are accepted, one conversation per thread, and handed_off needs a closer', async () => {
   const { db, a } = await setup();
-  for (const ch of ['instagram', 'facebook', 'chat', 'linkedin', 'form', 'email']) {
+  for (const ch of ['instagram_comment', 'instagram_dm', 'facebook_comment', 'messenger', 'chat', 'linkedin', 'form', 'email']) {
     await db.query(`INSERT INTO conversations (org_id, workspace_id, channel, thread_key) VALUES ($1, $2, $3, $4)`, [a.org, a.ws, ch, `t-${ch}`]);
   }
   assert.match(await refused(db.query(`INSERT INTO conversations (org_id, workspace_id, channel, thread_key) VALUES ($1, $2, 'chat', 't-chat')`, [a.org, a.ws])) ?? '', /duplicate key/);
   assert.match(await refused(db.query(`INSERT INTO conversations (org_id, workspace_id, channel, thread_key) VALUES ($1, $2, 'tiktok', 't')`, [a.org, a.ws])) ?? '', /check constraint/);
   assert.match(await refused(db.query(`INSERT INTO conversations (org_id, workspace_id, channel, thread_key, state) VALUES ($1, $2, 'chat', 'h', 'handed_off')`, [a.org, a.ws])) ?? '', /check constraint/);
-  await db.query(`INSERT INTO inbound_messages (org_id, workspace_id, channel, body, received_at) VALUES ($1, $2, 'facebook', 'nice ad', now())`, [a.org, a.ws]);
+  await db.query(`INSERT INTO inbound_messages (org_id, workspace_id, channel, body, received_at) VALUES ($1, $2, 'facebook_comment', 'nice ad', now())`, [a.org, a.ws]);
 });
 
 test('the inbox services still read inbound messages through the closer policy (no grant on conversations needed)', async () => {

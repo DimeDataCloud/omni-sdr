@@ -1,4 +1,4 @@
-// Conversations and handoffs (0014; DECISIONS 2026-10-03 pivot, SDR-PIVOT P1). The inbox becomes the product: every
+// Conversations and handoffs (0015; DECISIONS 2026-10-03 pivot, SDR-PIVOT P1). The inbox becomes the product: every
 // person on every channel is one conversation; a qualified one is handed to a human closer with a summary and the
 // answers that qualified it. A closer sees only their handoffs (can() here, RESTRICTIVE RLS in the database).
 //

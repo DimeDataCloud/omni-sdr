@@ -1,4 +1,4 @@
-// SDR pivot P1 (0014): replies thread into conversations; a qualified one is handed to a closer, who sees only their
+// SDR pivot P1 (0015): replies thread into conversations; a qualified one is handed to a closer, who sees only their
 // handoffs and can accept them and record the outcome.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -106,4 +106,22 @@ test('a second closer sees none of it, even by id; reviewers and client viewers 
   }
   const all = await api.call('GET', `${api.W}/handoffs?open=false`, { as: 'maya@example.com' });
   assert.ok(all.body.items.some((x) => x.id === handoffId), 'an admin sees the workspace\'s handoffs');
+});
+
+test('form submissions thread too: one conversation per address on the form channel; an anonymous one stands alone', async () => {
+  const h = await api.call('POST', `${api.W}/hooks`, { body: { name: 'Site' } });
+  assert.equal(h.status, 201);
+  const post = (body) => api.call('POST', `/v1/hooks/${h.body.id}`, { as: null, token: h.body.token, body });
+  for (const message of ['Do you take new patients?', 'Also, are you open Saturdays?']) {
+    assert.equal((await post({ message, email: 'pat@form.example' })).status, 202);
+  }
+  assert.equal((await post({ message: 'hi, call me' })).status, 202);
+  const rows = await api.q(`SELECT i.conversation_id, c.channel, c.thread_key FROM inbound_messages i JOIN conversations c ON c.id = i.conversation_id
+    WHERE i.channel = 'form' ORDER BY i.received_at`);
+  assert.equal(rows.length, 3);
+  assert.equal(rows[0].conversation_id, rows[1].conversation_id, 'same address, same thread');
+  assert.notEqual(rows[2].conversation_id, rows[0].conversation_id);
+  assert.match(rows[2].thread_key, /^submission:/);
+  const q = await api.call('GET', `${api.W}/conversations?channel=form`);
+  assert.equal(q.body.items.length, 2);
 });

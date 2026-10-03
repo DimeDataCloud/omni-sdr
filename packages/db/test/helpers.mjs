@@ -67,6 +67,9 @@ export async function seedTenant(db, label, { cap = 5, trust = 1, heat = 1 } = {
   await db.query(`INSERT INTO credit_balances (org_id, meter, balance) VALUES ($1, 'media', 100)`, [org]);
   await db.query(`INSERT INTO credit_ledger (org_id, meter, delta, kind) VALUES ($1, 'media', 100, 'grant')`, [org]);
   await db.query(`INSERT INTO outbox (org_id, topic, key, payload) VALUES ($1, 'events', 'k', '{}')`, [org]);
+  // 0014: an inbound webhook (form). The token behind this hash is `hook-token-<label>`.
+  await db.query(`INSERT INTO inbound_hooks (org_id, workspace_id, name, token_hash) VALUES ($1, $2, 'Website form', encode(sha256(convert_to($3, 'UTF8')), 'hex'))`,
+    [org, ws, `hook-token-${label}`]);
   await db.query(`INSERT INTO unsubscribe_tokens (token_hash, org_id, workspace_id, contact_id)
     VALUES (encode(sha256(convert_to($1, 'UTF8')), 'hex'), $2, $3, $4)`, [`unsub-${label}`, org, ws, contact]);
   await db.query(`INSERT INTO invites (org_id, email_hash, role, token_hash, invited_by, expires_at)
@@ -107,7 +110,7 @@ export async function seedTenant(db, label, { cap = 5, trust = 1, heat = 1 } = {
   await db.query(`INSERT INTO competitor_snapshots (org_id, workspace_id, competitor_id, url, fetched_at, sha, text)
     VALUES ($1, $2, $3, 'https://rival.test/', now(), repeat('a', 64), 'Rival answers calls.')`, [org, ws, comp]);
   await db.query(`INSERT INTO battlecards (org_id, workspace_id, competitor_id, version, doc, source_refs) VALUES ($1, $2, $3, 1, '{}', '[]')`, [org, ws, comp]);
-  // 0014: the reply's conversation and a handoff per tenant, so the RLS matrix and the FK rule cover them.
+  // 0015: the reply's conversation and a handoff per tenant, so the RLS matrix and the FK rule cover them.
   const conversation = (await one(db, `INSERT INTO conversations (org_id, workspace_id, contact_id, channel, thread_key, state, closer_id, last_inbound_at)
     VALUES ($1, $2, $3, 'email', $4, 'handed_off', $5, now()) RETURNING id`, [org, ws, contact, `contact:${contact}`, user])).id;
   await db.query(`UPDATE inbound_messages SET conversation_id = $2 WHERE id = $1`, [inbound, conversation]);
