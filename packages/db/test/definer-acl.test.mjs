@@ -17,6 +17,8 @@ const EXPECTED = {
   app_email_verified: ['app_rw'],   // 0013 (#59): the only way to write email_status 'valid'
   // 0015: read by the closer_scope policies, which apply to these four roles; answer only about the acting user.
   app_is_closer: ['app_rw', 'gate_svc', 'inbox_svc', 'sender_svc'], app_closer_owns: ['app_rw', 'gate_svc', 'inbox_svc', 'sender_svc'],
+  app_closer_contact: ['app_rw', 'gate_svc', 'inbox_svc', 'sender_svc'], app_closer_enrollment: ['app_rw', 'gate_svc', 'inbox_svc', 'sender_svc'],
+  app_closer_draft: ['app_rw', 'gate_svc', 'inbox_svc', 'sender_svc'],
   inbox_resolve_reply: ['inbox_svc'], inbox_undecided: ['inbox_svc'], inbox_wake_snoozed: ['inbox_svc'], inbox_sla_due: ['inbox_svc'],
   inbox_resolve_hook: ['inbox_svc'],   // 0014
   sender_due_workspaces: ['sender_svc'],
