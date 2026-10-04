@@ -198,3 +198,4 @@ Format: `YYYY-MM-DD HH:MM · <claude|gemini> · <CLAIM|DONE|REVIEW-REQUEST|NOTE>
 2026-10-04 17:23 · claude-cloud · CLAIM · omni-sdr src/app/page.tsx, public/logo.svg, public/logo-mark-small.svg · waitlist: remove the Operator Console link, replace the checkerboard logo.png with the vector mark; branch claude/amazing-maxwell-876zb2
 2026-10-04 17:25 · claude-cloud · REVIEW-REQUEST · omni-sdr src/app/page.tsx, public/logo.svg, public/logo-mark-small.svg · PR #96 (24b4aba): Operator Console link removed, form/header logo now the vector mark; next build + Playwright ok
 2026-10-04 17:27 · claude-cloud · CLAIM · omni-sdr public/logo.png, src/app/icon.png · replace the checkerboard PNG with a transparent render of logo.svg; same PR #96
+2026-10-04 17:27 · claude-cloud · REVIEW-REQUEST · omni-sdr public/logo.png, src/app/icon.png · PR #96 (0eab85d): transparent RGBA logo/favicon render of logo.svg; next build 20/20
