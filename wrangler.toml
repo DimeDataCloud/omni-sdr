@@ -1,0 +1,5 @@
+# Cloudflare Pages project for the waitlist site (omnisdr.com), Git-connected to master.
+# Build command in the dashboard: npm run build  (next build + scripts/build-pages.mjs)
+name = "omnisdrform"
+pages_build_output_dir = "./dist"
+compatibility_date = "2026-10-01"
