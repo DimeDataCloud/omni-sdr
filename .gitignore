@@ -69,3 +69,6 @@ node_modules/
 
 # python
 __pycache__/
+
+# cloudflare pages output
+/dist/
