@@ -2,7 +2,7 @@
 
 import React, { useState, useRef } from 'react';
 import Link from 'next/link';
-import { Sparkles, CheckCircle2, ArrowRight, User, Building2 } from 'lucide-react';
+import { Sparkles, CheckCircle2, User, Building2 } from 'lucide-react';
 import DemoVideo from '@/components/DemoVideo';
 
 export default function OmniSdrLandingPage() {
@@ -87,25 +87,10 @@ export default function OmniSdrLandingPage() {
       <div className="pointer-events-none absolute w-[500px] h-[500px] rounded-full bg-[#e0f8e3] top-[-10%] left-[-10%] blur-[80px] opacity-70 z-0" />
       <div className="pointer-events-none absolute w-[600px] h-[600px] rounded-full bg-[#fbf5eb] bottom-[-20%] right-[-10%] blur-[90px] opacity-80 z-0" />
 
-      {/* Top Subtle Operator Navigation */}
-      <nav className="w-full max-w-4xl px-6 pt-6 flex justify-between items-center z-10">
-        <div className="flex items-center gap-2">
-          <div className="h-2 w-2 rounded-full bg-[#111111] animate-pulse" />
-          <span className="text-xs font-semibold tracking-wider uppercase text-[#111111]/70">Omni-SDR Active</span>
-        </div>
-        <Link 
-          href="/app" 
-          className="text-xs font-semibold text-[#111111]/60 hover:text-[#111111] flex items-center gap-1.5 transition-colors py-1 px-3 rounded-full hover:bg-black/5"
-        >
-          <span>Operator Console</span>
-          <ArrowRight className="h-3.5 w-3.5" />
-        </Link>
-      </nav>
-
       <main className="w-full max-w-4xl px-6 py-10 md:py-16 flex flex-col items-center z-10 relative">
         {/* Header */}
         <header ref={headerRef} className="text-center mb-10 md:mb-12 w-full flex flex-col items-center">
-          <img src="/logo.png" alt="Omni SDR Logo" className="w-32 h-auto mb-4 drop-shadow-md" />
+          <img src="/logo.svg" alt="Omni SDR Logo" width={128} height={138} className="w-32 h-auto mb-4 drop-shadow-md" />
           <h1 
             className="text-5xl md:text-6xl font-extrabold tracking-tight mb-5 text-[#111111]"
             style={{ textShadow: '0 1px 1px rgba(255,255,255,0.8)' }}
@@ -129,7 +114,7 @@ export default function OmniSdrLandingPage() {
           }}
         >
           <div className="text-center mb-8 flex flex-col items-center">
-            <img src="/logo.png" alt="Omni SDR Form Logo" className="w-12 h-12 mb-4 rounded-xl object-cover shadow-sm ring-1 ring-black/5" />
+            <img src="/logo-mark-small.svg" alt="" width={48} height={52} className="w-12 h-auto mb-4" />
             <h2 
               className="text-3xl font-semibold mb-2 text-[#111111]"
               style={{ textShadow: '0 1px 1px rgba(255,255,255,0.8)' }}
