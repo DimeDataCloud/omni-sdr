@@ -1,0 +1,72 @@
+name: tests
+
+# Runs `npm ci && npm test` for every package under packages/* and edge/* that has a test script, on every PR and every
+# push to master. The package list is read from the package.json files, so a new package is picked up without editing this.
+#
+# Packages import each other's test helpers (sender -> db and api; email-worker -> api, sender and db), and each package
+# keeps its own node_modules. So every job installs every package that has a lockfile, then tests its own one.
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  discover:
+    name: discover packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      packages: ${{ steps.find.outputs.packages }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: find
+        run: |
+          node -e '
+            const fs = require("fs");
+            const found = [];
+            for (const root of ["packages", "edge"]) {
+              for (const name of fs.readdirSync(root).sort()) {
+                const file = `${root}/${name}/package.json`;
+                if (!fs.existsSync(file)) continue;
+                if (JSON.parse(fs.readFileSync(file, "utf8")).scripts?.test) found.push(`${root}/${name}`);
+              }
+            }
+            if (!found.length) { console.error("no package with a test script found"); process.exit(1); }
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `packages=${JSON.stringify(found)}\n`);
+            console.log(found.join("\n"));
+          '
+
+  test:
+    name: test (${{ matrix.package }})
+    needs: discover
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.discover.outputs.packages) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            packages/*/package-lock.json
+            edge/*/package-lock.json
+      - name: Install every package that has a lockfile
+        run: |
+          for lock in packages/*/package-lock.json edge/*/package-lock.json; do
+            [ -f "$lock" ] || continue
+            (cd "$(dirname "$lock")" && npm ci)
+          done
+      - name: Test ${{ matrix.package }}
+        working-directory: ${{ matrix.package }}
+        run: npm test
