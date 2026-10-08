@@ -123,10 +123,13 @@ test('end to end: a Gmail-style reply quoting our email lands as a meeting reque
 });
 
 test('end to end: an opt-out above the quote, to a Reply-To a mail server upper-cased, still lands and suppresses', async () => {
-  const [c] = await api.q(`SELECT c.email FROM drafts d JOIN enrollments e ON e.id = d.enrollment_id JOIN contacts c ON c.id = e.contact_id
+  const [c] = await api.q(`SELECT c.email, e.id AS enrollment_id FROM drafts d JOIN enrollments e ON e.id = d.enrollment_id JOIN contacts c ON c.id = e.contact_id
     WHERE d.step = 0 AND d.gate_passed AND c.email <> 'tom@maplegrove-dental.example' AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.draft_id = d.id)
     ORDER BY c.email LIMIT 1`);
-  assert.ok(c, 'fixture: the demo seed has a second sendable contact');
+  assert.ok(c, 'fixture: the demo seed has a second unsent contact');
+  // The seed books that contact a meeting, which converts her enrollment (0005) and makes send_guard_enrollment (0007) refuse
+  // the send, as it should. This test is about reply routing, so put her back in sequence. The guard stays as it is.
+  await api.q(`UPDATE enrollments SET state = 'waiting', stop_reason = NULL WHERE id = $1`, [c.enrollment_id]);
   const replyTo = /^Reply-To: (.+)$/mi.exec(await realSend(c.email))[1].trim();
   assert.match(replyTo, /^r\+[0-9a-f]{48}@/, 'reply tokens are lowercase hex');
   const shouted = replyTo.replace(/^r\+([^@]+)@/, (_, t) => `r+${t.toUpperCase()}@`);
