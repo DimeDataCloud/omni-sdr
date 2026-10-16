@@ -137,9 +137,16 @@ export async function GET(req: NextRequest) {
     // SECURITY: Protect read access to customer lead data
     const authHeader = req.headers.get('authorization') || '';
     const adminKey = req.nextUrl.searchParams.get('key') || '';
-    const expectedSecret = process.env.ADMIN_SECRET_KEY || 'omni_admin_secret_dev';
+    const expectedSecret = process.env.ADMIN_SECRET_KEY;
+    if (!expectedSecret) {
+      // Fail closed: no secret configured means nobody gets read access.
+      return NextResponse.json(
+        { error: 'Server misconfigured: ADMIN_SECRET_KEY is not set' },
+        { status: 500 }
+      );
+    }
 
-    const isAuthorized = 
+    const isAuthorized =
       authHeader === `Bearer ${expectedSecret}` || 
       adminKey === expectedSecret;
 
