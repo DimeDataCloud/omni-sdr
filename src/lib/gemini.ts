@@ -1,8 +1,9 @@
 import { GoogleGenAI } from '@google/genai';
 import { DynamicAuditReport, EvidenceAnchor, InboundReplyTriage, Lead, OutreachCopy, SocialAuthorityPost } from '../types';
 
-// Retrieve API key from environment
-const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
+// Server-only key. NEXT_PUBLIC_* values are inlined into the browser bundle, so
+// this module must never read one. Set GEMINI_API_KEY in the server environment.
+const apiKey = process.env.GEMINI_API_KEY || '';
 
 export const geminiClient = new GoogleGenAI({
   apiKey: apiKey || 'dummy-key-for-initialization',
