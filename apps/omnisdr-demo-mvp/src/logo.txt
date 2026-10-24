@@ -1,0 +1,1 @@
+<svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#A3FFB4"/><path d="M8 17c2-6 4-9 8-9s6 3 8 9c-2 4-4 7-8 7s-6-3-8-7z" fill="none" stroke="#166534" stroke-width="2.2" stroke-linejoin="round"/><circle cx="16" cy="16" r="2.6" fill="#166534"/></svg>

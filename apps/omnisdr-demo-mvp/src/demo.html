@@ -1,0 +1,198 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow"><meta name="theme-color" content="#F7F5F0"><title>Demo · Omni-SDR</title>
+<style nonce="__NONCE__">__CSS__
+.bubble{max-width:88%;padding:10px 12px;border-radius:12px;margin:0 0 8px;white-space:pre-wrap}
+.bubble.a{background:var(--ok-soft);color:var(--text);border-bottom-left-radius:4px}
+.bubble.u{background:var(--bg);border:1px solid var(--line);margin-left:auto;border-bottom-right-radius:4px}
+#log{height:min(52vh,420px);overflow:auto;padding:4px 2px;display:flex;flex-direction:column}
+.row{display:flex;gap:8px;margin-top:10px}.row input{flex:1}
+.timer{font-variant-numeric:tabular-nums;font-weight:600}
+.sms{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:0 0 8px}
+.sms small{display:block;color:var(--muted);margin-bottom:2px}
+.stack>*+*{margin-top:12px}
+.sim{border:1px dashed var(--control);border-radius:8px;padding:2px 8px;font-size:12px;color:var(--muted);display:inline-block}
+
+.u-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}.u-mb12{margin-bottom:12px}.u-mt10{margin-top:10px}.u-mt12{margin-top:12px}.u-mt14{margin-top:14px}.u-mt8{margin-top:8px}
+.u-m0-0-12{margin:0 0 12px}.u-m0-0-8{margin:0 0 8px}.u-m0{margin:0}.u-m12-0-16{margin:12px 0 16px}.u-m8-0-0{margin:8px 0 0}.u-pl18{padding-left:18px}.u-full-mt18{width:100%;margin-top:18px}.u-w0{width:0}
+</style></head><body>
+<div class="wrap">
+<header class="top"><div class="brand">__LOGO__<b>Omni-SDR</b></div><span class="pill" id="modePill">Demo</span></header>
+<h1>Call the AI receptionist</h1>
+<p class="sub">You play a homeowner calling a bathroom remodeler. Everything here is a simulation with a fictional company. Please use made-up details, not your real ones.</p>
+<div class="note u-m12-0-16" id="disc">This agent is automated. Your messages in this demo are saved for improvement and deleted after 30 days. Nothing is sent to anyone, and no real text messages or bookings are made.</div>
+<div class="tabs" role="tablist"><button class="tab" role="tab" id="t1" aria-selected="true" data-p="p1">Inbound call</button><button class="tab" role="tab" id="t2" aria-selected="false" data-p="p2">Speed-to-lead texts</button></div>
+
+<section id="p1" class="grid two">
+ <div class="card">
+  <div class="u-head">
+   <h2 id="bizName" class="u-m0">Riverbend Bath</h2><span class="timer muted" id="timer" aria-live="off">3:00</span></div>
+  <div id="gate"><p class="muted u-m0-0-12">Press start, then type or use the microphone. The agent will answer like the first-touch call a remodeler's phone gets.</p>
+   <div id="ts" class="u-mb12"></div>
+   <button class="btn" id="start">Start the call</button> <span id="startErr" class="err" hidden role="alert"></span></div>
+  <div id="live" hidden>
+   <div id="log" role="log" aria-live="polite"></div>
+   <form class="row" id="f"><label class="sr" for="msg">Your message</label><input id="msg" autocomplete="off" placeholder="Type what you would say" required><button class="btn" type="submit">Send</button></form>
+   <div class="row"><button class="btn ghost" id="mic" type="button" hidden>Hold to talk</button><button class="btn ghost" id="speak" type="button" aria-pressed="false">Agent voice: off</button><button class="btn ghost" id="end" type="button">Hang up</button></div>
+  </div>
+  <div id="over" hidden class="note u-mt12"></div>
+ </div>
+ <div class="stack">
+  <div class="card"><h2>Captured details</h2><dl class="kv" id="cap"></dl><div id="flags" class="u-mt8"></div></div>
+  <div class="card"><h2>Text the owner would get</h2><span class="sim">Simulated, not sent</span><div id="ownerSms" class="muted u-mt8">Appears when the call ends.</div></div>
+  <div class="card"><h2>Booked time</h2><span class="sim">Simulated calendar</span><p id="booked" class="muted u-m8-0-0">Not booked yet.</p></div>
+ </div>
+</section>
+
+<section id="p2" hidden class="grid two">
+ <div class="card"><h2>A new lead arrives</h2><p class="muted u-m0-0-8">Pretend a form submission just came in. The agent's first text goes out in under 60 seconds, then follows up until the lead replies, books, or opts out.</p>
+  <form id="lf"><label for="ln">First name</label><input id="ln" value="Dana" maxlength="40"><label for="lp">Mobile (fake)</label><input id="lp" value="615-555-0142" maxlength="20"><button class="btn u-mt14" type="submit">Submit lead</button></form>
+  <div class="note u-mt12" id="lnote" hidden></div></div>
+ <div class="card"><h2>Text thread</h2><span class="sim">Simulated, not sent</span><div id="thread" class="muted u-mt10">Submit a lead to see the thread.</div>
+  <div class="row" id="lact" hidden><button class="btn ghost" data-a="reply">Lead replies</button><button class="btn ghost" data-a="book">Lead books</button><button class="btn ghost" data-a="stop">Lead texts STOP</button></div>
+  <ul class="muted u-pl18" id="rules"></ul></div>
+</section>
+</div>
+
+<script nonce="__NONCE__">
+(function(){
+'use strict';
+var $=function(i){return document.getElementById(i)};
+var S={queue:[],busy:false,tm:[],sid:null,t:null,step:'service',f:{},hot:false,done:false,secs:180,timer:null,retry:{},speak:false,over:false,flags:[]};
+function el(tag,cls,txt){var n=document.createElement(tag);if(cls)n.className=cls;if(txt!=null)n.textContent=txt;return n}
+function post(u,b){return fetch(u,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b||{})}).then(function(r){return r.json().then(function(j){j._s=r.status;return j})})}
+function ev(type,data){if(S.sid)post('/api/event',{sid:S.sid,type:type,data:data}).catch(function(){})}
+
+/* tabs */
+['t1','t2'].forEach(function(id){$(id).addEventListener('click',function(){['t1','t2'].forEach(function(o){$(o).setAttribute('aria-selected',String(o===id));$($(o).dataset.p).hidden=(o!==id)})})});
+
+/* Turnstile (only if the page was configured with a site key) */
+var TSKEY=document.querySelector('meta[name=ts-key]');
+var tsTok='';
+if(TSKEY&&TSKEY.content){var sc=document.createElement('script');sc.src='https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';sc.async=true;sc.onload=function(){window.turnstile.render('#ts',{sitekey:TSKEY.content,callback:function(t){tsTok=t}})};document.head.appendChild(sc)}
+
+/* ---- agent ---- */
+var QUESTION={
+ service:'What kind of bathroom project are you thinking about? For example a tub-to-shower swap, a full remodel, new tile or fixtures, or a repair.',
+ scope:'Got it. Which bathroom is it, and roughly how big? Primary, guest, or a half bath?',
+ timeline:'And when are you hoping to get this done?',
+ name:'Okay, great. Can I get your name?',
+ phone:'Thanks. And what is the best mobile number for you?',
+ zip:'What zip code is the home in? I just need to confirm we cover your area.',
+ slot:null, confirm:null
+};
+function later(fn,ms){var id=setTimeout(function(){if(!S.over)fn()},ms);S.tm.push(id)}
+function say(t){if(S.over)return;var b=el('div','bubble a',t);$('log').appendChild(b);$('log').scrollTop=1e9;S.last=t;ev('agent',t.slice(0,200));
+ if(S.speak&&window.speechSynthesis){try{var u=new SpeechSynthesisUtterance(t);u.rate=1.05;speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){}}}
+function you(t){$('log').appendChild(el('div','bubble u',t));$('log').scrollTop=1e9}
+function renderCap(){
+ var d=$('cap');d.textContent='';var F=S.f;
+ [['Project',F.service],['Bathroom and size',F.scope],['Timeline',F.timeline],['Name',F.name],['Mobile',F.phone],['Zip',F.zip],['Estimate slot',F.slot]].forEach(function(p){
+  d.appendChild(el('dt',null,p[0]));d.appendChild(el('dd',null,p[1]||'—'))});
+ var fl=$('flags');fl.textContent='';S.flags.forEach(function(x){fl.appendChild(el('span','pill '+(x.bad?'bad':'warn'),x.t));fl.appendChild(document.createTextNode(' '))})}
+function flag(t,bad){if(!S.flags.some(function(x){return x.t===t}))S.flags.push({t:t,bad:bad});renderCap()}
+function ask(){var q=QUESTION[S.step];if(S.step==='slot'){q='Mike offers '+S.t.estimate+'. I have '+S.t.slots[0]+' or '+S.t.slots[1]+'. Which works better?'}if(q)say(q)}
+function open(){S.timer=setInterval(function(){S.secs--;$('timer').textContent=Math.floor(S.secs/60)+':'+String(S.secs%60).padStart(2,'0');if(S.secs<=0)finish('time')},1000)}
+
+function wb(w){return new RegExp('\\b'+w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'s?\\b')}
+function detectService(x){x=x.toLowerCase();
+ if(!/\bbath/.test(x))for(var i=0;i<S.t.outOfScope.length;i++)if(wb(S.t.outOfScope[i]).test(x))return {oos:S.t.outOfScope[i]};
+ for(var j=0;j<S.t.services.length;j++){var s=S.t.services[j];for(var k=0;k<s.words.length;k++)if(x.indexOf(s.words[k])>=0)return {svc:s.label}}
+ return null}
+function pick(x){x=x.toLowerCase().replace(/\b(not|rather than|instead of|except)\s+(on\s+)?(tuesday|tue|wednesday|wed|thursday|thu)\b/g,' ');var s=S.t.slots;
+ var days=[['tuesday|tue',0],['wednesday|wed',1],['thursday|thu',2]],best=null;
+ days.forEach(function(d){var m=x.match(new RegExp('\\b('+d[0]+')\\b'));if(m&&(best===null||m.index<best.i))best={i:m.index,s:s[d[1]]}});
+ if(best)return best.s;
+ if(/\b10(:00)?\s*(am|a\.m\.)?\b/.test(x)&&/\b10\b/.test(x)&&!/\b(2|9)\b/.test(x))return s[0];
+ if(/\b2(:00)?\s*(pm|p\.m\.)\b/.test(x))return s[1];
+ if(/\b9(:00)?\s*(am|a\.m\.)\b/.test(x))return s[2];
+ if(/\b(first|1st|the first one)\b/.test(x))return s[0];
+ if(/\b(second|2nd|the second one)\b/.test(x))return s[1];
+ return null}
+function heat(x){x=x.toLowerCase().replace(/\b(this|next|in the|last)\s+fall\b/g,' ').replace(/\bwaterfall\b/g,' ');for(var i=0;i<S.t.hot.length;i++)if(wb(S.t.hot[i]).test(x)||(S.t.hot[i]==='fall'&&/\b(fell|fallen)\b/.test(x))){S.hot=true;flag('Hot lead',false);return}}
+
+function reply(x){
+ if(S.over)return;
+ if(S.busy){S.queue.push(x);return}
+ S.busy=true;setTimeout(function(){S.busy=false;if(S.queue.length&&!S.over)reply(S.queue.shift())},700);
+ you(x);ev('user',x.slice(0,200));heat(x);var low=x.toLowerCase();
+ if(/(are|r) (you|u) (an? )?(ai|a\.i\.|robot|bot|real|human|person|automated)|is this (an? )?(ai|robot|bot|real)|\bai\b.*\?/.test(low)){say('Yeah, I am an automated assistant for '+S.t.business+'. I can get your details to '+S.t.owner+' and set up the estimate, so let me keep going.');return later(ask,300)}
+ if(/(talk|speak) (to|with) (a |an |the )?(person|human|someone|owner|mike|somebody)|real person|call me back/.test(low)){flag('Wants a human',false);say('Absolutely. I will flag that for '+S.t.owner+' so he calls you back. Let me grab a few details first so he is ready.');return later(ask,300)}
+ var dataStep=(S.step==='name'||S.step==='phone'||S.step==='zip')&&x.indexOf('?')<0;
+ if(!dataStep&&/how much|\bprice|\bcost|ballpark|rough number|\bquote|estimate.*(cost|price)|budget/.test(low)){say(S.t.owner+' gives a free quote once he has seen the space, so I will set that up. I do not want to guess a number for you.');return later(ask,300)}
+ if(!dataStep&&/warrant|permit|financ|insur|\blicen|bonded/.test(low)){say('Good question. '+S.t.owner+' will cover that at the estimate. The business is '+S.t.license+'.');return later(ask,300)}
+ var F=S.f;
+ if(S.step==='service'){var d=detectService(x);
+  if(d&&d.oos){flag('Out of scope',true);F.service=d.oos+' (not offered)';renderCap();say('Thanks for asking. We only do bathrooms, so a '+d.oos+' is outside what we do. I can pass a note to '+S.t.owner+' anyway. What is your name?');S.step='name';S.oos=true;return}
+  if(d&&d.svc){F.service=d.svc}else if(!S.retry.service){S.retry.service=1;say('Just so I point you to the right person: is it more of a tub-to-shower swap, a full remodel, a tile or fixture refresh, or a repair?');return}else{F.service='general bathroom project'}
+  S.step='scope';renderCap();return later(ask,250)}
+ if(S.step==='scope'){F.scope=x.slice(0,80);S.step='timeline';renderCap();return later(ask,250)}
+ if(S.step==='timeline'){F.timeline=x.slice(0,60);S.step='name';renderCap();return later(ask,250)}
+ if(S.step==='name'){var m=x.match(/(?:my name is|name'?s|i am|i'm|this is|call me)\s+([a-z][a-z'\-]+(?:\s+[a-z][a-z'\-]+)?)/i);var n=m?m[1]:(x.split(/\s+/).length<=3?x:'');
+  if(!n){say('Sorry, I did not catch your name. Could you say it once more?');return}
+  F.name=n.replace(/[^\w' \-]/g,'').trim().slice(0,40);renderCap();
+  if(S.oos)return finish('oos');S.step='phone';return later(ask,250)}
+ if(S.step==='phone'){var dg=x.replace(/\D/g,'');
+  if(dg.length<10){if(S.retry.phone){F.phone=x.slice(0,20)+' (unverified)'}else{S.retry.phone=1;say('Sorry, I did not get all ten digits. Could you give me that number again?');return}}else{F.phone=dg.slice(-10).replace(/(\d{3})(\d{3})(\d{4})/,'$1-$2-$3')}
+  S.step='zip';renderCap();return later(ask,250)}
+ if(S.step==='zip'){var z=(x.match(/\b\d{5}\b/)||[])[0];
+  if(!z){if(S.retry.zip){F.zip='unknown';renderCap();flag('No zip',true);say('No problem. I could not confirm your area, so I will leave a note for '+S.t.owner+' and he will call to sort it out.');return finish('nozip')}else{S.retry.zip=1;say('I need the five digit zip code, please.');return}}else{F.zip=z}
+  renderCap();
+  if(z&&S.t.serviceZips.indexOf(z)<0){flag('Out of area',true);say('Thanks. That zip is just outside our service area, so I cannot book an estimate. I will leave a note for '+S.t.owner+' in case that changes.');return finish('area')}
+  say(S.t.owner+' is the owner. He walks the space, takes measurements and gives you a written quote, and there is no charge for that visit.');S.step='slot';return later(ask,700)}
+ if(S.step==='slot'){var p=pick(x);if(!p){say('Which one works: '+S.t.slots[0]+' or '+S.t.slots[1]+'?');return}
+  F.slot=p;$('booked').textContent=p+' (in-home estimate with '+S.t.owner+')';renderCap();S.step='confirm';
+  say('Perfect. Let me read that back. '+(F.name||'You')+', '+F.service+', '+F.scope+', mobile '+(F.phone||'on file')+', zip '+F.zip+', estimate '+p+'. Does that all sound right?');return}
+ if(S.step==='confirm'){if(/\b(no|nope|wrong|incorrect|not right)\b/.test(low)){$('booked').textContent='Tentative: '+F.slot+' (details need confirming by '+S.t.owner+')';say('No problem. I will mark this as tentative and '+S.t.owner+' will call you to correct any details before he comes out.');return finish('unconfirmed')}else{say('Wonderful. You will get a confirmation text shortly and '+S.t.owner+' will see you '+F.slot+'. Thanks for calling '+S.t.business+'.')}return finish('booked')}
+}
+
+function ownerSms(why){var F=S.f,t=S.t;var h=S.hot?'HOT: ':'';
+ if(why==='booked')return h+F.name+' ('+F.phone+') wants '+F.service+', '+F.scope+'. Timeline: '+F.timeline+'. Estimate booked '+F.slot+'.';
+ if(why==='area')return 'Out of area ('+F.zip+'): '+(F.name||'caller')+' '+(F.phone||'')+' asked about '+(F.service||'a bathroom project')+'. No booking made.';
+ if(why==='nozip')return 'No booking: '+(F.name||'caller')+' '+(F.phone||'')+' did not give a zip. Call to confirm area.';
+ if(why==='unconfirmed')return h+(F.name||'caller')+' ('+F.phone+') wants '+F.service+'. Tentative estimate '+F.slot+'. Caller said the details were wrong: call to correct before the visit.';
+ if(why==='oos')return 'Out of scope: '+(F.name||'caller')+' asked about '+F.service+'. No booking made.';
+ return 'Call ended early. Captured so far: '+[F.name,F.phone,F.service].filter(Boolean).join(', ')+'.'}
+function finish(why){if(S.over)return;S.over=true;clearInterval(S.timer);S.tm.forEach(clearTimeout);S.queue=[];if(window.speechSynthesis)try{speechSynthesis.cancel()}catch(e){}
+ $('f').hidden=true;$('end').hidden=true;
+ var o=$('over');o.hidden=false;o.textContent=why==='time'?'The demo call reached its 3 minute limit.':'Call ended.';
+ var sms=$('ownerSms');sms.className='';sms.textContent='';var b=el('div','sms');b.appendChild(el('small',null,'To '+S.t.owner+' · simulated'));b.appendChild(el('div',null,ownerSms(why)));sms.appendChild(b);
+ ev('end',{why:why,fields:S.f,hot:S.hot,flags:S.flags.map(function(x){return x.t})});
+ var again=el('button','btn',' Start over');again.textContent='Start over';again.style.marginLeft='8px';again.addEventListener('click',function(){location.reload()});o.appendChild(document.createTextNode(' '));o.appendChild(again)}
+
+$('start').addEventListener('click',function(){
+ var b=$('start');b.disabled=true;$('startErr').hidden=true;
+ post('/api/session',{tenant:'riverbend',turnstile:tsTok}).then(function(r){
+  if(!r.ok){var e=$('startErr');e.textContent=r.message||'Could not start the demo.';e.hidden=false;b.disabled=false;if(window.turnstile){try{window.turnstile.reset();tsTok=''}catch(x){}}return}
+  S.sid=r.sid;S.t=r.tenant;S.secs=r.maxSeconds;$('bizName').textContent=S.t.business;
+  $('gate').hidden=true;$('live').hidden=false;renderCap();open();
+  say('Hi, thanks for calling '+S.t.business+'. This is '+S.t.persona+', an automated assistant for the team, and this call may be recorded. How can I help you today?');
+  $('msg').focus()}).catch(function(){var e=$('startErr');e.textContent='Could not reach the server. Check your connection.';e.hidden=false;b.disabled=false})});
+$('f').addEventListener('submit',function(e){e.preventDefault();var v=$('msg').value.trim();if(!v||S.over)return;$('msg').value='';reply(v.slice(0,300))});
+$('end').addEventListener('click',function(){you('(hung up)');finish('hangup')});
+$('speak').addEventListener('click',function(){S.speak=!S.speak;this.setAttribute('aria-pressed',String(S.speak));this.textContent='Agent voice: '+(S.speak?'on':'off');if(!S.speak&&window.speechSynthesis)speechSynthesis.cancel()});
+/* mic: browser speech recognition where available (free, on-device or vendor-provided by the browser) */
+var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+if(SR){var mic=$('mic');mic.hidden=false;var rec=null;
+ var go=function(){if(rec||S.over)return;rec=new SR();rec.lang='en-US';rec.interimResults=false;rec.onresult=function(e){var t=e.results[0][0].transcript;if(t)reply(t.slice(0,300))};rec.onend=function(){rec=null;mic.textContent='Hold to talk'};rec.onerror=function(){rec=null;mic.textContent='Hold to talk'};try{rec.start();mic.textContent='Listening…'}catch(x){rec=null}};
+ mic.addEventListener('mousedown',go);mic.addEventListener('touchstart',function(e){e.preventDefault();go()},{passive:false});
+ var stop=function(){if(rec)try{rec.stop()}catch(x){}};mic.addEventListener('mouseup',stop);mic.addEventListener('touchend',stop);mic.addEventListener('mouseleave',stop)}
+
+/* ---- CHASE tab ---- */
+var plan=null,stopped=false,timers=[];
+function sms(from,text,at){var b=el('div','sms');b.appendChild(el('small',null,from+' · '+at));b.appendChild(el('div',null,text));$('thread').appendChild(b)}
+function clearT(){timers.forEach(clearTimeout);timers=[]}
+$('lf').addEventListener('submit',function(e){e.preventDefault();clearT();stopped=false;
+ post('/api/lead',{tenant:'riverbend',name:$('ln').value}).then(function(r){
+  plan=r;$('thread').textContent='';$('thread').className='';$('lact').hidden=false;
+  var n=$('lnote');n.hidden=false;n.textContent=r.note;
+  var ul=$('rules');ul.textContent='';r.rules.forEach(function(x){ul.appendChild(el('li',null,x))});
+  r.steps.forEach(function(s,i){var delay=i===0?800:(i===1?3500:(i===2?6500:9500));
+   timers.push(setTimeout(function(){if(!stopped)sms('Agent',s.text,s.at)},delay))})})});
+$('lact').addEventListener('click',function(e){var a=e.target.dataset&&e.target.dataset.a;if(!a)return;
+ stopped=true;clearT();
+ if(a==='reply')sms('Lead','Yes, can someone come Tuesday?','just now');
+ if(a==='book')sms('Lead','Tuesday at 10 works. Thanks!','just now');
+ if(a==='stop')sms('Lead','STOP','just now');
+ sms('System',a==='stop'?'Opt-out recorded. All texting to this number is stopped.':a==='book'?'Booked. Follow-ups stopped; confirmation queued.':'Reply detected. Automated follow-ups stopped and a human is alerted.','now')});
+})();
+</script></body></html>

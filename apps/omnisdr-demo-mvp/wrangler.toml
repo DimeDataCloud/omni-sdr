@@ -1,0 +1,27 @@
+name = "omnisdr-demo-mvp"
+main = "src/worker.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+# Do NOT add a route for mvp.omnisdr.com until the existing omnisdr-mvp
+# (Lead Engine inbox) hostname is confirmed. See README.
+# All state (caps, session logs, kill switch, login throttle, dev sessions) lives in one Durable Object so updates are serialized.
+[[durable_objects.bindings]]
+name = "GATE"
+class_name = "Gate"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Gate"]
+
+[vars]
+DAILY_CAP = "10"
+IP_CAP = "2"
+SESSION_SECONDS = "180"
+KILL = "0"
+ENGINE_B = "0"
+
+[[rules]]
+type = "Text"
+globs = ["**/*.css", "**/*.txt"]
+fallthrough = true

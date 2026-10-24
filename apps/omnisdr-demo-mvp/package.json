@@ -1,0 +1,18 @@
+{
+  "name": "omnisdr-demo-mvp",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "wrangler dev --local",
+    "test": "bash tests/start.sh --var IP_CAP:50 --var DAILY_CAP:80 --var DEV_PASSCODE:test-passcode && node tests/walkthrough.js; bash tests/stop.sh; bash tests/start.sh --var IP_CAP:5 --var DAILY_CAP:8 --var DEV_PASSCODE:test-passcode && node tests/hardening.js; bash tests/stop.sh",
+    "deploy": "wrangler deploy"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "wrangler": "^4.152.0"
+  },
+  "private": true
+}
