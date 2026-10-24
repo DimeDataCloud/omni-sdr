@@ -17,11 +17,10 @@ Swap the niche by editing `src/tenant.js` (fact sheet, zips, services, slots, ho
 ## Deploy (needs your Cloudflare login; nothing here has been deployed)
 1. `npm install`
 2. `npx wrangler secret put DEV_PASSCODE`  (long random string)
-3. Nothing to create: all state (caps, session logs, kill switch, login lockout, dev sessions) lives in one Durable Object that `wrangler deploy` creates from the `[[migrations]]` block. (An unused KV namespace `omnisdr-demo-kv` was created in the account earlier; you can delete it.)
+3. Nothing to create: all state (caps, session logs, kill switch, login lockout, dev sessions) lives in one Durable Object that `wrangler deploy` creates from the `[[migrations]]` block.
 4. Recommended before sharing a link: create a Turnstile widget, then `npx wrangler secret put TURNSTILE_SECRET` and add `TURNSTILE_SITEKEY` under `[vars]`.
 5. `npx wrangler deploy` -> https://omnisdr-demo-mvp.<your-subdomain>.workers.dev
-6. mvp.omnisdr.com: the existing Worker `omnisdr-mvp` (Lead Engine inbox) may already own that hostname. Check Workers & Pages -> omnisdr-mvp -> Domains & Routes first.
-   Either move the inbox to another hostname, or give this Worker a different one (for example demo.omnisdr.com). Do not attach a route blindly.
+6. Hostname: `demo.omnisdr.com`. `mvp.omnisdr.com` belongs to the Lead Engine inbox (Worker `omnisdr-mvp`); leave it alone. Check Workers & Pages -> Domains & Routes that `demo.` is free before attaching.
 
 ## Tests
 `npm test` starts the local Worker and drives both portals in headless Chromium (47 checks: happy path, AI-question, price deflection,

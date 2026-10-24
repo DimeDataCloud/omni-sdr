@@ -3,8 +3,7 @@ main = "src/worker.js"
 compatibility_date = "2026-10-01"
 workers_dev = true
 
-# Do NOT add a route for mvp.omnisdr.com until the existing omnisdr-mvp
-# (Lead Engine inbox) hostname is confirmed. See README.
+# Hostname is demo.omnisdr.com (attach at deploy, with Christian's approval). Never mvp.omnisdr.com: it belongs to the Lead Engine inbox (Worker omnisdr-mvp).
 # All state (caps, session logs, kill switch, login throttle, dev sessions) lives in one Durable Object so updates are serialized.
 [[durable_objects.bindings]]
 name = "GATE"

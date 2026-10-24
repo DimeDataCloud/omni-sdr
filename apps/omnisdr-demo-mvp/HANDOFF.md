@@ -1,9 +1,9 @@
-# Handoff: Omni SDR demo MVP (mvp.omnisdr.com)
+# Handoff: Omni SDR demo MVP (demo.omnisdr.com)
 
 Rails v1.4 loaded. Written 2026-10-24 by claude-cloud for a terminal Claude Code session (claude-local).
 
 ## Status
-Built and verified LOCALLY ONLY. Not deployed. Goal still open: verify the portals at mvp.omnisdr.com.
+Built and verified LOCALLY ONLY. Not deployed. Goal still open: verify the portals at demo.omnisdr.com.
 Local: tests/walkthrough.js 47/47, tests/hardening.js 25/25, tests/caps.sh checked, `wrangler deploy --dry-run` bundles with the Gate Durable Object.
 The cloud session cannot deploy: no Worker-upload tool, api.cloudflare.com blocked, deploys need Christian's approval (AGENT-RAILS §3.1).
 
@@ -17,18 +17,16 @@ Cloudflare Worker + SQLite Durable Object `Gate` (single serialized state: caps,
 ## Do this first (Christian runs or approves each; §3)
 1. `cd apps/omnisdr-demo-mvp && npm ci`
 2. Local proof: `bash tests/start.sh` (needs `.dev.vars` with `DEV_PASSCODE=test-passcode`, gitignored), then `node tests/walkthrough.js` and `node tests/hardening.js`, then `bash tests/stop.sh`. Expect 47/47 and 25/25.
-3. Check who owns the hostname: `omnisdr-mvp` may already hold mvp.omnisdr.com. Look in the Cloudflare dashboard before attaching.
+3. Hostname is `demo.omnisdr.com` (Christian, 2026-10-24). `mvp.omnisdr.com` stays with the Lead Engine inbox (`omnisdr-mvp`); do not touch it. Confirm in the dashboard that nothing already uses `demo.omnisdr.com`.
 4. `npx wrangler secret put DEV_PASSCODE` (never paste the value in chat or commits).
-5. `npx wrangler deploy`, then attach `mvp.omnisdr.com` to the Worker (custom domain or route).
-6. Walkthrough against live: `BASE=https://mvp.omnisdr.com node tests/walkthrough.js` and the same for `hardening.js`. Caps tests need a separate low-cap instance, run those locally only. Live runs consume the real daily cap (10): set DAILY_CAP higher for the run or reset via the Durable Object, then restore.
+5. `npx wrangler deploy`, then attach `demo.omnisdr.com` to the Worker (custom domain or route).
+6. Walkthrough against live: `BASE=https://demo.omnisdr.com node tests/walkthrough.js` and the same for `hardening.js`. Caps tests need a separate low-cap instance, run those locally only. Live runs consume the real daily cap (10): set DAILY_CAP higher for the run or reset via the Durable Object, then restore.
 7. Fix differences, redeploy, repeat until both pass live. Then enable Turnstile (secrets `TURNSTILE_SECRET`, and a `meta[name=ts-key]` site key) before sharing the link.
 
 ## Known gaps (UNVERIFIED or not built)
 - No real voice engine. The agent is scripted. Engine B (Gemini Live) `/api/token` and the browser audio client are untested against the live API. Engine A (Workers AI pipeline) not built.
 - Not tested on iOS Safari or Chrome arm64.
 - Turnstile is off by default.
-- Unused KV namespace `omnisdr-demo-kv` exists in the Cloudflare account; delete it if not needed.
-- Hostname ownership of `omnisdr-mvp` unknown.
 
 ## Niche note (from Muse, brain repo)
 Bathroom remodeling appears in none of Muse's five niche runs. Top picks: wildlife 8.8, bail 8.7, garage door 8.5, generators 8.4 (speed-run); canonical Run 4: garage door 8.2, generators 8.1. Suggest adding a wildlife or garage-door entry to `src/tenant.js` (TENANTS) before the Oct 26 dial week. Rules: $499 paid pilots, cold calls only, one niche per cycle, never quote the "62% unanswered" stat.
