@@ -3,7 +3,7 @@
 Rails v1.4 loaded. Updated 2026-10-24 by claude-local (Christian's terminal session) for a separate session to pick up the voice engine build.
 Branch: `claude/demo` (same commit as `claude/demo-mvp`). Worktree used so far: `C:\Users\cdsec\omni-sdr-demo`.
 
-Verification results (live site, Gemini key state, Dependabot): **VERIFICATION-2026-10-24.md**.
+Verification results (live site, Gemini key state, Dependabot): **VERIFICATION-2026-10-24.md**. Small follow-ups for another session (Dependabot bumps, wrangler/undici, phone click-through): **HANDOFF-FOLLOWUPS.md**.
 
 ## Your job
 Build the real voice engine. Read **ENGINE-BUILD.md** first; it is the spec. Short version: the live demo is a scripted, rule-based agent.
