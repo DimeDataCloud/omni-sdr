@@ -68,7 +68,7 @@ function ev(type,data){if(S.sid)post('/api/event',{sid:S.sid,type:type,data:data
 /* Turnstile (only if the page was configured with a site key) */
 var TSKEY=document.querySelector('meta[name=ts-key]');
 var tsTok='';
-if(TSKEY&&TSKEY.content){var sc=document.createElement('script');sc.src='https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';sc.async=true;sc.onload=function(){window.turnstile.render('#ts',{sitekey:TSKEY.content,callback:function(t){tsTok=t}})};document.head.appendChild(sc)}
+if(TSKEY&&TSKEY.content){$('start').disabled=true;$('start').textContent='Checking your browser...';var tsReady=function(t){tsTok=t;$('start').disabled=!t;$('start').textContent='Start the call'};var sc=document.createElement('script');sc.src='https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';sc.async=true;sc.onload=function(){window.turnstile.render('#ts',{sitekey:TSKEY.content,callback:tsReady,'expired-callback':function(){tsReady('')},'error-callback':function(){tsReady('')}})};document.head.appendChild(sc)}
 
 /* ---- agent ---- */
 var QUESTION={
@@ -162,7 +162,7 @@ function finish(why){if(S.over)return;S.over=true;clearInterval(S.timer);S.tm.fo
 $('start').addEventListener('click',function(){
  var b=$('start');b.disabled=true;$('startErr').hidden=true;
  post('/api/session',{tenant:'riverbend',turnstile:tsTok}).then(function(r){
-  if(!r.ok){var e=$('startErr');e.textContent=r.message||'Could not start the demo.';e.hidden=false;b.disabled=false;if(window.turnstile){try{window.turnstile.reset();tsTok=''}catch(x){}}return}
+  if(!r.ok){var e=$('startErr');e.textContent=r.message||'Could not start the demo.';e.hidden=false;b.disabled=false;if(window.turnstile){try{window.turnstile.reset();tsTok='';if(TSKEY&&TSKEY.content)b.disabled=true}catch(x){}}return}
   S.sid=r.sid;S.t=r.tenant;S.secs=r.maxSeconds;$('bizName').textContent=S.t.business;
   $('gate').hidden=true;$('live').hidden=false;renderCap();open();
   say('Hi, thanks for calling '+S.t.business+'. This is '+S.t.persona+', an automated assistant for the team, and this call may be recorded. How can I help you today?');

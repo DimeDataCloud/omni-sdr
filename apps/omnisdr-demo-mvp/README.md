@@ -18,7 +18,7 @@ Swap the niche by editing `src/tenant.js` (fact sheet, zips, services, slots, ho
 1. `npm install`
 2. `npx wrangler secret put DEV_PASSCODE`  (long random string)
 3. Nothing to create: all state (caps, session logs, kill switch, login lockout, dev sessions) lives in one Durable Object that `wrangler deploy` creates from the `[[migrations]]` block.
-4. Recommended before sharing a link: create a Turnstile widget, then `npx wrangler secret put TURNSTILE_SECRET` and add `TURNSTILE_SITEKEY` under `[vars]`.
+4. Turnstile is configured on the live demo: `TURNSTILE_SECRET` is a Worker secret and `TURNSTILE_SITEKEY` sits under `[vars]`.
 5. `npx wrangler deploy` -> https://omnisdr-demo-mvp.<your-subdomain>.workers.dev
 6. Hostname: `demo.omnisdr.com`. `mvp.omnisdr.com` belongs to the Lead Engine inbox (Worker `omnisdr-mvp`); leave it alone. Check Workers & Pages -> Domains & Routes that `demo.` is free before attaching.
 

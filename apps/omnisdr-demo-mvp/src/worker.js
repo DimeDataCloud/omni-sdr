@@ -154,16 +154,17 @@ function chasePlan(b) {
   return { ok: true, simulated: true, quietHoursNow: quiet, note: quiet ? 'It is quiet hours now: the first text is queued until 8 AM instead of sending in 8 seconds.' : 'Within hours: first text goes out in under 60 seconds.', steps, rules: ['Stops on reply, booking, STOP, or wrong number', 'Max 3 contacts per 24 hours', 'Quiet hours 9 PM to 8 AM local', 'Every text identifies the sender as automated and offers STOP'] };
 }
 
-// UNTESTED against the live Gemini API. One token per session, session must exist, cap-free because the session already passed caps.
+// Token mint verified against the live Gemini API 2026-10-24 (200, setupComplete, audio back); the browser audio client does not exist yet. One token per session, session must exist, cap-free because the session already passed caps.
 async function mintToken(env, b) {
   if (env.ENGINE_B !== '1' || !env.GEMINI_API_KEY) return json({ ok: false, message: 'Not available.' }, 501);
   if (typeof b.sid !== 'string') return json({ ok: false, message: 'Start a session first.' }, 400);
   const g = await gate(env, { op: 'token', sid: b.sid.slice(0, 64) });
   if (!g.ok) return json({ ok: false, message: g.reason === 'used' ? 'Token already issued for this session.' : 'Not available.' }, g._s);
   const t = TENANTS[DEFAULT_TENANT], model = 'models/gemini-3.8-live';
+  // REST field is bidiGenerateContentSetup (liveConnectConstraints is the SDK's name for it); endpoint is v1beta. Verified against the live API 2026-10-24.
   const body = { uses: 1, expireTime: new Date(Date.now() + 3 * 60000).toISOString(), newSessionExpireTime: new Date(Date.now() + 60000).toISOString(),
-    liveConnectConstraints: { model, config: { responseModalities: ['AUDIO'], systemInstruction: { parts: [{ text: `You are ${t.persona}, an automated assistant for ${t.business}. Speak English. Follow the intake script. Never quote prices.` }] } } } };
-  const r = await fetch('https://generativelanguage.googleapis.com/v1alpha/auth_tokens', { method: 'POST', headers: { 'x-goog-api-key': env.GEMINI_API_KEY, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    bidiGenerateContentSetup: { model, generationConfig: { responseModalities: ['AUDIO'] }, systemInstruction: { parts: [{ text: `You are ${t.persona}, an automated assistant for ${t.business}. Speak English. Follow the intake script. Never quote prices.` }] } } };
+  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/auth_tokens', { method: 'POST', headers: { 'x-goog-api-key': env.GEMINI_API_KEY, 'content-type': 'application/json' }, body: JSON.stringify(body) });
   if (!r.ok) return json({ ok: false, message: 'Token request failed.' }, 502);
   const j = await r.json(); return json({ ok: true, token: j.name, model });
 }

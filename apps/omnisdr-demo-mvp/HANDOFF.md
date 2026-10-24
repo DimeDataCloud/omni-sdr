@@ -24,9 +24,9 @@ Cloudflare Worker + SQLite Durable Object `Gate` (single serialized state: caps,
 7. Fix differences, redeploy, repeat until both pass live. Then enable Turnstile (secrets `TURNSTILE_SECRET`, and a `meta[name=ts-key]` site key) before sharing the link.
 
 ## Known gaps (UNVERIFIED or not built)
-- No real voice engine. The agent is scripted. Engine B (Gemini Live) `/api/token` and the browser audio client are untested against the live API. Engine A (Workers AI pipeline) not built.
+- No real voice engine. The agent is scripted; mic and voice use the browser's own speech APIs. Engine B (Gemini Live): the token mint was wrong (v1alpha, liveConnectConstraints) and is fixed to v1beta + bidiGenerateContentSetup; verified against the live API 2026-10-24 (mint 200, setupComplete, 12 audio chunks, first audio 1.3 s). **There is no browser audio client for Engine B yet**, and Engine A (Workers AI pipeline) is not built. ENGINE_B stays 0.
 - Not tested on iOS Safari or Chrome arm64.
-- Turnstile is off by default.
+- Turnstile is ON (2026-10-24, managed widget for demo.omnisdr.com; secret in the Worker, site key in wrangler.toml). Start waits for the token. Headless test runs cannot pass it, so live walkthroughs need the widget disabled or Cloudflare test keys on a local instance.
 
 ## Niche note (from Muse, brain repo)
 Bathroom remodeling appears in none of Muse's five niche runs. Top picks: wildlife 8.8, bail 8.7, garage door 8.5, generators 8.4 (speed-run); canonical Run 4: garage door 8.2, generators 8.1. Suggest adding a wildlife or garage-door entry to `src/tenant.js` (TENANTS) before the Oct 26 dial week. Rules: $499 paid pilots, cold calls only, one niche per cycle, never quote the "62% unanswered" stat.

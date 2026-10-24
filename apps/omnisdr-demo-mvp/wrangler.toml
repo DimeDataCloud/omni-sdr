@@ -19,6 +19,7 @@ IP_CAP = "2"
 SESSION_SECONDS = "180"
 KILL = "0"
 ENGINE_B = "0"
+TURNSTILE_SITEKEY = "0x4AAAAAAFkPgjzo9EQJoOUI"
 
 [[rules]]
 type = "Text"
