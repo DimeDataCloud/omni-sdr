@@ -11,5 +11,5 @@ const R = []; const ok = (n, c, d = '') => R.push([c ? 'PASS' : 'FAIL', n, d]);
   const r2 = await fetch(BASE + '/api/session', { method: 'POST', headers: { ...J, 'cf-connecting-ip': '44.4.4.4' }, body: JSON.stringify({ turnstile: 'junk' }) });
   ok('a junk token does not get around it', r2.status === 503 && !(await r2.json()).sid);
   let f = 0; for (const [s, n, d] of R) { if (s === 'FAIL') f++; console.log(s, n, d ? '— ' + d : ''); }
-  console.log(`\n${R.length - f}/${R.length} passed`); process.exit(f ? 1 : 0);
+  console.log(`\n${R.length - f}/${R.length} passed`); process.exitCode = f ? 1 : 0; // not process.exit(): it races open fetch sockets and aborts node on Windows
 })().catch(e => { console.error('CRASH', e); process.exit(2); });
