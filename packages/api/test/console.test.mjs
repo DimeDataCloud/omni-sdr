@@ -140,10 +140,17 @@ test('connectors: status comes from what exists, later modules say so', async ()
   const items = (await api.call('GET', `${api.W}/connectors`)).body.items;
   const status = Object.fromEntries(items.map((c) => [c.id, c.status]));
   assert.equal(status.gmail, 'connected');
-  assert.equal(status.shopify, 'not_connected');
+  assert.equal(status.shopify, 'activates_later');
   assert.equal(status.sms, 'activates_later');
   assert.deepEqual(items.find((c) => c.id === 'gmail').scopes.map((s) => s.scope), ['https://www.googleapis.com/auth/gmail.send']);
   assert.equal((await api.call('GET', `${api.ws(2)}/connectors`)).body.items.find((c) => c.id === 'gmail').status, 'not_connected');
+});
+
+test('connectors: only modules with a backend are live (no Connect button that goes nowhere)', async () => {
+  const items = (await api.call('GET', `${api.W}/connectors`)).body.items;
+  // Add an id here only in the PR that ships its adapter, route and tests.
+  assert.deepEqual(items.filter((c) => c.activation === 'live').map((c) => c.id).sort(), ['email_routing', 'gmail', 'smtp_imap']);
+  for (const c of items.filter((c) => c.activation === 'later')) assert.equal(c.status, 'activates_later', c.id);
 });
 
 test('prospects: import runs the free checks and skips duplicates; ICP edits make a new version', async () => {
