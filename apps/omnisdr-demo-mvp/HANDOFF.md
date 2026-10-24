@@ -3,6 +3,8 @@
 Rails v1.4 loaded. Updated 2026-10-24 by claude-local (Christian's terminal session) for a separate session to pick up the voice engine build.
 Branch: `claude/demo` (same commit as `claude/demo-mvp`). Worktree used so far: `C:\Users\cdsec\omni-sdr-demo`.
 
+Verification results (live site, Gemini key state, Dependabot): **VERIFICATION-2026-10-24.md**.
+
 ## Your job
 Build the real voice engine. Read **ENGINE-BUILD.md** first; it is the spec. Short version: the live demo is a scripted, rule-based agent.
 Engine B (Gemini Live in the browser) has a verified server half and **no browser audio client**; build that, wire `GEMINI_API_KEY` + `ENGINE_B=1`,
@@ -12,7 +14,7 @@ move the guardrails into the system instruction, add tests, run the spike checkl
 Live at https://demo.omnisdr.com (also https://omnisdr-demo-mvp.dimedatateam.workers.dev). Deployed Worker version b6c107a0, repo commit e0996c0 plus this handoff.
 - Turnstile ON (managed widget, site key in `wrangler.toml`, secret on the Worker). Start button waits for the token.
 - Caps: DAILY_CAP=10, IP_CAP=2, SESSION_SECONDS=180, KILL=0, ENGINE_B=0.
-- Tests: local `npm test` = walkthrough 47/47 + hardening 28/28 (`tests/run.sh` passes Cloudflare's published always-pass Turnstile test keys to the walkthrough instance, because the production site key cannot pass on localhost). Live: walkthrough 47/47, hardening 21/21 (the cap and lockout checks spoof `cf-connecting-ip`, which the Cloudflare edge rejects, so they run locally only; hardening.js handles this itself).
+- Tests: local `npm test` = walkthrough 47/47 + hardening 28/28 (`tests/run.sh` passes Cloudflare's published always-pass Turnstile test keys to the walkthrough instance, because the production site key cannot pass on localhost). Live: hardening 24/24 re-run 2026-10-24 (walkthrough 47/47 was before Turnstile went on; see VERIFICATION-2026-10-24.md) (the cap and lockout checks spoof `cf-connecting-ip`, which the Cloudflare edge rejects, so they run locally only; hardening.js handles this itself).
 - Gemini Live server half verified (see ENGINE-BUILD.md). `node tools/gemini-live-smoke.mjs` re-proves it in about 5 seconds.
 - Niche: bathroom remodeling ("Riverbend Bath") is the demo testing niche, by Christian's decision. Do not swap it. (Muse's niche research ranked other niches; that does not change this.)
 - `mvp.omnisdr.com` belongs to the Lead Engine inbox Worker `omnisdr-mvp`. Never touch it.
@@ -47,7 +49,8 @@ Secrets never go in chat, docs, code, commits, URLs or logs (rails 3.6). Keys li
 - No real voice engine (ENGINE-BUILD.md).
 - Not tested on iOS Safari or Chrome arm64 (headless Chromium only).
 - This branch is not merged to master and has no PR. Open one when the engine work is ready; Christian waived the other-session cross-audit for this demo on 2026-10-24, but each new public endpoint still gets a hardening test.
-- Dependabot reports 4 open alerts on master (not looked at; unrelated to this app).
+- Dependabot: 4 open alerts on master, all dev-tooling in other packages (vite in apps/console, sharp in edge/email-worker), none in this app. Triaged with fixes in VERIFICATION-2026-10-24.md.
+- Live walkthrough has not been re-run since Turnstile went on (headless cannot pass the widget); do one manual phone click-through, which also covers iOS Safari.
 
 ## Completed this session (so you do not redo it)
 Deployed and attached demo.omnisdr.com; deleted the unused KV namespace; added dev-portal "Reset today's counters"; made the hardening tests live-safe; DEV_PASSCODE env override in tests; Turnstile enabled and verified in a real browser; fixed the Gemini token mint (v1beta + `bidiGenerateContentSetup`) and verified it; rotated the two leaked Cloudflare tokens (2026-10-24).
