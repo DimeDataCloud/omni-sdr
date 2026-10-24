@@ -72,8 +72,10 @@ test('the press: drafts for every lead with facts, first touches cite their fact
   }
   assert.equal(r.body.credits.action, 2);
   assert.equal(await balance(), before - 2, 'no credit for the lead with no facts');
-  const [d] = await api.q(`SELECT status, claims, generated FROM drafts WHERE id = $1`, [r.body.generated[0].drafts[0].id]);
+  const [d] = await api.q(`SELECT status, claims, generated, agent_id FROM drafts WHERE id = $1`, [r.body.generated[0].drafts[0].id]);
   assert.equal(d.status, 'review', 'waits for a person');
+  const [sdr] = await api.q(`SELECT id FROM agents WHERE workspace_id = $1 AND badge = 'SDR' AND archived_at IS NULL ORDER BY created_at, id LIMIT 1`, [api.demo.workspaces[0]]);
+  assert.equal(d.agent_id, sdr.id, 'generated drafts are credited to the workspace SDR agent, so the per-agent counts are honest');
   assert.equal(d.claims[0].text, FACT);
   assert.deepEqual([d.generated.prompt, d.generated.prompt_sha, d.generated.tier], ['sequence@1', PROMPT_SHA, 'flash']);
   const [e] = await api.q(`SELECT state FROM enrollments WHERE id = $1`, [r.body.generated[0].enrollmentId]);
@@ -203,4 +205,18 @@ test('eval harness runs end to end with a model that follows the rules (12 cases
   assert.equal(r.pass, 12, lines.join('\n'));
   const liar = fakeModel(() => JSON.stringify({ emails: [{ subject: 'Hi', body: 'We are the best in town, 40% cheaper.', cites: [] }] }));
   assert.equal((await runEval(liar, { log: () => {} })).pass, 1, 'a rule-ignoring model passes only the "safe" case (the gate blocks its lies; it fails decline by writing anyway)');
+});
+
+test('with no live SDR agent a generated draft carries no agent (NULL, never a made-up one)', async () => {
+  reply = (input) => good(factsOf(input));
+  await api.q(`UPDATE agents SET archived_at = now() WHERE workspace_id = $1 AND badge = 'SDR'`, [api.demo.workspaces[0]]);
+  try {
+    const id = await newCampaign({ withEvidence: 1 });
+    const r = await api.call('POST', `${api.W}/campaigns/${id}/generate`, { body: {} });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    const [d] = await api.q(`SELECT agent_id FROM drafts WHERE id = $1`, [r.body.generated[0].drafts[0].id]);
+    assert.equal(d.agent_id, null);
+  } finally {
+    await api.q(`UPDATE agents SET archived_at = NULL WHERE workspace_id = $1 AND badge = 'SDR'`, [api.demo.workspaces[0]]);
+  }
 });

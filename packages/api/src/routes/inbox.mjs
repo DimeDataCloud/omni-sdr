@@ -4,6 +4,7 @@ import { T, camel, audit } from './index.mjs';
 import { v, parse } from '../validate.mjs';
 import { notFound, conflict } from '../errors.mjs';
 import { gateDraft } from '../../../gate/src/apply.mjs';
+import { draftingAgentId } from '../services/drafting-agent.mjs';
 
 // A no-show's reschedule note (acceptance step 9). Plain, no facts to cite, so it passes the gate on its own words;
 // it still goes through Approvals like every other draft and is never sent without a person's yes.
@@ -143,9 +144,9 @@ export function registerInbox(r) {
           await tx.query(`UPDATE enrollments SET state = 'awaiting_approval', stop_reason = NULL WHERE id = $1`, [e.id]);
           const last = (await tx.query(`SELECT subject, step FROM drafts WHERE enrollment_id = $1 ORDER BY step DESC, created_at DESC LIMIT 1`, [e.id])).rows[0];
           const subject = last?.subject ? (/^re:/i.test(last.subject) ? last.subject : `Re: ${last.subject}`) : 'Finding another time';
-          draftId = (await tx.query(`INSERT INTO drafts (org_id, workspace_id, enrollment_id, step, channel, subject, body, status, purpose)
-            VALUES ($1, $2, $3, $4, 'email', $5, $6, 'gating', 'reschedule') RETURNING id`,
-          [m.orgId, m.workspaceId, e.id, Math.max(e.step, last?.step ?? 0) + 1, subject.slice(0, 300), rescheduleNote(e.name)])).rows[0].id;
+          draftId = (await tx.query(`INSERT INTO drafts (org_id, workspace_id, enrollment_id, step, channel, subject, body, status, purpose, agent_id)
+            VALUES ($1, $2, $3, $4, 'email', $5, $6, 'gating', 'reschedule', $7) RETURNING id`,
+          [m.orgId, m.workspaceId, e.id, Math.max(e.step, last?.step ?? 0) + 1, subject.slice(0, 300), rescheduleNote(e.name), await draftingAgentId(tx)])).rows[0].id;
           await audit(tx, m, 'reschedule_draft', 'draft', draftId);
         }
       }
