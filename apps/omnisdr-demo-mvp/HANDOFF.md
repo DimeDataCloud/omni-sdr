@@ -1,38 +1,53 @@
 # Handoff: Omni SDR demo MVP (demo.omnisdr.com)
 
-Rails v1.4 loaded. Written 2026-10-24 by claude-cloud for a terminal Claude Code session (claude-local).
+Rails v1.4 loaded. Updated 2026-10-24 by claude-local (Christian's terminal session) for a separate session to pick up the voice engine build.
+Branch: `claude/demo` (same commit as `claude/demo-mvp`). Worktree used so far: `C:\Users\cdsec\omni-sdr-demo`.
 
-## Status
-Built and verified LOCALLY ONLY. Not deployed. Goal still open: verify the portals at demo.omnisdr.com.
-Local: tests/walkthrough.js 47/47, tests/hardening.js 25/25, tests/caps.sh checked, `wrangler deploy --dry-run` bundles with the Gate Durable Object.
-The cloud session cannot deploy: no Worker-upload tool, api.cloudflare.com blocked, deploys need Christian's approval (AGENT-RAILS §3.1).
+## Your job
+Build the real voice engine. Read **ENGINE-BUILD.md** first; it is the spec. Short version: the live demo is a scripted, rule-based agent.
+Engine B (Gemini Live in the browser) has a verified server half and **no browser audio client**; build that, wire `GEMINI_API_KEY` + `ENGINE_B=1`,
+move the guardrails into the system instruction, add tests, run the spike checklist. Engine A (Workers AI pipeline) is the fallback and comparison baseline.
 
-## What it is
-Cloudflare Worker + SQLite Durable Object `Gate` (single serialized state: caps, sessions, kill switch, login lockout).
-- `/` demo portal: scripted nine-step bathroom-remodel intake agent (fictional tenant "Riverbend Bath"), simulated owner text and booking, 3-min timer, disclosure banner; second tab simulates CHASE speed-to-lead texting.
-- `/dev` dev portal: passcode login, sessions vs cap, spend note, kill switch, sessions table, system checks, tenant JSON, Engine B spike checklist.
-- Design: suite.omnisdr.com tokens (`src/base.css`, `src/logo.txt`). Strict per-request nonce CSP, no inline styles.
-- Config in `wrangler.toml`: DAILY_CAP=10, IP_CAP=2, SESSION_SECONDS=180, KILL=0, ENGINE_B=0. No route attached on purpose.
+## State (2026-10-24)
+Live at https://demo.omnisdr.com (also https://omnisdr-demo-mvp.dimedatateam.workers.dev). Deployed Worker version b6c107a0, repo commit e0996c0 plus this handoff.
+- Turnstile ON (managed widget, site key in `wrangler.toml`, secret on the Worker). Start button waits for the token.
+- Caps: DAILY_CAP=10, IP_CAP=2, SESSION_SECONDS=180, KILL=0, ENGINE_B=0.
+- Tests: local `npm test` = walkthrough 47/47 + hardening 28/28 (`tests/run.sh` passes Cloudflare's published always-pass Turnstile test keys to the walkthrough instance, because the production site key cannot pass on localhost). Live: walkthrough 47/47, hardening 21/21 (the cap and lockout checks spoof `cf-connecting-ip`, which the Cloudflare edge rejects, so they run locally only; hardening.js handles this itself).
+- Gemini Live server half verified (see ENGINE-BUILD.md). `node tools/gemini-live-smoke.mjs` re-proves it in about 5 seconds.
+- Niche: bathroom remodeling ("Riverbend Bath") is the demo testing niche, by Christian's decision. Do not swap it. (Muse's niche research ranked other niches; that does not change this.)
+- `mvp.omnisdr.com` belongs to the Lead Engine inbox Worker `omnisdr-mvp`. Never touch it.
 
-## Do this first (Christian runs or approves each; §3)
-1. `cd apps/omnisdr-demo-mvp && npm ci`
-2. Local proof: `bash tests/start.sh` (needs `.dev.vars` with `DEV_PASSCODE=test-passcode`, gitignored), then `node tests/walkthrough.js` and `node tests/hardening.js`, then `bash tests/stop.sh`. Expect 47/47 and 25/25.
-3. Hostname is `demo.omnisdr.com` (Christian, 2026-10-24). `mvp.omnisdr.com` stays with the Lead Engine inbox (`omnisdr-mvp`); do not touch it. Confirm in the dashboard that nothing already uses `demo.omnisdr.com`.
-4. `npx wrangler secret put DEV_PASSCODE` (never paste the value in chat or commits).
-5. `npx wrangler deploy`, then attach `demo.omnisdr.com` to the Worker (custom domain or route).
-6. Walkthrough against live: `BASE=https://demo.omnisdr.com node tests/walkthrough.js` and the same for `hardening.js`. Caps tests need a separate low-cap instance, run those locally only. Live runs consume the real daily cap (10): set DAILY_CAP higher for the run or reset via the Durable Object, then restore.
-7. Fix differences, redeploy, repeat until both pass live. Then enable Turnstile (secrets `TURNSTILE_SECRET`, and a `meta[name=ts-key]` site key) before sharing the link.
+## Where everything lives
+| Thing | Location |
+|---|---|
+| Code, tests, docs | this repo, `apps/omnisdr-demo-mvp/`, branch `claude/demo` |
+| Worker + Durable Object `Gate` | Cloudflare account "Dimedatateam", Worker `omnisdr-demo-mvp`, custom domain `demo.omnisdr.com` attached through the Workers Domains API (it is not in `wrangler.toml`, a redeploy keeps it) |
+| Deploy credential | `CLOUDFLARE_API_TOKEN` in `C:\Users\cdsec\.halo-keys\rotation-inbox.env` (token "Worker Deploy Token"). `npx wrangler deploy` needs it exported as an env var for that shell |
+| Dev portal passcode (`DEV_PASSCODE`) | `C:\Users\cdsec\.halo-keys\omnisdr-demo.md`; also a Worker secret. Local tests read it from `DEV_PASSCODE` env, default `test-passcode` against a local instance |
+| Turnstile site key + secret | `C:\Users\cdsec\.halo-keys\omnisdr-turnstile.md`; site key is public and in `wrangler.toml`, secret is a Worker secret |
+| Gemini key | `C:\Users\cdsec\.halo-keys\gemini-live.md` (free tier). **Not yet on the Worker.** The editor stores it with escaped underscores; `tools/gemini-live-smoke.mjs` parses that |
+| Brain notes | `C:\Users\cdsec\Halo\BrainAI\builds\omni-sdr.md` (sections dated 2026-10-24) and `decisions/log.md` (hostname decision) |
+| Plan doc | Docs artifact "Free Demo Agent Plan": https://claude.ai/artifact/X11StYAy88pigxPH89bXJ3 |
 
-## Known gaps (UNVERIFIED or not built)
-- No real voice engine. The agent is scripted; mic and voice use the browser's own speech APIs. Engine B (Gemini Live): the token mint was wrong (v1alpha, liveConnectConstraints) and is fixed to v1beta + bidiGenerateContentSetup; verified against the live API 2026-10-24 (mint 200, setupComplete, 12 audio chunks, first audio 1.3 s). **There is no browser audio client for Engine B yet**, and Engine A (Workers AI pipeline) is not built. ENGINE_B stays 0.
-- Not tested on iOS Safari or Chrome arm64.
-- Turnstile is ON (2026-10-24, managed widget for demo.omnisdr.com; secret in the Worker, site key in wrangler.toml). Start waits for the token. Headless test runs cannot pass it, so live walkthroughs need the widget disabled or Cloudflare test keys on a local instance.
+Secrets never go in chat, docs, code, commits, URLs or logs (rails 3.6). Keys live only in `C:\Users\cdsec\.halo-keys\`.
 
-## Niche note (from Muse, brain repo)
-Bathroom remodeling appears in none of Muse's five niche runs. Top picks: wildlife 8.8, bail 8.7, garage door 8.5, generators 8.4 (speed-run); canonical Run 4: garage door 8.2, generators 8.1. Suggest adding a wildlife or garage-door entry to `src/tenant.js` (TENANTS) before the Oct 26 dial week. Rules: $499 paid pilots, cold calls only, one niche per cycle, never quote the "62% unanswered" stat.
+## Run it
+1. `cd apps/omnisdr-demo-mvp && npm ci && npx playwright install chromium`
+2. `npm test` (starts a local Worker on 8787 twice with the right caps, runs both suites, stops it). Needs `.dev.vars` with `DEV_PASSCODE=test-passcode` (gitignored).
+3. Re-run `npm test` after any change; it must print 47/47 and 28/28. Live check: `BASE=https://demo.omnisdr.com DEV_PASSCODE=<from key file> node tests/hardening.js`. For the live walkthrough Turnstile blocks headless Chromium; use a local instance, or disable the widget temporarily with Christian's OK. Live runs consume the real daily cap of 10: reset with the dev portal "Reset today's counters" button.
+4. Deploy (Christian approved deploys for this project on 2026-10-24; still say what you deploy): `npx wrangler deploy`, then re-run the live hardening check.
 
-## Plan doc
-Docs artifact "Free Demo Agent Plan": https://claude.ai/artifact/X11StYAy88pigxPH89bXJ3 (rev 31). Companion docs: OmniSDR Systems and Cost Model, Standard Bundle, Ultimate Stack and Workflow.
+## Do not
+- Delete, skip or loosen a test to make something pass (rails 3.7).
+- Put the Gemini key in `wrangler.toml`, code or a commit. Use `npx wrangler secret put GEMINI_API_KEY`.
+- Turn `ENGINE_B` on in production until the client works, falls back to the scripted agent on every failure, and the hardening suite covers the token path.
+- Touch `mvp.omnisdr.com`.
 
-## Rails reminders
-Branch work only (`claude/*`), merge via PR reviewed by the other session. Append CLAIM/DONE to the journal WORKBOARD (this session could not reach the journal repo, so no claim was filed). Every public endpoint here needs the other session's audit with explicit approval.
+## Known gaps
+- No real voice engine (ENGINE-BUILD.md).
+- Not tested on iOS Safari or Chrome arm64 (headless Chromium only).
+- This branch is not merged to master and has no PR. Open one when the engine work is ready; Christian waived the other-session cross-audit for this demo on 2026-10-24, but each new public endpoint still gets a hardening test.
+- Dependabot reports 4 open alerts on master (not looked at; unrelated to this app).
+
+## Completed this session (so you do not redo it)
+Deployed and attached demo.omnisdr.com; deleted the unused KV namespace; added dev-portal "Reset today's counters"; made the hardening tests live-safe; DEV_PASSCODE env override in tests; Turnstile enabled and verified in a real browser; fixed the Gemini token mint (v1beta + `bidiGenerateContentSetup`) and verified it; rotated the two leaked Cloudflare tokens (2026-10-24).
