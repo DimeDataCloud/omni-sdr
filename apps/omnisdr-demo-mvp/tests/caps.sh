@@ -2,7 +2,7 @@
 # Run against a server started with IP_CAP=1 DAILY_CAP=3
 post() {
   local ip="$1"; local body="$2"
-  curl -s -X POST localhost:8787/api/session -H 'content-type: application/json' -H "cf-connecting-ip: $ip" -d "$body" -w ' [%{http_code}]\n' | cut -c1-150
+  curl -s -X POST localhost:${PORT:-8787}/api/session -H 'content-type: application/json' -H "cf-connecting-ip: $ip" -d "$body" -w ' [%{http_code}]\n' | cut -c1-150
 }
 echo "ip cap 1, same ip twice:"
 post 9.9.9.9 '{}'
