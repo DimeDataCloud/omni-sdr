@@ -29,6 +29,12 @@ const post = (u, b, h = {}) => fetch(BASE + u, { method: 'POST', headers: { ...J
   const ch = await fetch(BASE + '/api/lead', { method: 'POST', headers: J, body: stream, duplex: 'half' }); ok('oversize chunked body refused', ch.status === 413, String(ch.status));
   // 6 dev login: lockout after 5 wrong guesses, then even the right passcode is refused for the lockout window
   if (!LIVE) { // lockout keys on the real client ip: only meaningful (and safe) on a local instance
+  // 6b parallel burst: 40 simultaneous wrong guesses from one ip may get at most 5 evaluated (401); the rest must be locked out (429)
+  const bip = { 'cf-connecting-ip': '55.5.5.55' };
+  const burst = await Promise.all(Array.from({ length: 40 }, (_, i) => post('/api/dev/login', { passcode: 'burst' + i }, bip).then(r => r.status)));
+  const n401 = burst.filter(s => s === 401).length, n429 = burst.filter(s => s === 429).length;
+  ok('parallel login burst gets at most 5 guesses evaluated', n401 === 5 && n429 === 35, '401x' + n401 + ' 429x' + n429);
+  ok('right passcode refused after a burst lockout', (await post('/api/dev/login', { passcode: PASS }, bip)).status === 429);
   const ip = { 'cf-connecting-ip': '66.6.6.6' }; let last = 0;
   for (let i = 0; i < 6; i++) last = (await post('/api/dev/login', { passcode: 'nope' + i }, ip)).status;
   ok('brute force locks out after 5 failures', last === 429, String(last));

@@ -102,8 +102,12 @@ export class Gate {
       }
       case 'kill': await s.put('kill', b.on === true); return R({ ok: true, killed: b.on === true });
       case 'killed': return R({ killed: (await s.get('kill')) === true });
-      case 'lcheck': { const f = await s.get('lf:' + b.ip); return R({ blocked: !!f && f.until > now }); }
-      case 'lfail': { const f = (await s.get('lf:' + b.ip)) || { n: 0, until: 0, last: 0 }; f.n += 1; f.last = now; if (f.n >= 5) { f.until = now + 15 * 60000; f.n = 0; } await s.put('lf:' + b.ip, f); return R({ ok: true }); }
+      case 'lcheck': { // atomic check-and-reserve: the attempt is counted BEFORE the passcode is evaluated, so a parallel burst cannot get more than 5 guesses per window
+        const f = (await s.get('lf:' + b.ip)) || { n: 0, until: 0, last: 0 };
+        if (f.until > now) return R({ blocked: true });
+        f.n += 1; f.last = now; if (f.n >= 5) { f.until = now + 15 * 60000; f.n = 0; }
+        await s.put('lf:' + b.ip, f); return R({ blocked: false });
+      }
       case 'lok': await s.delete('lf:' + b.ip); return R({ ok: true });
       case 'dscreate': await s.put('ds:' + b.id, now + 8 * 3600000); return R({ ok: true });
       case 'dscheck': { const e = await s.get('ds:' + b.id); return R({ ok: !!e && e > now }); }
@@ -128,6 +132,8 @@ const MSG = {
 };
 
 async function newSession(req, env, body) {
+  // Fail closed: the widget is shown whenever TURNSTILE_SITEKEY is set, so a missing secret must not silently disable the check.
+  if (env.TURNSTILE_SITEKEY && !env.TURNSTILE_SECRET) return json({ ok: false, reason: 'bot', message: 'Bot check is unavailable. Try again later.' }, 503);
   if (env.TURNSTILE_SECRET) {
     const f = new FormData(); f.append('secret', env.TURNSTILE_SECRET); f.append('response', String(body.turnstile || '')); const ip = req.headers.get('cf-connecting-ip'); if (ip) f.append('remoteip', ip);
     const r = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST', body: f }).then((r) => r.json()).catch(() => ({}));
@@ -217,7 +223,7 @@ export default {
           const ih = await ipHash(env, req);
           if ((await gate(env, { op: 'lcheck', ip: ih })).blocked) return json({ ok: false, message: 'Too many attempts. Wait 15 minutes.' }, 429);
           const ok = !!env.DEV_PASSCODE && typeof b.passcode === 'string' && await safeEqual(salt(env), b.passcode, env.DEV_PASSCODE);
-          if (!ok) { await gate(env, { op: 'lfail', ip: ih }); return json({ ok: false, message: 'Wrong passcode.' }, 401); }
+          if (!ok) return json({ ok: false, message: 'Wrong passcode.' }, 401);
           await gate(env, { op: 'lok', ip: ih });
           const id = hex(crypto.getRandomValues(new Uint8Array(32)).buffer);
           await gate(env, { op: 'dscreate', id });
