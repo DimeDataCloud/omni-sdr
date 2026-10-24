@@ -4,8 +4,8 @@
 //   DATABASE_URL            Cloud SQL connection (login role: member of app_rw, gate_svc, sender_svc, inbox_svc only)
 //   OMNI_FIREBASE_PROJECT   Identity Platform project id; ID tokens must have this audience
 //   OMNI_CORS_ORIGINS       comma-separated exact origins allowed to call the API from a browser
-//   OMNI_APP_URL            base for invite links (default https://app.omnisdr.com)
-//   OMNI_UNSUBSCRIBE_BASE   base for /u/<token> links
+//   OMNI_APP_URL            base for invite links (required: the old default, app.omnisdr.com, has no DNS record)
+//   OMNI_UNSUBSCRIBE_BASE   the API's public origin, for /u/<token> and hook URLs (required, same reason)
 //   OMNI_INBOUND_SECRET     HMAC key shared with the email-worker; /internal/* is 404 without it
 //   OMNI_EDGE_SECRET        HMAC key shared with the api.omnisdr.com Worker, which signs the caller's IP (#52 audit)
 //   OMNI_TRUST_PROXY=<n>    the client IP is the n-th entry from the end of X-Forwarded-For. 1 behind Cloud Run (the live value).
@@ -55,8 +55,8 @@ export async function main() {
     model,
     config: {
       corsOrigins: (env.OMNI_CORS_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
-      appUrl: env.OMNI_APP_URL ?? 'https://app.omnisdr.com',
-      unsubscribeBase: env.OMNI_UNSUBSCRIBE_BASE ?? 'https://app.omnisdr.com',
+      appUrl: need('OMNI_APP_URL'),
+      unsubscribeBase: need('OMNI_UNSUBSCRIBE_BASE'),
       inboundSecret: env.OMNI_INBOUND_SECRET || null,
       places,
       // Free checks always run; the vendor check only with OMNI_VERIFY=zerobounce (above).
