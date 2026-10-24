@@ -1,9 +1,14 @@
 // Regression tests for the independent security audit (2026-10-24). Needs a fresh server: --var IP_CAP:5 --var DAILY_CAP:8
 const BASE = process.env.BASE || 'http://localhost:8787';
+const PASS = process.env.DEV_PASSCODE || 'test-passcode';
+const LIVE = !['http://localhost', 'http://127.0.0.1'].some(p => BASE.startsWith(p));
 const R = []; const ok = (n, c, d = '') => R.push([c ? 'PASS' : 'FAIL', n, d]);
 const J = { 'content-type': 'application/json' };
-const post = (u, b, h = {}) => fetch(BASE + u, { method: 'POST', headers: { ...J, ...h }, body: typeof b === 'string' ? b : JSON.stringify(b) });
+// Live: Cloudflare's edge answers a forged cf-connecting-ip with an HTML 403, so never send it there.
+const clean = h => { if (!LIVE) return h; const { 'cf-connecting-ip': _x, ...rest } = h; return rest; };
+const post = (u, b, h = {}) => fetch(BASE + u, { method: 'POST', headers: { ...J, ...clean(h) }, body: typeof b === 'string' ? b : JSON.stringify(b) });
 (async () => {
+  if (!LIVE) { // caps tests spoof cf-connecting-ip, which Cloudflare overwrites at the edge: local low-cap instance only
   // 1 concurrency: 40 parallel starts from one ip must yield exactly IP_CAP (5) successes
   const rs = await Promise.all(Array.from({ length: 40 }, () => post('/api/session', {}, { 'cf-connecting-ip': '5.5.5.5' })));
   const n200 = rs.filter(r => r.status === 200).length; ok('parallel session starts cannot exceed the per-ip cap', n200 === 5, 'got ' + n200);
@@ -12,6 +17,7 @@ const post = (u, b, h = {}) => fetch(BASE + u, { method: 'POST', headers: { ...J
   const n2 = rs2.filter(r => r.status === 200).length; ok('parallel starts cannot exceed the daily cap', n2 === 3, 'got ' + n2);
   // 2 event flood: one sid, 300 parallel events -> stored events capped at 200 and none lost below cap
   const g = await (await post('/api/session', {}, { 'cf-connecting-ip': '5.5.5.5' })).json(); // refused (cap) so no sid; use dev stats later
+  }
   // 3 null / junk bodies must not 500
   for (const u of ['/api/session', '/api/lead', '/api/dev/login', '/api/event', '/api/token']) { const r = await post(u, 'null', { 'cf-connecting-ip': '77.7.7.7' }); ok('null body on ' + u + ' is not a 500', r.status !== 500, String(r.status)); }
   // 4 CSRF: wrong Origin and wrong content type refused
@@ -22,17 +28,25 @@ const post = (u, b, h = {}) => fetch(BASE + u, { method: 'POST', headers: { ...J
   const stream = new ReadableStream({ start(c) { const chunk = new TextEncoder().encode('{"name":"' + 'a'.repeat(1024)); for (let i = 0; i < 6; i++) c.enqueue(chunk); c.close(); } });
   const ch = await fetch(BASE + '/api/lead', { method: 'POST', headers: J, body: stream, duplex: 'half' }); ok('oversize chunked body refused', ch.status === 413, String(ch.status));
   // 6 dev login: lockout after 5 wrong guesses, then even the right passcode is refused for the lockout window
+  if (!LIVE) { // lockout keys on the real client ip: only meaningful (and safe) on a local instance
   const ip = { 'cf-connecting-ip': '66.6.6.6' }; let last = 0;
   for (let i = 0; i < 6; i++) last = (await post('/api/dev/login', { passcode: 'nope' + i }, ip)).status;
   ok('brute force locks out after 5 failures', last === 429, String(last));
-  ok('right passcode refused while locked out', (await post('/api/dev/login', { passcode: 'test-passcode' }, ip)).status === 429);
+  ok('right passcode refused while locked out', (await post('/api/dev/login', { passcode: PASS }, ip)).status === 429);
+  }
   // 7 forged / old-style cookies
-  const crypto = require('crypto'); const old = crypto.createHash('sha256').update('omnisdr-dev:test-passcode').digest('hex');
+  const crypto = require('crypto'); const old = crypto.createHash('sha256').update('omnisdr-dev:' + PASS + '').digest('hex');
   for (const c of ['dev=' + old, 'xdev=' + old, 'dev=' + 'a'.repeat(64)]) ok('forged dev cookie rejected: ' + c.slice(0, 10), (await fetch(BASE + '/api/dev/stats', { headers: { cookie: c } })).status === 401);
   // 8 real login -> session cookie is random, works, logout revokes it
-  const lg = await post('/api/dev/login', { passcode: 'test-passcode' }, { 'cf-connecting-ip': '88.8.8.8' }); ok('valid login works', lg.status === 200);
+  const lg = await post('/api/dev/login', { passcode: PASS }, { 'cf-connecting-ip': '88.8.8.8' }); ok('valid login works', lg.status === 200);
   const ck = (lg.headers.get('set-cookie') || '').split(';')[0]; ok('cookie is a random 64-hex id, not derived from the passcode', /^dev=[a-f0-9]{64}$/.test(ck) && ck !== 'dev=' + old);
   ok('session cookie authorizes stats', (await fetch(BASE + '/api/dev/stats', { headers: { cookie: ck } })).status === 200);
+  // 8b reset-today: needs a session, and zeroes the counter
+  ok('reset-today without a session is refused', (await post('/api/dev/reset-today', {})).status === 401);
+  const HR = { cookie: ck, 'content-type': 'application/json' };
+  await fetch(BASE + '/api/session', { method: 'POST', headers: J, body: '{}' });
+  ok('reset-today with a session returns ok', (await (await fetch(BASE + '/api/dev/reset-today', { method: 'POST', headers: HR, body: '{}' })).json()).ok === true);
+  ok('counter is zero after reset', (await (await fetch(BASE + '/api/dev/stats', { headers: { cookie: ck } })).json()).usedToday === 0);
   // 9 kill switch: string "0" must not kill; true kills; false resumes; kill state persists
   const H = { cookie: ck, 'content-type': 'application/json' };
   await fetch(BASE + '/api/dev/kill', { method: 'POST', headers: H, body: '{"on":"0"}' });

@@ -90,6 +90,9 @@ export class Gate {
         const list = [...(await s.list({ prefix: 's:' })).values()].sort((x, y) => y.at.localeCompare(x.at)).slice(0, 25);
         return R({ used: (await s.get('day:' + b.day)) || 0, killed: (await s.get('kill')) === true, sessions: list.map((r) => ({ sid: r.sid.slice(0, 8), tenant: r.tenant, at: r.at, events: r.events.length, last: r.events.at(-1)?.type || '' })) });
       }
+      case 'resetday': { // dev portal: zero today's daily and per-ip counters (session log is kept)
+        await s.delete('day:' + b.day); for (const [k] of await s.list({ prefix: 'ip:' + b.day + ':' })) await s.delete(k); return R({ ok: true });
+      }
       case 'kill': await s.put('kill', b.on === true); return R({ ok: true, killed: b.on === true });
       case 'killed': return R({ killed: (await s.get('kill')) === true });
       case 'lcheck': { const f = await s.get('lf:' + b.ip); return R({ blocked: !!f && f.until > now }); }
@@ -196,6 +199,7 @@ export default {
         }
         if (p.startsWith('/api/dev/')) {
           if (!await devAuthed(req, env)) return json({ ok: false, message: 'Not signed in.' }, 401);
+          if (p === '/api/dev/reset-today') return json(await gate(env, { op: 'resetday', day: today() }));
           if (p === '/api/dev/kill') return json(await gate(env, { op: 'kill', on: b.on === true }));
           if (p === '/api/dev/logout') { await gate(env, { op: 'dsdelete', id: cookie(req, 'dev') }); return json({ ok: true }, 200, { 'set-cookie': 'dev=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0' }); }
         }

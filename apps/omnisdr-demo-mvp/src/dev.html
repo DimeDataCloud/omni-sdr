@@ -21,7 +21,7 @@ ul.chk{list-style:none;padding:0;margin:0}ul.chk li{padding:8px 0;border-bottom:
  <div class="grid three">
   <div class="card"><h2>Sessions today</h2><div class="big" id="used">–</div><div class="bar"><i id="usedBar" class="u-w0"></i></div><p class="muted u-m8-0-0" id="capTxt"></p></div>
   <div class="card"><h2>Estimated spend today</h2><div class="big" id="spend">–</div><p class="muted u-m8-0-0" id="spendNote"></p></div>
-  <div class="card"><h2>Kill switch</h2><div id="killState" class="u-mb12"></div><button class="btn" id="kill">–</button></div>
+  <div class="card"><h2>Controls</h2><div id="killState" class="u-mb12"></div><button class="btn" id="kill">–</button><p class="sub u-mb12 u-mt8">After test runs, zero today's session and per-visitor counts so the next visitor can start. The session log stays.</p><button class="btn" id="resetToday">Reset today's counters</button></div>
  </div>
  <div class="grid two">
   <div class="card"><h2>Recent sessions</h2><table><thead><tr><th>Session</th><th>When</th><th>Events</th><th>Last</th></tr></thead><tbody id="sess"></tbody></table><p class="muted" id="sessEmpty" hidden>No sessions yet.</p></div>
@@ -58,6 +58,7 @@ function load(){return api('/api/dev/stats').then(function(r){
  $('store').textContent='Storage: '+r.storage;
  return api('/api/dev/tenants').then(function(t){$('tenant').textContent=JSON.stringify(t.tenants,null,2)})})}
 $('lf').addEventListener('submit',function(e){e.preventDefault();var le=$('le');le.hidden=true;api('/api/dev/login',{passcode:$('pc').value}).then(function(r){if(!r.ok){le.textContent=r.message||'Could not sign in.';le.hidden=false;return}$('pc').value='';load()}).catch(function(){le.textContent='Could not reach the server.';le.hidden=false})});
+$('resetToday').addEventListener('click',function(){api('/api/dev/reset-today',{}).then(load)});
 $('kill').addEventListener('click',function(){api('/api/dev/kill',{on:this.dataset.on==='1'}).then(load)});
 $('refresh').addEventListener('click',load);
 $('lock').addEventListener('click',function(){api('/api/dev/logout',{}).then(function(){show(false)})});

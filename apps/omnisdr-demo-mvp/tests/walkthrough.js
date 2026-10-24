@@ -1,5 +1,6 @@
 const { chromium } = require('playwright');
 const BASE = process.env.BASE || 'http://localhost:8787';
+const PASS = process.env.DEV_PASSCODE || 'test-passcode';
 const results = [];
 const ok = (n, c, d = '') => { results.push([c ? 'PASS' : 'FAIL', n, d]); };
 async function call(page, lines) { for (const l of lines) { await page.fill('#msg', l); await page.press('#msg', 'Enter'); await page.waitForTimeout(850); } }
@@ -94,7 +95,7 @@ const agentText = async (page) => (await page.$$eval('.bubble.a', n => n.map(x =
   ok('dev portal shows login first', await p.isVisible('#gate') && !await p.isVisible('#app'));
   await p.fill('#pc', 'wrong'); await p.click('#lf button'); await p.waitForTimeout(400);
   ok('wrong passcode rejected', await p.isVisible('#le'));
-  await p.fill('#pc', 'test-passcode'); await p.click('#lf button'); await p.waitForSelector('#app:not([hidden])');
+  await p.fill('#pc', PASS); await p.click('#lf button'); await p.waitForSelector('#app:not([hidden])');
   const used = await p.textContent('#used'); ok('dev stats render', /\d+ \/ \d+/.test(used), used);
   ok('dev lists sessions', (await p.$$('#sess tr')).length >= 3);
   await p.waitForTimeout(300); ok('dev tenant config shows hard stops and discovery questions', /hardStops/.test(await p.textContent('#tenant')) && /discovery/.test(await p.textContent('#tenant')));
