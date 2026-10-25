@@ -319,15 +319,16 @@ END $$;
 CREATE TRIGGER suppression_a_org_lock BEFORE INSERT ON suppression
   FOR EACH ROW EXECUTE FUNCTION suppression_org_lock();
 
+-- ACLs first, ownership last: once the function belongs to identity_owner the (non-superuser) migrator can no longer REVOKE or GRANT on it (0008a).
+REVOKE EXECUTE ON FUNCTION close_component(uuid, uuid[], text[], boolean), contacts_fill_identities(), conversations_fill_identity(),
+  suppression_close_person(), identities_close_person(), suppression_org_lock() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION close_component(uuid, uuid[], text[], boolean) TO identity_owner;
 ALTER FUNCTION contacts_fill_identities() OWNER TO identity_owner;
 ALTER FUNCTION conversations_fill_identity() OWNER TO identity_owner;
 ALTER FUNCTION close_component(uuid, uuid[], text[], boolean) OWNER TO identity_owner;
 ALTER FUNCTION suppression_close_person() OWNER TO identity_owner;
 ALTER FUNCTION identities_close_person() OWNER TO identity_owner;
 ALTER FUNCTION suppression_org_lock() OWNER TO identity_owner;
-REVOKE EXECUTE ON FUNCTION close_component(uuid, uuid[], text[], boolean), contacts_fill_identities(), conversations_fill_identity(),
-  suppression_close_person(), identities_close_person(), suppression_org_lock() FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION close_component(uuid, uuid[], text[], boolean) TO identity_owner;
 
 -- ─── part 4: name seeds and the salt (design sections 16-17) ───────────────────────────────────────────────────────
 -- THE ONE FORMULA: name_hash = value_hash(org_salt || ':name:' || normalize_name(name)). Only this function computes it; the
@@ -608,19 +609,7 @@ GRANT SELECT ON messages TO guard_owner;
 CREATE POLICY guard_all ON messages TO guard_owner USING (true) WITH CHECK (true);
 
 -- ─── ownership and execute grants ────────────────────────────────────────────────────────────────────────────────
-ALTER FUNCTION name_seed_hash(uuid, text, boolean) OWNER TO identity_owner;
-ALTER FUNCTION org_salts_immutable() OWNER TO identity_owner;
-ALTER FUNCTION _suppress_person(uuid, uuid, text, boolean) OWNER TO identity_owner;
-ALTER FUNCTION suppress_person(uuid, text) OWNER TO identity_owner;
-ALTER FUNCTION record_identity(uuid, text, text) OWNER TO identity_owner;
-ALTER FUNCTION contacts_name_hold() OWNER TO identity_owner;
-ALTER FUNCTION can_resolve_hold(uuid, uuid) OWNER TO identity_owner;
-ALTER FUNCTION clear_name_hold(uuid, text) OWNER TO identity_owner;
-ALTER FUNCTION contact_opted_out(uuid) OWNER TO guard_owner;
-ALTER FUNCTION rename_opted_out_contact(uuid, text, text) OWNER TO rename_owner;
-ALTER FUNCTION person_suppressed(uuid, text) OWNER TO guard_owner;
-ALTER FUNCTION message_handoff_ok(uuid) OWNER TO guard_owner;
-
+-- ACLs first, ownership last: once the function belongs to identity_owner the (non-superuser) migrator can no longer REVOKE or GRANT on it (0008a).
 REVOKE EXECUTE ON FUNCTION name_seed_hash(uuid, text, boolean), org_salts_immutable(), _suppress_person(uuid, uuid, text, boolean),
   suppress_person(uuid, text), record_identity(uuid, text, text), contacts_name_hold(), can_resolve_hold(uuid, uuid),
   clear_name_hold(uuid, text), contact_opted_out(uuid), rename_opted_out_contact(uuid, text, text),
@@ -634,6 +623,20 @@ GRANT EXECUTE ON FUNCTION contact_opted_out(uuid) TO app_rw, rename_owner, ops;
 GRANT EXECUTE ON FUNCTION person_suppressed(uuid, text) TO app_rw;
 GRANT EXECUTE ON FUNCTION message_handoff_ok(uuid) TO sender_svc;
 GRANT EXECUTE ON FUNCTION app_org(), app_ws(), app_user(), value_hash(text) TO guard_owner;
+GRANT EXECUTE ON FUNCTION _suppress_person(uuid, uuid, text, boolean) TO unsub_owner;
+
+ALTER FUNCTION name_seed_hash(uuid, text, boolean) OWNER TO identity_owner;
+ALTER FUNCTION org_salts_immutable() OWNER TO identity_owner;
+ALTER FUNCTION _suppress_person(uuid, uuid, text, boolean) OWNER TO identity_owner;
+ALTER FUNCTION suppress_person(uuid, text) OWNER TO identity_owner;
+ALTER FUNCTION record_identity(uuid, text, text) OWNER TO identity_owner;
+ALTER FUNCTION contacts_name_hold() OWNER TO identity_owner;
+ALTER FUNCTION can_resolve_hold(uuid, uuid) OWNER TO identity_owner;
+ALTER FUNCTION clear_name_hold(uuid, text) OWNER TO identity_owner;
+ALTER FUNCTION contact_opted_out(uuid) OWNER TO guard_owner;
+ALTER FUNCTION rename_opted_out_contact(uuid, text, text) OWNER TO rename_owner;
+ALTER FUNCTION person_suppressed(uuid, text) OWNER TO guard_owner;
+ALTER FUNCTION message_handoff_ok(uuid) OWNER TO guard_owner;
 
 -- rename_owner owns only rename_opted_out_contact: the name column, the membership check, the audit row.
 GRANT USAGE ON SCHEMA public TO rename_owner, guard_owner;
@@ -750,7 +753,6 @@ $$ SELECT EXISTS (SELECT 1 FROM contacts c WHERE c.id = p_contact AND c.org_id =
 RESET ROLE;
 
 -- unsubscribe(): the recipient's token now opts out the person. The org came from the token, never from a caller.
-GRANT EXECUTE ON FUNCTION _suppress_person(uuid, uuid, text, boolean) TO unsub_owner;
 GRANT CREATE ON SCHEMA public TO unsub_owner;
 SET ROLE unsub_owner;
 
