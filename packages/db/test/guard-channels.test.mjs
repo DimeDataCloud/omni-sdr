@@ -40,3 +40,25 @@ test('email is unchanged: an approved draft still sends and the daily cap still 
   const d2 = await approvedDraft(db, t);
   assert.match((await refused(send(db, t, d2))) ?? '', /daily cap reached/);
 });
+
+// Pins from the adversarial review of 89367f4 (B-3a).
+test('after the migrations run, guard_owner holds no CREATE on the schema or the database (0019 lends it and revokes it)', async () => {
+  const db = await freshDb();
+  const r = await one(db, `SELECT has_schema_privilege('guard_owner', 'public', 'CREATE') AS schema_create,
+                                  has_database_privilege('guard_owner', current_database(), 'CREATE') AS db_create`);
+  assert.deepEqual([r.schema_create, r.db_create], [false, false]);
+});
+
+test('the sender role cannot re-point a message after insert: channel and draft_id are not updatable, state is', async () => {
+  const db = await freshDb();
+  const t = await seedTenant(db, 'alpha');
+  const d = await approvedDraft(db, t);
+  await send(db, t, d);
+  const other = await approvedDraft(db, t);
+  const ctx = { org: t.org, ws: [t.ws] };
+  const upd = (set, ...params) => as(db, 'sender_svc', ctx, () => db.query(`UPDATE messages SET ${set} WHERE draft_id = $1`, [d, ...params]));
+  assert.match((await refused(upd(`channel = 'sms'`))) ?? '', /permission denied/);
+  assert.match((await refused(upd(`draft_id = $2`, other))) ?? '', /permission denied/);
+  assert.equal(await refused(upd(`state = 'failed', error = 'x'`)), null, 'control: the columns the sender owns are still writable');
+  assert.deepEqual(await one(db, `SELECT channel FROM messages WHERE draft_id = $1`, [d]), { channel: 'email' });
+});
