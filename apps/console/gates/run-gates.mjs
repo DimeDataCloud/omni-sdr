@@ -11,6 +11,7 @@ import { gzipSync } from 'node:zlib';
 import { connect } from 'node:net';
 import puppeteer from 'puppeteer-core';
 import { runQuality } from './quality.mjs';
+import { can } from '../../../packages/db/src/permissions.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'gates', 'out');
@@ -131,13 +132,26 @@ if (!REMOTE && (want('bundle') || wantRoutes || wantFlows || wantQuality)) {
 }
 
 // ── Browser gates ─────────────────────────────────────────────────────────────────────────────
+// Who sees which page is read from src/components/shell/nav.ts (the list the shell and route guards use) and the backend's own
+// role matrix, so a page added to nav.ts is checked here without a second list to forget. Each persona is the demo seed member of that role.
+// client_viewer approves only when the workspace turned client approvals on; the demo workspace has it on.
+const NAV_SRC = readFileSync(join(ROOT, 'src', 'components', 'shell', 'nav.ts'), 'utf8');
+const OUTSIDE = (NAV_SRC.match(/const OUTSIDE: Role\[\] = \[([^\]]*)\]/)?.[1] ?? '').split(',').map((x) => x.trim().replace(/'/g, '')).filter(Boolean);
+const NAV_ROUTES = NAV_SRC.split('\n').map((l) => l.match(/^\s*\{ key: '(\w+)', section:.*?visible: \((\w+)(?:, (\w+))?\) => (.+?) \},?\s*$/)).filter(Boolean)
+  .map((m) => ({ key: m[1], visible: new Function(m[2], m[3] ?? '_can', 'OUTSIDE', `return ${m[4]};`) }));
+if (OUTSIDE.length !== 2 || NAV_ROUTES.length < 13) throw new Error(`nav.ts parse: ${OUTSIDE.length} outside roles, ${NAV_ROUTES.length} pages (expected 2 and 13 or more)`);
+const ROLE_OF = { admin: 'admin', operator: 'operator', reviewer: 'reviewer', client: 'client_viewer', closer: 'closer' };
+const pagesFor = (persona) => NAV_ROUTES.filter((n) => n.visible(ROLE_OF[persona], (a) => can({ role: ROLE_OF[persona], clientApprovalsEnabled: true }, a), OUTSIDE)).map((n) => n.key);
 const PERSONAS = {
-  admin: { email: 'maya@example.com', pages: ['home', 'approvals', 'inbox', 'meetings', 'leads', 'analytics', 'studio', 'agents', 'data', 'connections', 'settings'] },
-  operator: { email: 'sam@example.com', pages: ['home', 'approvals', 'inbox', 'meetings', 'leads', 'analytics', 'studio', 'agents', 'data', 'connections', 'settings'] },
-  reviewer: { email: 'riley@example.com', pages: ['home', 'approvals', 'inbox', 'meetings', 'analytics', 'studio', 'agents', 'data', 'connections', 'settings'] },
-  client: { email: 'client@example.com', pages: ['approvals', 'meetings', 'analytics'] },
+  admin: { email: 'maya@example.com' },
+  operator: { email: 'sam@example.com' },
+  reviewer: { email: 'riley@example.com' },
+  client: { email: 'client@example.com' },
+  closer: { email: 'cole@example.com' },
 };
-const ALL = ['home', 'approvals', 'inbox', 'meetings', 'leads', 'analytics', 'studio', 'agents', 'data', 'connections', 'settings'];
+for (const [p, def] of Object.entries(PERSONAS)) def.pages = pagesFor(p);
+const ALL = ['home', 'approvals', 'inbox', 'meetings', 'leads', 'analytics', 'studio', 'agents', 'data', 'connections', 'settings']; // the quality gates' set; their baselines are per page
+const ROUTES = NAV_ROUTES.map((n) => n.key); // the routes gate visits every nav page, handoffs and playbook included
 const VIEWPORTS = { desktop: { width: 1440, height: 900 }, phone: { width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } };
 const FORBIDDEN = [/open rate/i, /\bopened\b/i, /SOC ?2/i, /send now/i, /auto-?send/i, /coming soon/i, /send via gmail/i, /AI-verified/i, /\bsupercharge/i, /\bseamless/i];
 
@@ -169,7 +183,7 @@ if ((wantRoutes || wantFlows || wantQuality) && BASE) {
         await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
         await page.waitForFunction(() => /\/w\/[^/]+\/\w+/.test(location.pathname), { timeout: 15000 });
         const ws = new URL(page.url()).pathname.split('/')[2];
-        for (const route of ALL) {
+        for (const route of ROUTES) {
           await page.goto(`${BASE}/w/${ws}/${route}`, { waitUntil: 'domcontentloaded' });
           await settle(page);
           const visible = def.pages.includes(route);
