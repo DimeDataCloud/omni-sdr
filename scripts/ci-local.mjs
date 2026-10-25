@@ -1,3 +1,7 @@
+// RUN GATES ONLY UNDER ops-run (node C:/Users/cdsec/omnisdr-ops/bin/ops-run.mjs): it kills the whole process tree on a
+// timeout and scrubs the environment. This script's own timeout uses spawnSync with shell: true, and on Windows that kill
+// reaches the shell but NOT the npm/node children under it, so a hung test can outlive a timed-out run.
+//
 // Local merge gate: the same checks as .github/workflows/tests.yml, run on this machine, ONE PACKAGE AT A TIME (a
 // parallel run exhausts memory here). Use it when GitHub Actions cannot run.
 //
@@ -5,6 +9,9 @@
 //   node scripts/ci-local.mjs --skip-install     test only (node_modules already match the lockfiles)
 //   node scripts/ci-local.mjs --only api,db      only these (names are the folder under packages/ or edge/)
 //   node scripts/ci-local.mjs --list             print what would run and stop
+//   node scripts/ci-local.mjs --strict           gate runs: any skipped or todo test is a FAIL
+//
+// --only with a name that matches no testable package exits 1 and names it (a typo must not turn a split gate green).
 //
 // What it mirrors from the workflow:
 //   discovery  every packages/* and edge/* folder whose package.json has a `test` script
@@ -68,6 +75,10 @@ function run(cwd, cmd, argv, logName) {
 const pad = (s, n) => String(s).padEnd(n);
 console.log(`node ${process.version}`);
 const all = discover();
+if (only) {
+  const unknown = [...only].filter((n) => !all.some((p) => p.hasTest && (p.name === n || p.dir === n)));
+  if (unknown.length) { console.error(`--only: unknown package ${unknown.join(', ')} (testable: ${all.filter((p) => p.hasTest).map((p) => p.name).join(', ')})`); process.exit(1); }
+}
 const testable = all.filter((p) => p.hasTest && (!only || only.has(p.name) || only.has(p.dir)));
 if (!testable.length) { console.error('no package with a test script found'); process.exit(1); }
 
@@ -102,9 +113,12 @@ else {
     const counts = ['tests', 'pass', 'fail', 'skipped'].map((k) => new RegExp(`^ℹ ${k} (\\d+)`, 'm').exec(r.out)?.[1] ?? '?');
     const summary = counts.join('/');
     // exit 0 with no tests, or with no readable count, is not a pass.
+    const todo = Number(/^ℹ todo (\d+)/m.exec(r.out)?.[1] ?? 0);
+    const skippedN = Number(counts[3] === '?' ? 0 : counts[3]);
+    const lax = r.ok && flag('--strict') && (skippedN > 0 || todo > 0);
     const empty = r.ok && (counts[0] === '?' || Number(counts[0]) === 0);
-    const ok = r.ok && !empty;
-    console.log(ok ? `ok (${r.secs.toFixed(1)}s)` : r.timedOut ? 'FAILED (timeout)' : empty ? 'FAILED (0 tests or no count)' : 'FAILED');
+    const ok = r.ok && !empty && !lax;
+    console.log(ok ? `ok (${r.secs.toFixed(1)}s)` : r.timedOut ? 'FAILED (timeout)' : lax ? `FAILED (--strict: ${skippedN} skipped, ${todo} todo)` : empty ? 'FAILED (0 tests or no count)' : 'FAILED');
     rows.push({ step: 'test', dir: p.dir, summary, ...r, ok });
     if (!ok) console.log(r.out.split('\n').slice(-40).join('\n'));
   }
