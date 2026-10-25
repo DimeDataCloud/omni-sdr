@@ -3,6 +3,7 @@ import devHtml from './dev.html';
 import CSS from './base.css';
 import LOGO from './logo.txt';
 import { TENANTS, DEFAULT_TENANT } from './tenant.js';
+import { buildInstruction, bookSlotTool } from './engine-instruction.js';
 
 /* ---------- helpers ---------- */
 const enc = new TextEncoder();
@@ -82,13 +83,19 @@ export class Gate {
       }
       case 'token': {
         const rec = await s.get('s:' + b.sid); if (!rec) return R({ ok: false }, 404);
+        const left = rec.max * 1000 - (now - Date.parse(rec.at)); // A1: an expired session can no longer mint; the token may not outlive the session
+        if (left <= 0) return R({ ok: false, reason: 'expired' }, 410);
         if ((await s.get('kill')) === true) return R({ ok: false }, 503);
         if (await s.get('tok:' + b.sid)) return R({ ok: false, reason: 'used' }, 429);
-        await s.put('tok:' + b.sid, now); return R({ ok: true });
+        // Lifetime test-mint ceiling (G2). 'mints' is NOT touched by resetday; only the ENGINE_B_TEST_MINTS var moves it. b.ceiling is null when lifted.
+        const used = (await s.get('mints')) || 0;
+        if (b.ceiling != null && used >= b.ceiling) return R({ ok: false, reason: 'test-ceiling' }, 429);
+        await s.put('tok:' + b.sid, now); await s.put('mints', used + 1);
+        return R({ ok: true, leftMs: left, tenant: rec.tenant });
       }
       case 'stats': {
         const list = [...(await s.list({ prefix: 's:' })).values()].sort((x, y) => y.at.localeCompare(x.at)).slice(0, 25);
-        return R({ used: (await s.get('day:' + b.day)) || 0, killed: (await s.get('kill')) === true, sessions: list.map((r) => ({ sid: r.sid.slice(0, 8), tenant: r.tenant, at: r.at, events: r.events.length, last: r.events.at(-1)?.type || '' })) });
+        return R({ mints: (await s.get('mints')) || 0, used: (await s.get('day:' + b.day)) || 0, killed: (await s.get('kill')) === true, sessions: list.map((r) => ({ sid: r.sid.slice(0, 8), tenant: r.tenant, at: r.at, events: r.events.length, last: r.events.at(-1)?.type || '' })) });
       }
       case 'resetday': { // dev portal: zero today's daily and per-ip counters (session log is kept)
         await s.delete('day:' + b.day); for (const [k] of await s.list({ prefix: 'ip:' + b.day + ':' })) await s.delete(k); return R({ ok: true });
@@ -158,15 +165,33 @@ function chasePlan(b) {
 async function mintToken(env, b) {
   if (env.ENGINE_B !== '1' || !env.GEMINI_API_KEY) return json({ ok: false, message: 'Not available.' }, 501);
   if (typeof b.sid !== 'string') return json({ ok: false, message: 'Start a session first.' }, 400);
-  const g = await gate(env, { op: 'token', sid: b.sid.slice(0, 64) });
-  if (!g.ok) return json({ ok: false, message: g.reason === 'used' ? 'Token already issued for this session.' : 'Not available.' }, g._s);
-  const t = TENANTS[DEFAULT_TENANT], model = 'models/gemini-3.8-live';
+  const g = await gate(env, { op: 'token', sid: b.sid.slice(0, 64), ceiling: testMintCeiling(env) });
+  if (!g.ok) return json({ ok: false, reason: g.reason, message: g.reason === 'used' ? 'Token already issued for this session.' : g.reason === 'expired' ? 'Session expired.' : 'Not available.' }, g._s);
+  // Nothing from the request body past sid is used: model, instruction, tools and times are all server-side (checklist E10, F5).
+  const t = TENANTS[g.tenant] || TENANTS[DEFAULT_TENANT], model = 'models/gemini-3.8-live', now = Date.now();
+  const life = Math.min(180000, g.leftMs); // the token may not outlive the session (A1) and never exceeds 3 min
   // REST field is bidiGenerateContentSetup (liveConnectConstraints is the SDK's name for it); endpoint is v1beta. Verified against the live API 2026-10-24.
-  const body = { uses: 1, expireTime: new Date(Date.now() + 3 * 60000).toISOString(), newSessionExpireTime: new Date(Date.now() + 60000).toISOString(),
-    bidiGenerateContentSetup: { model, generationConfig: { responseModalities: ['AUDIO'] }, systemInstruction: { parts: [{ text: `You are ${t.persona}, an automated assistant for ${t.business}. Speak English. Follow the intake script. Never quote prices.` }] } } };
-  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/auth_tokens', { method: 'POST', headers: { 'x-goog-api-key': env.GEMINI_API_KEY, 'content-type': 'application/json' }, body: JSON.stringify(body) });
-  if (!r.ok) return json({ ok: false, message: 'Token request failed.' }, 502);
-  const j = await r.json(); return json({ ok: true, token: j.name, model });
+  // UNVERIFIED: that tools and systemInstruction are locked by the token without lockAdditionalFields, and that sessionResumption stays off; check with the LIVE_GEMINI test.
+  const body = { uses: 1, expireTime: new Date(now + life).toISOString(), newSessionExpireTime: new Date(now + Math.min(60000, life)).toISOString(),
+    bidiGenerateContentSetup: { model, generationConfig: { responseModalities: ['AUDIO'] }, systemInstruction: { parts: [{ text: buildInstruction(t) }] }, tools: bookSlotTool(t) } };
+  const r = await fetch(geminiBase(env) + '/v1beta/auth_tokens', { method: 'POST', headers: { 'x-goog-api-key': env.GEMINI_API_KEY, 'content-type': 'application/json' }, body: JSON.stringify(body) }).catch(() => null);
+  if (!r || !r.ok) return json({ ok: false, message: 'Token request failed.' }, 502);
+  const j = await r.json().catch(() => null); if (!j || typeof j.name !== 'string') return json({ ok: false, message: 'Token request failed.' }, 502);
+  return json({ ok: true, token: j.name, model });
+}
+
+// Google base URL. GEMINI_BASE exists so the offline tests can point at a local mock; it is honoured ONLY for localhost or the real Google host, so a bad var can never send the API key elsewhere.
+function geminiBase(env) {
+  const v = String(env.GEMINI_BASE || '').replace(/\/+$/, '');
+  return /^(https:\/\/generativelanguage\.googleapis\.com|http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?)$/.test(v) ? v : 'https://generativelanguage.googleapis.com';
+}
+// Lifetime test-mint ceiling (G2): bounds our TEST spend, not the public product. Default 36 = 2x headroom on floor($5 / (3 min x $0.023/min)) = 72.
+// Price source: https://ai.google.dev/gemini-api/docs/pricing (read 2026-10-24, page dated 2026-10-22): gemini-3.8-live audio in $0.005/min, audio out $0.018/min, free tier $0.
+// UNVERIFIED: thinking-token and transcription-token charges are not covered by that arithmetic. Lift for go-live only by setting ENGINE_B_TEST_MINTS to 'off'; reset-today never clears the counter.
+function testMintCeiling(env) {
+  const v = String(env.ENGINE_B_TEST_MINTS ?? '').trim().toLowerCase();
+  if (v === 'off') return null;
+  const n = Number.parseInt(v, 10); return Number.isFinite(n) && n >= 0 ? n : 36;
 }
 
 export default {
@@ -209,7 +234,7 @@ export default {
         if (!await devAuthed(req, env)) return json({ ok: false, message: 'Not signed in.' }, 401);
         if (p === '/api/dev/stats') {
           const g = await gate(env, { op: 'stats', day: today() });
-          return json({ ok: true, day: today(), usedToday: g.used, dailyCap: +(env.DAILY_CAP || 10), ipCap: +(env.IP_CAP || 2), sessionSeconds: +(env.SESSION_SECONDS || 180), killed: g.killed, storage: 'Durable Object', checks: { turnstile: !!env.TURNSTILE_SECRET, turnstileKey: !!env.TURNSTILE_SITEKEY, geminiKey: !!env.GEMINI_API_KEY, engineB: env.ENGINE_B === '1', devPasscode: !!env.DEV_PASSCODE }, tenants: Object.keys(TENANTS), sessions: g.sessions });
+          return json({ ok: true, testMints: { used: g.mints, ceiling: testMintCeiling(env) }, day: today(), usedToday: g.used, dailyCap: +(env.DAILY_CAP || 10), ipCap: +(env.IP_CAP || 2), sessionSeconds: +(env.SESSION_SECONDS || 180), killed: g.killed, storage: 'Durable Object', checks: { turnstile: !!env.TURNSTILE_SECRET, turnstileKey: !!env.TURNSTILE_SITEKEY, geminiKey: !!env.GEMINI_API_KEY, engineB: env.ENGINE_B === '1', devPasscode: !!env.DEV_PASSCODE }, tenants: Object.keys(TENANTS), sessions: g.sessions });
         }
         if (p === '/api/dev/tenants') return json({ ok: true, tenants: TENANTS });
       }
