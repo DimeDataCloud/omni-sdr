@@ -55,11 +55,15 @@ export async function ingestReply(client, msg, { classify = classifyReply } = {}
         verdict.confidence, verdict.by, slaDueAt, msg.externalId ?? null, conversation.id])).rows[0].id;
 
     // Safe-side effects only.
-    if (verdict.intent === 'unsubscribe' || verdict.intent === 'bounce') {
+    if (verdict.intent === 'unsubscribe') {
+      // The person, not the address (0020): every identity of the contact and of anyone linked to them.
+      await tx.query(`SELECT suppress_person($1, 'reply_unsubscribe')`, [hit.contact_id]);
+    } else if (verdict.intent === 'bounce') {
+      // A bounce is about the address only; it never spreads to the person.
       const email = (await tx.query(`SELECT email FROM contacts WHERE id = $1`, [hit.contact_id])).rows[0]?.email;
       if (email) {
-        await tx.query(`INSERT INTO suppression (scope_org_id, value_hash, kind, reason) VALUES ($1, value_hash($2), 'email', $3)
-                        ON CONFLICT DO NOTHING`, [hit.org_id, email, verdict.intent === 'bounce' ? 'bounce' : 'reply_unsubscribe']);
+        await tx.query(`INSERT INTO suppression (scope_org_id, value_hash, kind, reason) VALUES ($1, value_hash($2), 'email', 'bounce')
+                        ON CONFLICT DO NOTHING`, [hit.org_id, email]);
       }
     }
     let snoozedUntil = null;
@@ -115,12 +119,8 @@ export async function refineReply(client, { id, orgId, workspaceId }, { decider 
       intent: fresh.intent, suppressed: ruled, stopped: fresh.intent !== 'out_of_office', slaDueAt: fresh.sla_due_at });
     const applied = [];
     if (fx.suppress && row.contact_id) {
-      const email = (await tx.query(`SELECT email FROM contacts WHERE id = $1`, [row.contact_id])).rows[0]?.email;
-      if (email) {
-        await tx.query(`INSERT INTO suppression (scope_org_id, value_hash, kind, reason) VALUES ($1, value_hash($2), 'email', 'reply_unsubscribe_model')
-                        ON CONFLICT DO NOTHING`, [orgId, email]);
-        applied.push('suppress');
-      }
+      await tx.query(`SELECT suppress_person($1, 'reply_unsubscribe_model')`, [row.contact_id]);
+      applied.push('suppress');
     }
     if (fx.stop && row.contact_id) {
       const n = (await tx.query(`UPDATE enrollments SET state = 'stopped', stop_reason = 'reply:model_stop', next_run_at = NULL
@@ -250,9 +250,8 @@ export async function ingestForm(client, hook, msg, { classify = classifyReply, 
     const id = ins.id;
     // Safe-side effects only, as for an email reply: an opt-out suppresses the address, and a real message stops any
     // sequence the person is in.
-    if (verdict.intent === 'unsubscribe' && email) {
-      await tx.query(`INSERT INTO suppression (scope_org_id, value_hash, kind, reason) VALUES ($1, value_hash($2), 'email', 'form_unsubscribe')
-                      ON CONFLICT DO NOTHING`, [hit.org_id, email]);
+    if (verdict.intent === 'unsubscribe' && contactId) {
+      await tx.query(`SELECT suppress_person($1, 'form_unsubscribe')`, [contactId]);
     }
     if (contactId && verdict.intent !== 'out_of_office') {
       await tx.query(`UPDATE enrollments SET state = 'stopped', stop_reason = $2, next_run_at = NULL
@@ -306,10 +305,11 @@ export async function ingestPasted(client, { orgId, workspaceId, actor }, msg, {
       [orgId, workspaceId, contactId, profile ?? email, `LinkedIn: ${String(msg.name).slice(0, 180)}`, String(msg.body ?? '').slice(0, 100000),
         msg.receivedAt, verdict.intent, verdict.confidence, verdict.by, slaDueAt, conversation.id])).rows[0].id;
     // Safe-side effects only, as for any reply.
-    if (verdict.intent === 'unsubscribe' && email) {
-      await tx.query(`INSERT INTO suppression (scope_org_id, value_hash, kind, reason) VALUES ($1, value_hash($2), 'email', 'linkedin_unsubscribe')
-                      ON CONFLICT DO NOTHING`, [orgId, email]);
-    }
+    // A paste that names both a profile and an address links them for good: the address contact owns the profile too, so an
+    // opt-out on either reaches both (the conversation fill only sees the thread's contact).
+    if (profile?.startsWith('in/')) await tx.query(`SELECT record_identity($1, $2, 'paste')`, [contactId, profile]);
+    // A profile-only person has no address to suppress; the person is suppressed all the same.
+    if (verdict.intent === 'unsubscribe') await tx.query(`SELECT suppress_person($1, 'linkedin_unsubscribe')`, [contactId]);
     if (contactId && verdict.intent !== 'out_of_office') {
       await tx.query(`UPDATE enrollments SET state = 'stopped', stop_reason = $2, next_run_at = NULL
                       WHERE contact_id = $1 AND state NOT IN ${TERMINAL}`, [contactId, `linkedin:${verdict.intent}`]);

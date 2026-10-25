@@ -67,11 +67,19 @@ export async function sendDraft(client, { orgId, workspaceId, draftId, mailboxId
   }
   if (claim.outcome !== 'claimed') return claim;
 
-  let result;
-  try {
-    result = { ok: true, ...(await adapter.send({ raw: claim.raw, mailbox: claim.mailbox })) };
-  } catch (err) {
-    result = { ok: false, error: `${err.kind ?? 'unknown'}: ${err.message}`.slice(0, 500) };
+  // The last look (0020): an opt-out that committed after the claim, or on another identity of the same person, stops the
+  // send here. It takes the org lock shared, so one that is still committing is waited for. A call already in flight at the
+  // provider when an opt-out commits cannot be recalled; that window is the residual, not closed by this check.
+  const handoffOk = await withService(client, ctx, async (tx) =>
+    (await tx.query(`SELECT message_handoff_ok($1) AS ok`, [claim.messageId])).rows[0]?.ok === true);
+
+  let result = { ok: false, error: 'suppressed_check' };
+  if (handoffOk) {
+    try {
+      result = { ok: true, ...(await adapter.send({ raw: claim.raw, mailbox: claim.mailbox })) };
+    } catch (err) {
+      result = { ok: false, error: `${err.kind ?? 'unknown'}: ${err.message}`.slice(0, 500) };
+    }
   }
 
   await withService(client, ctx, async (tx) => {
