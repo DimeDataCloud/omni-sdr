@@ -15,6 +15,10 @@
 // there is nothing to install: they are skipped for the install step, and tested like the rest. If one ever gains
 // dependencies without a lockfile, this script stops and says so instead of guessing.
 //
+// A package FAILS when it times out (15 minutes, per package and per install; CI_LOCAL_TIMEOUT_MS overrides, for the
+// failure proof only), or when its test run reports 0 tests or no readable test count (a runner that ran nothing must
+// not look like a pass).
+//
 // Output: each package's full log goes to <os tmp>/ci-local/<root>-<name>.log; the table below is what to paste into a
 // PR. Exit code is 0 only if every install and every test passed.
 import { spawnSync } from 'node:child_process';
@@ -29,6 +33,7 @@ const args = process.argv.slice(2);
 const flag = (n) => args.includes(n);
 const only = args.includes('--only') ? new Set(String(args[args.indexOf('--only') + 1] ?? '').split(',').filter(Boolean)) : null;
 const LOGS = join(tmpdir(), 'ci-local');
+const TIMEOUT_MS = Number(process.env.CI_LOCAL_TIMEOUT_MS) || 15 * 60 * 1000;
 
 const readJson = (f) => JSON.parse(readFileSync(f, 'utf8'));
 
@@ -53,13 +58,15 @@ function run(cwd, cmd, argv, logName) {
   mkdirSync(LOGS, { recursive: true });
   const started = Date.now();
   // shell: true so `npm` resolves to npm.cmd on Windows.
-  const r = spawnSync(cmd, argv, { cwd, shell: true, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, env: process.env });
+  const r = spawnSync(cmd, argv, { cwd, shell: true, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, env: process.env, timeout: TIMEOUT_MS, killSignal: 'SIGKILL' });
+  const timedOut = r.error?.code === 'ETIMEDOUT' || r.signal !== null;
   const log = join(LOGS, `${logName}.log`);
-  writeFileSync(log, `$ ${cmd} ${argv.join(' ')}\n${r.stdout ?? ''}\n${r.stderr ?? ''}\nexit ${r.status}\n`);
-  return { ok: r.status === 0, secs: (Date.now() - started) / 1000, log, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
+  writeFileSync(log, `$ ${cmd} ${argv.join(' ')}\n${r.stdout ?? ''}\n${r.stderr ?? ''}\n${timedOut ? `TIMEOUT after ${TIMEOUT_MS / 1000}s\n` : ''}exit ${r.status}\n`);
+  return { ok: r.status === 0 && !timedOut, timedOut, secs: (Date.now() - started) / 1000, log, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }
 
 const pad = (s, n) => String(s).padEnd(n);
+console.log(`node ${process.version}`);
 const all = discover();
 const testable = all.filter((p) => p.hasTest && (!only || only.has(p.name) || only.has(p.dir)));
 if (!testable.length) { console.error('no package with a test script found'); process.exit(1); }
@@ -91,11 +98,15 @@ else {
   for (const p of testable) {
     process.stdout.write(`npm test ${p.dir} ... `);
     const r = run(p.abs, 'npm', ['test'], `test-${p.name}`);
-    console.log(r.ok ? `ok (${r.secs.toFixed(1)}s)` : 'FAILED');
     // The node:test summary lines, for the table.
-    const summary = ['tests', 'pass', 'fail', 'skipped'].map((k) => new RegExp(`^ℹ ${k} (\\d+)`, 'm').exec(r.out)?.[1] ?? '?').join('/');
-    rows.push({ step: 'test', dir: p.dir, summary, ...r });
-    if (!r.ok) console.log(r.out.split('\n').slice(-40).join('\n'));
+    const counts = ['tests', 'pass', 'fail', 'skipped'].map((k) => new RegExp(`^ℹ ${k} (\\d+)`, 'm').exec(r.out)?.[1] ?? '?');
+    const summary = counts.join('/');
+    // exit 0 with no tests, or with no readable count, is not a pass.
+    const empty = r.ok && (counts[0] === '?' || Number(counts[0]) === 0);
+    const ok = r.ok && !empty;
+    console.log(ok ? `ok (${r.secs.toFixed(1)}s)` : r.timedOut ? 'FAILED (timeout)' : empty ? 'FAILED (0 tests or no count)' : 'FAILED');
+    rows.push({ step: 'test', dir: p.dir, summary, ...r, ok });
+    if (!ok) console.log(r.out.split('\n').slice(-40).join('\n'));
   }
 }
 
