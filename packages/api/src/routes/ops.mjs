@@ -72,6 +72,25 @@ export function registerOps(r) {
     }, { action: 'approve' });
   });
 
+  // A contact held because its name matches an opted-out person it shares no identity with (0020). Clearing is a person's
+  // decision with a written reason; the database function checks the role (admin or operator) and writes the audit row.
+  r.post(`${T}/contacts/:id/clear-hold`, (ctx) => {
+    const b = parse(v.object({ reason: v.string({ min: 10, max: 500 }) }), ctx.body);
+    return ctx.tenant(async (tx) => {
+      await tx.query(`SELECT clear_name_hold($1, $2)`, [ctx.params.id, b.reason]);
+      return { status: 204 };
+    }, { action: 'approve' });
+  });
+
+  // An opted-out contact's name is frozen; changing it (a typo fix) is audited and goes through this one function.
+  r.post(`${T}/contacts/:id/rename`, (ctx) => {
+    const b = parse(v.object({ name: v.string({ min: 1, max: 200 }), reason: v.string({ min: 10, max: 500 }) }), ctx.body);
+    return ctx.tenant(async (tx) => {
+      await tx.query(`SELECT rename_opted_out_contact($1, $2, $3)`, [ctx.params.id, b.name, b.reason]);
+      return { status: 204 };
+    }, { action: 'approve' });
+  });
+
   r.get(`${T}/credits`, (ctx) => ctx.tenant(async (tx) => {
     const rows = (await tx.query(`SELECT meter, balance FROM credit_balances ORDER BY meter`)).rows;
     return { balances: Object.fromEntries(rows.map((x) => [x.meter, Number(x.balance)])) };
