@@ -85,6 +85,10 @@ export async function seedTenant(db, label, { cap = 5, trust = 1, heat = 1 } = {
     [org, ws, agent, user]);
   await db.query(`INSERT INTO routines (org_id, workspace_id, agent_id, name, category, schedule) VALUES ($1, $2, $3, 'Morning briefing', 'briefing', 'daily 08:00')`,
     [org, ws, agent]);
+  // 0020: a salt, a name seed and a phone origin per tenant, so the RLS matrix and the FK rule cover the new tables.
+  await db.query(`INSERT INTO org_salts (org_id, salt) VALUES ($1, $2)`, [org, `seed-salt-${label}-`.padEnd(40, "0")]);
+  await db.query(`INSERT INTO optout_name_seeds (org_id, name_hash, seed_value_hash) VALUES ($1, $2, $3)`, [org, `name-${label}`, `seed-${label}`]);
+  await db.query(`INSERT INTO suppression_origins (org_id, workspace_id, value_hash, origin_contact_id) VALUES ($1, $2, $3, $4)`, [org, ws, `origin-${label}`, contact]);
   const t = { org, ws, user, contact, campaign, enrollment, mailbox, agent };
   const draft = await approvedDraft(db, t);
   const message = (await as(db, 'sender_svc', { org, ws: [ws] }, () => one(db,

@@ -105,5 +105,96 @@ test('the salt is immutable, the org lock is not available to tenants', async ()
   assert.match((await refused(db.query(`UPDATE org_salts SET salt = 'x'`))) ?? '', /immutable/);
   assert.match((await refused(db.query(`DELETE FROM org_salts WHERE org_id = $1`, [t.org]))) ?? '', /immutable/);
   assert.match((await refused(as(db, 'app_rw', ctxOf(t), () => db.query(`SELECT pg_advisory_xact_lock(1)`)))) ?? '', /permission denied/);
-  await db.query(`DELETE FROM orgs WHERE id = $1`, [t.org]).catch(() => {});
+});
+
+// Fold-ins T1-T3 and the privilege pins.
+test('T1: a phone-only person (no address, no profile) leaves no name seed', async () => {
+  const db = await freshDb();
+  const t = await seedTenant(db, 'alpha');
+  const p = await addContact(db, t, { name: 'Phone Person', phone: '+1 615 555 0444' });
+  const before = (await one(db, `SELECT count(*)::int AS n FROM optout_name_seeds`)).n;
+  await optOut(db, t, p);
+  assert.equal((await one(db, `SELECT count(*)::int AS n FROM optout_name_seeds`)).n, before);
+  assert.equal(await suppressed(db, p), true);
+});
+
+test('T2: the salt goes with its org (the FK cascade) although org_salts is immutable', async () => {
+  const db = await freshDb();
+  // A bare org: the schema has no cascade from orgs to workspaces, so only an org without workspaces can be deleted at all.
+  const org = (await one(db, `INSERT INTO orgs (name) VALUES ('bare') RETURNING id`)).id;
+  await db.query(`SELECT name_seed_hash($1, 'Jane Doe', true)`, [org]);
+  await db.query(`INSERT INTO optout_name_seeds (org_id, name_hash, seed_value_hash) VALUES ($1, 'a', 'b')`, [org]);
+  assert.match((await refused(db.query(`DELETE FROM org_salts WHERE org_id = $1`, [org]))) ?? '', /immutable/);
+  await db.query(`DELETE FROM orgs WHERE id = $1`, [org]);
+  for (const tbl of ['org_salts', 'optout_name_seeds']) {
+    assert.equal((await one(db, `SELECT count(*)::int AS n FROM ${tbl} WHERE org_id = $1`, [org])).n, 0, tbl);
+  }
+});
+
+test('T3: contacts grants are narrowed (no client writes hold_*), contact_opted_out is for app_rw only', async () => {
+  const db = await freshDb();
+  const priv = async (role, col, p) => (await one(db, `SELECT has_column_privilege($1, 'public.contacts', $2, $3) AS ok`, [role, col, p])).ok;
+  for (const role of ['app_rw', 'ops', 'gate_svc', 'sender_svc', 'inbox_svc']) {
+    for (const col of ['hold_reason', 'hold_cleared_by', 'hold_cleared_at', 'hold_clear_reason']) {
+      assert.equal(await priv(role, col, 'UPDATE'), false, `${role} UPDATE ${col}`);
+      assert.equal(await priv(role, col, 'INSERT'), false, `${role} INSERT ${col}`);
+    }
+  }
+  assert.equal(await priv('app_rw', 'name', 'UPDATE'), true);
+  assert.equal(await priv('app_rw', 'linkedin_slug', 'INSERT'), true);
+  assert.equal(await priv('rename_owner', 'name', 'UPDATE'), true);
+  const x = (role) => one(db, `SELECT has_function_privilege($1, 'contact_opted_out(uuid)', 'EXECUTE') AS ok`, [role]).then((r) => r.ok);
+  assert.equal(await x('app_rw'), true);
+  assert.equal(await x('sender_svc'), false);
+  assert.equal(await x('gate_svc'), false);
+});
+
+test('a client cannot insert a pre-cleared or pre-held contact: hold columns are not insertable and the trigger overwrites', async () => {
+  const db = await freshDb();
+  const t = await seedTenant(db, 'alpha');
+  assert.match((await refused(as(db, 'app_rw', ctxOf(t), () => db.query(
+    `INSERT INTO contacts (org_id, workspace_id, name, hold_cleared_at) VALUES ($1, $2, 'Jane Doe', now())`, [t.org, t.ws])))) ?? '', /permission denied/);
+});
+
+test('bounce rows do not spread to the person, a manual row on a linked address does', async () => {
+  const db = await freshDb();
+  const t = await seedTenant(db, 'alpha');
+  const a = await addContact(db, t, { name: 'Jane Doe', email: 'jane@work.test', slug: 'in/jane-doe' });
+  const b = await addContact(db, t, { name: 'Jane D', email: 'jane@home.test', slug: 'in/jane-doe' });
+  await db.query(`INSERT INTO suppression (scope_org_id, value_hash, kind, reason) VALUES ($1, value_hash('jane@work.test'), 'email', 'bounce')`, [t.org]);
+  assert.equal(await suppressed(db, b), false, 'a bounce is about one address');
+  await db.query(`INSERT INTO suppression (scope_org_id, value_hash, kind, reason) VALUES ($1, value_hash('jane@work.test'), 'email', 'manual') ON CONFLICT DO NOTHING`, [t.org]);
+  // The bounce row already holds the key, so a manual opt-out for the same address is a new decision: use a different address.
+  await db.query(`INSERT INTO suppression (scope_org_id, value_hash, kind, reason) VALUES ($1, value_hash('jane@home.test'), 'email', 'manual')`, [t.org]);
+  assert.equal(await suppressed(db, a), true, 'the manual row on the linked address reaches the whole person');
+});
+
+test('a global (all-orgs) suppression row blocks the address but does not close the person', async () => {
+  const db = await freshDb();
+  const t = await seedTenant(db, 'alpha');
+  const a = await addContact(db, t, { name: 'Jane Doe', email: 'jane@work.test', slug: 'in/jane-doe' });
+  const b = await addContact(db, t, { name: 'Jane D', email: 'jane@home.test', slug: 'in/jane-doe' });
+  await db.query(`INSERT INTO suppression (scope_org_id, value_hash, kind, reason) VALUES (NULL, value_hash('jane@work.test'), 'email', 'complaint')`);
+  assert.equal(await suppressed(db, a), true);
+  assert.equal(await suppressed(db, b), false);
+});
+
+test('a suppressed address added to an existing contact later closes the person (trigger B)', async () => {
+  const db = await freshDb();
+  const t = await seedTenant(db, 'alpha');
+  await optOut(db, t, t.contact);
+  const n = await addContact(db, t, { name: 'New Person', email: 'new@alpha.test' });
+  assert.equal(await suppressed(db, n), false);
+  await db.query(`UPDATE contacts SET linkedin_slug = 'in/pat-linked' WHERE id = $1`, [t.contact]);
+  await db.query(`UPDATE contacts SET linkedin_slug = 'in/pat-linked' WHERE id = $1`, [n]);
+  assert.equal(await suppressed(db, n), true, 'the shared profile joins them');
+});
+
+test('no application role can read the salts or the name seeds (the tenant policy on them is inert without a grant)', async () => {
+  const db = await freshDb();
+  for (const role of ['app_rw', 'gate_svc', 'sender_svc', 'inbox_svc']) {
+    for (const tbl of ['org_salts', 'optout_name_seeds']) {
+      assert.equal((await one(db, `SELECT has_table_privilege($1, $2, 'SELECT') AS ok`, [role, tbl])).ok, false, `${role} ${tbl}`);
+    }
+  }
 });

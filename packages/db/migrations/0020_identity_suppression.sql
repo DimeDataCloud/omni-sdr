@@ -84,6 +84,9 @@ BEGIN
   END LOOP;
   FOREACH t IN ARRAY ARRAY['org_salts', 'optout_name_seeds'] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY; ALTER TABLE %I FORCE ROW LEVEL SECURITY', t, t);
+    -- Inert for the application roles (they hold no grant on these two); present because the catalog tests require the
+    -- tenant shape on every org table, and the grant, pinned in identity-suppression.test.mjs, is the real barrier.
+    EXECUTE format('CREATE POLICY tenant ON %I USING (org_id = app_org()) WITH CHECK (org_id = app_org())', t);
     EXECUTE format('CREATE POLICY ops_select ON %I FOR SELECT TO ops USING (true)', t);
     EXECUTE format('CREATE POLICY identity_all ON %I TO identity_owner USING (true) WITH CHECK (true)', t);
     EXECUTE format('CREATE POLICY closer_scope ON %I AS RESTRICTIVE TO app_rw, gate_svc, sender_svc, inbox_svc
@@ -839,12 +842,16 @@ DROP FUNCTION _backfill_0020();
 -- The org lock only means something if no application role can take it. Every acquiring form is revoked from PUBLIC and
 -- granted to the definers that use it and to the migrator (migrate-cli takes its own lock).
 DO $$
-DECLARE f record;
+DECLARE f record; owners text;
 BEGIN
+  -- Every role that owns a definer function today may take the lock (0013's app_email_verified does); no application role does.
+  SELECT string_agg(DISTINCT quote_ident(r.rolname), ', ') INTO owners
+    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace JOIN pg_roles r ON r.oid = p.proowner
+   WHERE n.nspname = 'public' AND p.prosecdef;
   FOR f IN SELECT p.oid::regprocedure AS sig FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
             WHERE n.nspname = 'pg_catalog' AND p.proname ~ '^pg_(try_)?advisory_(xact_)?lock(_shared)?$' LOOP
     EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC', f.sig);
-    EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO identity_owner, guard_owner, unsub_owner, rename_owner, %I', f.sig, current_user);
+    EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO identity_owner, guard_owner, unsub_owner, rename_owner, %s, %I', f.sig, owners, current_user);
   END LOOP;
 END $$;
 
