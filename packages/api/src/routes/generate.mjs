@@ -9,6 +9,7 @@ import { notFound, HttpError } from '../errors.mjs';
 import { gateDraft } from '../../../gate/src/apply.mjs';
 import { citableFacts, buildRequest, parseSequence, PROMPT_ID, PROMPT_SHA, TIER, CREDITS_PER_LEAD } from '../services/generate.mjs';
 import { missingContext } from './onboarding.mjs';
+import { draftingAgentId } from '../services/drafting-agent.mjs';
 
 // Synchronous for the MVP: ~10 Flash calls fit well inside Cloud Run's default 300 s request timeout.
 const MAX_PER_RUN = 10;
@@ -102,10 +103,11 @@ export function registerGenerate(r) {
           ...(problems.length ? { problems: problems.slice(0, 5) } : {}) };
         const ids = await ctx.tenant(async (tx, m) => {
           const made = [];
+          const agentId = await draftingAgentId(tx);
           for (const d of drafts) {
-            made.push({ step: d.step, id: (await tx.query(`INSERT INTO drafts (org_id, workspace_id, enrollment_id, step, channel, subject, body, claims, status, generated)
-              VALUES ($1, $2, $3, $4, 'email', $5, $6, $7, 'gating', $8) RETURNING id`,
-            [m.orgId, m.workspaceId, lead.id, d.step, d.subject, d.body, JSON.stringify(d.claims), JSON.stringify(provenance)])).rows[0].id });
+            made.push({ step: d.step, id: (await tx.query(`INSERT INTO drafts (org_id, workspace_id, enrollment_id, step, channel, subject, body, claims, status, generated, agent_id)
+              VALUES ($1, $2, $3, $4, 'email', $5, $6, $7, 'gating', $8, $9) RETURNING id`,
+            [m.orgId, m.workspaceId, lead.id, d.step, d.subject, d.body, JSON.stringify(d.claims), JSON.stringify(provenance), agentId])).rows[0].id });
           }
           await tx.query(`UPDATE enrollments SET state = 'awaiting_approval' WHERE id = $1 AND state = 'drafting'`, [lead.id]);
           return made;

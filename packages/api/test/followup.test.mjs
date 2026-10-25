@@ -150,8 +150,9 @@ test('no-show: the sequence reopens and a reschedule note waits in Approvals, ga
   assert.equal(ns.body.status, 'no_show');
   assert.equal(ns.body.reschedule.gate, 'passed');
   assert.equal((await enrollment(t.contactId)).state, 'awaiting_approval');
-  const [d] = await api.q(`SELECT status, step, subject, body, purpose FROM drafts WHERE id = $1`, [ns.body.reschedule.draftId]);
+  const [d] = await api.q(`SELECT status, step, subject, body, purpose, agent_id FROM drafts WHERE id = $1`, [ns.body.reschedule.draftId]);
   assert.equal(d.status, 'review', 'waits for a person; nothing approves it automatically');
+  assert.ok(d.agent_id, 'the reschedule note is credited to the workspace SDR agent');
   assert.equal(d.purpose, 'reschedule', 'the send loop sends it once approved, without the sequence wait (#45 audit)');
   assert.ok(d.step >= 1);
   assert.match(d.subject, /^Re: /);
