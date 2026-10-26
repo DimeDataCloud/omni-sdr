@@ -172,6 +172,21 @@ test('bounce rows do not spread to the person, a manual row on a linked address 
   assert.equal(await suppressed(db, a), true, 'the manual row on the linked address reaches the whole person');
 });
 
+test('a manual row on a profile (linkedin kind) reaches a contact that only shares an address with the profile holder (trigger A, second pin)', async () => {
+  const db = await freshDb();
+  const t = await seedTenant(db, 'alpha');
+  const ws2 = (await one(db, `INSERT INTO workspaces (org_id, name) VALUES ($1, 'second') RETURNING id`, [t.org])).id;
+  // holder has the profile and an address; sib is in another workspace with the same address and no profile. The profile hash is
+  // not one of sib's own identities, so only the closure over the shared address can reach it.
+  const holder = await addContact(db, t, { name: 'Lee Ng', email: 'lee@work.test', slug: 'in/lee-ng' });
+  const sib = (await one(db, `INSERT INTO contacts (org_id, workspace_id, name, email, email_status) VALUES ($1, $2, 'L Ng', 'lee@work.test', 'unknown') RETURNING id`, [t.org, ws2])).id;
+  assert.equal(await suppressed(db, holder), false);
+  assert.equal(await suppressed(db, sib), false);
+  await db.query(`INSERT INTO suppression (scope_org_id, value_hash, kind, reason) VALUES ($1, linkedin_hash('in/lee-ng'), 'linkedin', 'manual')`, [t.org]);
+  assert.equal(await suppressed(db, holder), true);
+  assert.equal(await suppressed(db, sib), true, 'the same address in another workspace is the same person');
+});
+
 test('a global (all-orgs) suppression row blocks the address but does not close the person', async () => {
   const db = await freshDb();
   const t = await seedTenant(db, 'alpha');
