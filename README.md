@@ -59,7 +59,7 @@ that stores state in the browser; it is kept for layout reference and is schedul
 
 - **System of record:** Cloud SQL Postgres. `docs/INFRASTRUCTURE.md` (v3) drops Firestore; the root mock still imports Firebase helpers.
 - **Compute:** API on Cloud Run; edge on Cloudflare Workers.
-- **AI:** Gemini models through Vertex AI, configured by `OMNI_MODEL*` variables.
+- **AI:** Gemini models through the Gemini API (`OMNI_GEMINI_KEY`), configured by `OMNI_MODEL*` variables.
 - **Google integrations:** Gmail and Calendar (OAuth), Places API.
 - **Telephony:** Twilio for SMS follow-ups.
 
@@ -104,7 +104,6 @@ commit them. The code that reads each variable is the authority for the full lis
 | `PORT`, `ORIGIN`, `OMNI_CORS_ORIGINS` | `packages/api` | Listen port and allowed origins |
 | `OMNI_GOOGLE_CLIENT_ID`, `OMNI_GOOGLE_REDIRECT_URI` | `packages/api` | Google OAuth for mailboxes |
 | `OMNI_SENDER_SECRETS` | `packages/sender` | Sender credential source. Secret |
-| `OMNI_VERTEX_PROJECT`, `OMNI_VERTEX_LOCATION` | `packages/api`, `packages/ai` | Vertex AI project and region |
 | `OMNI_MODEL`, `OMNI_MODEL_FLASH`, `OMNI_MODEL_FLASH_LITE`, `OMNI_MODEL_PRO` | `packages/api`, `packages/ai` | Model selection per task |
 | `OMNI_DECIDER_URL` | `packages/api` | URL of `services/decider` |
 | `OMNI_INBOUND_SECRET`, `OMNI_EDGE_SECRET`, `INBOUND_SECRET`, `EDGE_SECRET` | API and edge workers | Shared secrets for inbound and edge calls. Secret |

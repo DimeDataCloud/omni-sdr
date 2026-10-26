@@ -10,7 +10,7 @@
 // Prints one line per case and the pass count; exit 1 below 100% (a prompt or model change must not regress).
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { vertexModel } from '../services/model.mjs';
+import { geminiApiModel } from '../services/model.mjs';
 import { citableFacts, buildRequest, parseSequence } from '../services/generate.mjs';
 import { checkDraft } from '../../../gate/src/check.mjs';
 
@@ -49,7 +49,10 @@ export async function runEval(model, { file = new URL('../../../ai/evals/sequenc
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const env = process.env;
-  const model = vertexModel({ project: env.OMNI_VERTEX_PROJECT, models: { flash_lite: env.OMNI_MODEL_FLASH_LITE, flash: env.OMNI_MODEL_FLASH, pro: env.OMNI_MODEL_PRO } });
+  const key = env.OMNI_GEMINI_KEY;
+  if (!key) { console.error('missing OMNI_GEMINI_KEY'); process.exit(1); }
+  // The cases are synthetic (ai/evals), so the free key is fine; the budget just has to cover one run.
+  const model = geminiApiModel({ key, perDay: Number(env.OMNI_GEMINI_PER_DAY ?? 100) || 100, models: { flash_lite: env.OMNI_MODEL_FLASH_LITE, flash: env.OMNI_MODEL_FLASH, pro: env.OMNI_MODEL_PRO } });
   const r = await runEval(model);
   process.exitCode = r.pass === r.total ? 0 : 1;
 }
