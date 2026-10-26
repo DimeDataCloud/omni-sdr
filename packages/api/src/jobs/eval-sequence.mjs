@@ -1,7 +1,7 @@
 // Eval for sequence@1 (SPEC §10: every generating task has 10–30 cases, run on any prompt or model change).
 // Needs a real model; nothing here runs in CI without one.
 //
-//   OMNI_VERTEX_PROJECT=… OMNI_MODEL_FLASH=… node packages/api/src/jobs/eval-sequence.mjs
+//   OMNI_GEMINI_KEY=… node packages/api/src/jobs/eval-sequence.mjs
 //
 // Each case: the model writes the sequence, then the real gate (packages/gate/src/check.mjs) judges every draft
 // against evidence built from the case's facts. Pass = every draft passes the gate; "decline" = no emails; "safe" (a

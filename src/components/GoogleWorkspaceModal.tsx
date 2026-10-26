@@ -788,7 +788,7 @@ export const GoogleWorkspaceModal: React.FC<GoogleWorkspaceModalProps> = ({
         <div className="px-6 py-3 bg-[#f5f3ef] border-t border-[#eae4d9] flex items-center justify-between text-[11px] text-[#6f7a6e]">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-[#16a34a]" />
-            <span>OAuth Client: hip-well-509308-m9</span>
+            <span>Google OAuth client</span>
             <span className="text-[#eae4d9]">|</span>
             <span>Firestore DB: ai-studio-omnisdrautonomou-e9d46c97-102d-4be8-825e-48317d814d60</span>
           </div>
