@@ -1,0 +1,67 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow"><meta name="theme-color" content="#F7F5F0"><title>Dev portal · Omni-SDR</title>
+<style nonce="__NONCE__">__CSS__
+.login{max-width:380px;margin:12vh auto 0}
+.big{font-size:28px;line-height:34px;font-weight:600;letter-spacing:-.012em}
+.bar{height:8px;border-radius:99px;background:var(--line);overflow:hidden;margin-top:8px}.bar i{display:block;height:100%;background:var(--ink)}
+pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/18px ui-monospace,SFMono-Regular,Menlo,monospace;max-height:340px;overflow:auto}
+ul.chk{list-style:none;padding:0;margin:0}ul.chk li{padding:8px 0;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:flex-start}
+.stack>*+*{margin-top:16px}
+
+.u-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}.u-mb12{margin-bottom:12px}.u-mt10{margin-top:10px}.u-mt12{margin-top:12px}.u-mt14{margin-top:14px}.u-mt8{margin-top:8px}
+.u-m0-0-12{margin:0 0 12px}.u-m0-0-8{margin:0 0 8px}.u-m0{margin:0}.u-m12-0-16{margin:12px 0 16px}.u-m8-0-0{margin:8px 0 0}.u-pl18{padding-left:18px}.u-full-mt18{width:100%;margin-top:18px}.u-w0{width:0}
+</style></head><body><div class="wrap">
+<header class="top"><div class="brand">__LOGO__<b>Omni-SDR · Dev</b></div><span id="who"><button class="btn ghost" id="refresh" hidden>Refresh</button> <button class="btn ghost" id="lock" hidden>Lock</button></span></header>
+
+<section id="gate" class="login card"><h1>Dev portal</h1><p class="sub u-mb12">Usage, caps, kill switch and the build checklist for the demo service.</p>
+ <form id="lf"><label for="pc">Passcode</label><input id="pc" type="password" autocomplete="current-password" required><div id="le" class="err u-mt12" role="alert" hidden></div>
+ <button class="btn u-full-mt18" type="submit">Open</button></form></section>
+
+<main id="app" hidden class="stack">
+ <div class="grid three">
+  <div class="card"><h2>Sessions today</h2><div class="big" id="used">–</div><div class="bar"><i id="usedBar" class="u-w0"></i></div><p class="muted u-m8-0-0" id="capTxt"></p></div>
+  <div class="card"><h2>Estimated spend today</h2><div class="big" id="spend">–</div><p class="muted u-m8-0-0" id="spendNote"></p></div>
+  <div class="card"><h2>Controls</h2><div id="killState" class="u-mb12"></div><button class="btn" id="kill">–</button><p class="sub u-mb12 u-mt8">After test runs, zero today's session and per-visitor counts so the next visitor can start. The session log stays.</p><button class="btn" id="resetToday">Reset today's counters</button></div>
+ </div>
+ <div class="grid two">
+  <div class="card"><h2>Recent sessions</h2><table><thead><tr><th>Session</th><th>When</th><th>Events</th><th>Last</th></tr></thead><tbody id="sess"></tbody></table><p class="muted" id="sessEmpty" hidden>No sessions yet.</p></div>
+  <div class="stack">
+   <div class="card"><h2>System checks</h2><ul class="chk" id="checks"></ul><p class="muted u-m8-0-0" id="store"></p></div>
+   <div class="card"><h2>Tenant config (fictional)</h2><pre id="tenant"></pre></div>
+  </div>
+ </div>
+ <div class="card"><h2>Engine B spike checklist</h2><p class="muted u-m0-0-8">From the Gemini Live research, Oct 24, 2026. Unchecked until someone runs them.</p>
+  <ul class="chk" id="spike"></ul></div>
+</main>
+<div class="err u-mt12" id="top" hidden role="alert"></div>
+</div>
+<script nonce="__NONCE__">
+(function(){'use strict';
+var $=function(i){return document.getElementById(i)};
+function el(t,c,x){var n=document.createElement(t);if(c)n.className=c;if(x!=null)n.textContent=x;return n}
+function api(u,b){return fetch(u,b?{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)}:{}).then(function(r){return r.json().then(function(j){j._s=r.status;return j})})}
+var SPIKE=['Real cost per call from usage metadata (not blog estimates)','Burst test on free versus paid project','Caller-side latency in the browser, then through a Twilio bridge','50 scripted bathroom-remodel calls: base 3.8 Live versus Extended Thinking, with a blocking booking call','Ephemeral token lock-down test (model, instructions, tools constrained)','Browser matrix: Chrome 152 arm64, iOS Safari, desktop Safari','Phone checks: 8 kHz output, DTMF, transfer, noise','Engine A baseline on the Cloudflare voice package'];
+var sp=$('spike');SPIKE.forEach(function(s,i){var li=el('li');var c=el('input');c.type='checkbox';c.id='sp'+i;c.style.cssText='width:20px;min-height:20px;margin-top:2px';try{c.checked=localStorage.getItem('sp'+i)==='1'}catch(e){}c.addEventListener('change',function(){try{localStorage.setItem('sp'+i,c.checked?'1':'0')}catch(e){}});var l=el('label',null,s);l.htmlFor=c.id;l.style.cssText='margin:0;font-weight:400';li.appendChild(c);li.appendChild(l);sp.appendChild(li)});
+function show(a){$('gate').hidden=a;$('app').hidden=!a;$('refresh').hidden=!a;$('lock').hidden=!a}
+function pill(ok,t){return el('span','pill'+(ok?'':' warn'),t)}
+function load(){return api('/api/dev/stats').then(function(r){
+ if(r._s===401){show(false);return}
+ show(true);$('used').textContent=r.usedToday+' / '+r.dailyCap;$('usedBar').style.width=Math.min(100,r.usedToday/r.dailyCap*100)+'%';
+ $('capTxt').textContent='Per-IP cap '+r.ipCap+' a day. Session length '+r.sessionSeconds+' s.';
+ $('spend').textContent='$0.00';$('spendNote').textContent='This MVP uses the scripted engine, which costs nothing. If every one of today\'s '+r.usedToday+' sessions ran on Engine A instead, expect about $'+(Math.max(0,r.usedToday-2)*0.045).toFixed(2)+' beyond the free allowance (estimate).';
+ var ks=$('killState');ks.textContent='';ks.appendChild(el('span','pill'+(r.killed?' bad':''),r.killed?'Demo is paused':'Demo is live'));
+ var kb=$('kill');kb.textContent=r.killed?'Resume the demo':'Pause the demo';kb.className='btn'+(r.killed?'':' danger');kb.dataset.on=r.killed?'0':'1';
+ var tb=$('sess');tb.textContent='';r.sessions.forEach(function(s){var tr=el('tr');[s.sid,new Date(s.at).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}),String(s.events),s.last].forEach(function(x){tr.appendChild(el('td',null,x))});tb.appendChild(tr)});
+ $('sessEmpty').hidden=r.sessions.length>0;
+ var ck=$('checks');ck.textContent='';
+ [['Passcode set',r.checks.devPasscode,'required'],['Turnstile bot check',r.checks.turnstile,'off: set TURNSTILE_SECRET and the site key before sharing the link'],['Turnstile site key',r.checks.turnstileKey,'missing: if the secret is set without the site key the demo cannot start'],['Gemini key',r.checks.geminiKey,'not set: Engine B disabled'],['Engine B flag',r.checks.engineB,'ENGINE_B=0'],['Durable Object storage',r.storage==='Durable Object','not bound']].forEach(function(c){var li=el('li');li.appendChild(pill(c[1],c[1]?'OK':'Check'));li.appendChild(el('span',null,c[0]+(c[1]?'':' — '+c[2])));ck.appendChild(li)});
+ $('store').textContent='Storage: '+r.storage;
+ return api('/api/dev/tenants').then(function(t){$('tenant').textContent=JSON.stringify(t.tenants,null,2)})})}
+$('lf').addEventListener('submit',function(e){e.preventDefault();var le=$('le');le.hidden=true;api('/api/dev/login',{passcode:$('pc').value}).then(function(r){if(!r.ok){le.textContent=r.message||'Could not sign in.';le.hidden=false;return}$('pc').value='';load()}).catch(function(){le.textContent='Could not reach the server.';le.hidden=false})});
+$('resetToday').addEventListener('click',function(){api('/api/dev/reset-today',{}).then(load)});
+$('kill').addEventListener('click',function(){api('/api/dev/kill',{on:this.dataset.on==='1'}).then(load)});
+$('refresh').addEventListener('click',load);
+$('lock').addEventListener('click',function(){api('/api/dev/logout',{}).then(function(){show(false)})});
+api('/api/dev/me').then(function(r){if(r.authed)return load();show(false)}).catch(function(){show(false)});
+})();
+</script></body></html>

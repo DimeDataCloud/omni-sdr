@@ -1,0 +1,27 @@
+name = "omnisdr-demo-mvp"
+main = "src/worker.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+# Hostname is demo.omnisdr.com (attach at deploy, with Christian's approval). Never mvp.omnisdr.com: it belongs to the Lead Engine inbox (Worker omnisdr-mvp).
+# All state (caps, session logs, kill switch, login throttle, dev sessions) lives in one Durable Object so updates are serialized.
+[[durable_objects.bindings]]
+name = "GATE"
+class_name = "Gate"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Gate"]
+
+[vars]
+DAILY_CAP = "10"
+IP_CAP = "2"
+SESSION_SECONDS = "180"
+KILL = "0"
+ENGINE_B = "0"
+TURNSTILE_SITEKEY = "0x4AAAAAAFkPgjzo9EQJoOUI"
+
+[[rules]]
+type = "Text"
+globs = ["**/*.css", "**/*.txt"]
+fallthrough = true

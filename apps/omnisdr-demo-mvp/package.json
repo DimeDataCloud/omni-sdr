@@ -1,0 +1,19 @@
+{
+  "name": "omnisdr-demo-mvp",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "wrangler dev --local",
+    "test": "bash tests/run.sh",
+    "deploy": "wrangler deploy"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "playwright": "^1.64.1",
+    "wrangler": "^4.152.0"
+  },
+  "private": true
+}
