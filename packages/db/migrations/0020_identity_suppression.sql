@@ -378,6 +378,9 @@ CREATE FUNCTION _suppress_person(p_contact uuid, p_org uuid, p_reason text, p_or
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE c contacts%ROWTYPE; nh text; has_email boolean; has_profile boolean;
 BEGIN
+  -- The seed and the order-2 hold race a same-name contact create or rename (contacts_name_hold takes this lock shared first):
+  -- whichever commits second then reads the other's committed rows on its next statement.
+  PERFORM pg_advisory_xact_lock(org_lock_key(p_org));
   SELECT * INTO c FROM contacts WHERE id = p_contact AND org_id = p_org;
   IF NOT FOUND THEN RAISE EXCEPTION '_suppress_person: contact not found' USING ERRCODE = 'P0001'; END IF;
 
@@ -479,6 +482,8 @@ BEGIN
   END IF;
   h := name_seed_hash(NEW.org_id, NEW.name);
   IF h IS NULL THEN RETURN NEW; END IF;
+  -- Shared: an opt-out writing a seed holds it exclusive until commit, so the seed read below sees every committed seed.
+  PERFORM pg_advisory_xact_lock_shared(org_lock_key(NEW.org_id));
   own := ARRAY(SELECT value_hash(NEW.email) WHERE btrim(coalesce(NEW.email, '')) <> ''
                UNION SELECT value_hash(canon_phone(NEW.phone)) WHERE canon_phone(NEW.phone) IS NOT NULL
                UNION SELECT value_hash('linkedin:' || NEW.linkedin_slug) WHERE NEW.linkedin_slug IS NOT NULL
@@ -519,7 +524,8 @@ END $$;
 CREATE FUNCTION contact_opted_out(p_contact uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS
 $$ SELECT EXISTS (
      SELECT 1 FROM contacts c JOIN suppression s ON s.scope_org_id = c.org_id AND s.reason <> 'bounce'
-     WHERE c.id = p_contact AND (s.value_hash IN (SELECT value_hash FROM contact_identities i WHERE i.contact_id = c.id)
+     WHERE c.id = p_contact AND (app_org() IS NULL OR c.org_id = app_org())
+       AND (s.value_hash IN (SELECT value_hash FROM contact_identities i WHERE i.contact_id = c.id)
                                  OR s.value_hash IN (value_hash(c.email), value_hash(c.phone)))) $$;
 
 -- The rename block. SECURITY INVOKER, so current_user is the real caller; the only role that passes is rename_owner, which
@@ -559,7 +565,9 @@ CREATE FUNCTION person_suppressed(p_contact uuid, p_channel text DEFAULT NULL) R
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
 DECLARE c contacts%ROWTYPE; h text; shared boolean;
 BEGIN
-  SELECT * INTO c FROM contacts WHERE id = p_contact;
+  -- A caller with a tenant context sees its own org only (a foreign id answers false, the same as an unknown one). Without a
+  -- context the caller is a definer or the migrator, never a tenant connection.
+  SELECT * INTO c FROM contacts WHERE id = p_contact AND (app_org() IS NULL OR org_id = app_org());
   IF NOT FOUND THEN RETURN false; END IF;
   IF c.hold_reason IS NOT NULL AND c.hold_cleared_at IS NULL THEN RETURN true; END IF;
 
@@ -601,6 +609,7 @@ DECLARE v_org uuid := app_org(); v_contact uuid; v_channel text;
 BEGIN
   IF v_org IS NULL THEN RETURN false; END IF;
   PERFORM pg_advisory_xact_lock_shared(org_lock_key(v_org));
+  PERFORM pg_advisory_xact_lock_shared(org_lock_key(NULL));
   SELECT e.contact_id, m.channel INTO v_contact, v_channel
     FROM messages m JOIN drafts d ON d.id = m.draft_id JOIN enrollments e ON e.id = d.enrollment_id
    WHERE m.id = p_message AND m.org_id = v_org;
@@ -620,6 +629,8 @@ REVOKE EXECUTE ON FUNCTION name_seed_hash(uuid, text, boolean), org_salts_immuta
 GRANT EXECUTE ON FUNCTION name_seed_hash(uuid, text, boolean) TO identity_owner;
 GRANT EXECUTE ON FUNCTION _suppress_person(uuid, uuid, text, boolean) TO identity_owner;
 GRANT EXECUTE ON FUNCTION suppress_person(uuid, text), record_identity(uuid, text, text) TO inbox_svc;
+-- An import row that is skipped as a duplicate still carries its profile link (record_identity checks the caller's org and workspace).
+GRANT EXECUTE ON FUNCTION record_identity(uuid, text, text) TO app_rw;
 GRANT EXECUTE ON FUNCTION clear_name_hold(uuid, text), rename_opted_out_contact(uuid, text, text) TO app_rw;
 GRANT EXECUTE ON FUNCTION can_resolve_hold(uuid, uuid) TO identity_owner, rename_owner;
 GRANT EXECUTE ON FUNCTION contact_opted_out(uuid) TO app_rw, rename_owner, ops;
@@ -767,10 +778,10 @@ BEGIN
     WHERE token_hash = encode(sha256(convert_to(coalesce(p_token, ''), 'UTF8')), 'hex') FOR UPDATE;
   IF NOT FOUND THEN RETURN false; END IF;
   SELECT * INTO c FROM contacts WHERE id = t.contact_id AND org_id = t.org_id;
-
-  IF (t.channel = 'email' AND c.email IS NOT NULL) OR (t.channel = 'sms' AND c.phone IS NOT NULL) THEN
-    PERFORM _suppress_person(c.id, t.org_id, 'unsubscribe', true);
-  END IF;
+  -- The token proves the opt-out, whatever the contact's address is now: every recorded identity of the person is suppressed.
+  -- A token whose contact is gone has nothing to suppress and answers false.
+  IF NOT FOUND THEN RETURN false; END IF;
+  PERFORM _suppress_person(c.id, t.org_id, 'unsubscribe', true);
 
   UPDATE unsubscribe_tokens SET used_at = coalesce(used_at, now()) WHERE token_hash = t.token_hash;
   INSERT INTO audit_log (org_id, actor, action, entity_type, entity_id)
@@ -785,6 +796,8 @@ RESET ROLE;
 -- not needed until now.
 GRANT SELECT ON inbound_messages TO identity_owner;
 CREATE POLICY identity_all ON inbound_messages TO identity_owner USING (true) WITH CHECK (true);
+GRANT SELECT ON unsubscribe_tokens TO identity_owner;
+CREATE POLICY identity_all ON unsubscribe_tokens FOR SELECT TO identity_owner USING (true);
 
 CREATE FUNCTION _backfill_0020() RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE r record; bad int := 0;
@@ -810,6 +823,16 @@ BEGIN
   SELECT org_id, workspace_id, contact_id, 'linkedin', linkedin_hash(thread_key), 'profile_thread'
   FROM conversations WHERE channel = 'linkedin' AND contact_id IS NOT NULL AND thread_key LIKE 'profile:in/%'
   ON CONFLICT DO NOTHING;
+  -- Before 0020 a paste carrying a profile and an address upserted the address contact E and stored the message under E, while
+  -- the profile thread kept its first contact P. A message whose contact differs from its profile thread's contact is the only
+  -- trace of that pair: record the profile on E too (design section 8, step 2b).
+  INSERT INTO contact_identities (org_id, workspace_id, contact_id, kind, value_hash, source)
+  SELECT DISTINCT i.org_id, k.workspace_id, i.contact_id, 'linkedin', linkedin_hash(v.thread_key), 'backfill'
+  FROM inbound_messages i
+    JOIN conversations v ON v.id = i.conversation_id AND v.org_id = i.org_id
+    JOIN contacts k ON k.id = i.contact_id AND k.org_id = i.org_id
+  WHERE v.channel = 'linkedin' AND v.thread_key LIKE 'profile:in/%' AND i.contact_id IS NOT NULL AND i.contact_id <> v.contact_id
+  ON CONFLICT DO NOTHING;
 
   -- Phone rows were hashed over the raw text; the canonical form is the new key. No origin: a legacy line blocks every holder.
   INSERT INTO suppression (scope_org_id, value_hash, kind, reason)
@@ -820,10 +843,14 @@ BEGIN
   ON CONFLICT DO NOTHING;
 
   -- Opt-outs that only ever lived in a message or a stop reason (a LinkedIn or form reply): make them real.
+  -- Email opt-outs lived only as a hash of the address of the day, so a corrected address left the old row linked to nobody:
+  -- re-run every contact that opted out by any route, on any channel (reply, form, model-refined, token, stop reason).
   FOR r IN SELECT i.org_id, i.contact_id FROM inbound_messages i
-            WHERE i.contact_id IS NOT NULL AND i.channel IN ('linkedin', 'form') AND i.intent = 'unsubscribe'
+            WHERE i.contact_id IS NOT NULL AND i.intent = 'unsubscribe'
            UNION
-           SELECT e.org_id, e.contact_id FROM enrollments e WHERE e.stop_reason = 'linkedin:unsubscribe' LOOP
+           SELECT e.org_id, e.contact_id FROM enrollments e WHERE e.stop_reason IN ('linkedin:unsubscribe', 'unsubscribe')
+           UNION
+           SELECT u.org_id, u.contact_id FROM unsubscribe_tokens u WHERE u.used_at IS NOT NULL LOOP
     PERFORM _suppress_person(r.contact_id, r.org_id, 'backfill', false);
   END LOOP;
 

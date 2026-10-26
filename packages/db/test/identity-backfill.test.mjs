@@ -32,6 +32,33 @@ async function contact(db, t, { name, email = null, phone = null }) {
     [t.org, t.ws, name, email, email ? 'valid' : 'unknown', phone])).id;
   return id;
 }
+
+// The pre-0020 ingestPasted (packages/api/src/services/inbox.mjs at origin/master) and its threadFor, statement for statement,
+// so the fixture has the shape the real code left: one thread per profile that keeps its FIRST contact, and each message
+// stored under the contact the paste resolved to. No case tricks: the thread key is the lower-cased profile.
+async function pasted(db, t, { name, email = null, profile = null, body, intent }) {
+  let contactId = null;
+  if (email) {
+    await db.query(`INSERT INTO contacts (org_id, workspace_id, name, email) VALUES ($1, $2, $3, $4) ON CONFLICT (workspace_id, email) DO NOTHING`, [t.org, t.ws, name, email]);
+    contactId = (await one(db, `SELECT id FROM contacts WHERE workspace_id = $1 AND email = $2`, [t.ws, email])).id;
+  }
+  const threadKey = profile ? `profile:${profile}` : contactId ? `contact:${contactId}` : `paste:${Math.random()}`;
+  if (!contactId && profile) {
+    contactId = (await one(db, `SELECT contact_id FROM conversations WHERE workspace_id = $1 AND channel = 'linkedin' AND thread_key = $2`, [t.ws, threadKey]))?.contact_id ?? null;
+  }
+  if (!contactId) contactId = (await one(db, `INSERT INTO contacts (org_id, workspace_id, name) VALUES ($1, $2, $3) RETURNING id`, [t.org, t.ws, name])).id;
+  const closing = intent === 'unsubscribe';
+  const conv = (await one(db,
+    `INSERT INTO conversations (org_id, workspace_id, contact_id, channel, thread_key, category, last_inbound_at, state, closed_reason)
+     VALUES ($1, $2, $3, 'linkedin', $4, $5, now(), CASE WHEN $6 THEN 'closed' ELSE 'open' END, CASE WHEN $6 THEN $5 END)
+     ON CONFLICT (workspace_id, channel, thread_key) DO UPDATE SET updated_at = now() RETURNING id`, [t.org, t.ws, contactId, threadKey, intent, closing])).id;
+  await db.query(`INSERT INTO inbound_messages (org_id, workspace_id, contact_id, channel, from_address, subject, body, received_at, intent, conversation_id)
+    VALUES ($1, $2, $3, 'linkedin', $4, $5, $6, now(), $7, $8)`, [t.org, t.ws, contactId, profile ?? email, `LinkedIn: ${name}`, body, intent, conv]);
+  if (intent === 'unsubscribe' && email) {
+    await db.query(`INSERT INTO suppression (scope_org_id, value_hash, kind, reason) VALUES ($1, value_hash($2), 'email', 'linkedin_unsubscribe') ON CONFLICT DO NOTHING`, [t.org, email]);
+  }
+  return contactId;
+}
 const enroll = (db, t, c, stop = null) => db.query(
   `INSERT INTO enrollments (org_id, workspace_id, campaign_id, contact_id, state, stop_reason) VALUES ($1, $2, $3, $4, $5, $6)`,
   [t.org, t.ws, t.campaign, c, stop ? 'stopped' : 'waiting', stop]);
@@ -43,13 +70,11 @@ test('8/33/34/44/50: a populated pre-0020 database is backfilled: identities, ph
   const a = await legacyTenant(db, 'alpha');
   const b = await legacyTenant(db, 'beta');
 
-  // 33: a profile-only opt-out as ingestPasted wrote it: a conversation on the profile thread and an unsubscribe message.
-  const profile = await contact(db, a, { name: 'Maria Lopez' });
-  const conv = (await one(db, `INSERT INTO conversations (org_id, workspace_id, contact_id, channel, thread_key) VALUES ($1, $2, $3, 'linkedin', 'profile:in/Maria-Lopez') RETURNING id`, [a.org, a.ws, profile])).id;
-  await db.query(`INSERT INTO inbound_messages (org_id, workspace_id, contact_id, channel, body, received_at, intent, conversation_id) VALUES ($1, $2, $3, 'linkedin', 'please stop', now(), 'unsubscribe', $4)`, [a.org, a.ws, profile, conv]);
-  // 34: an email twin joined to the same profile by a second conversation; a form opt-out contact; a stop_reason twin.
-  const twin = await contact(db, a, { name: 'M Lopez', email: 'ml@alpha.test' });
-  await db.query(`INSERT INTO conversations (org_id, workspace_id, contact_id, channel, thread_key) VALUES ($1, $2, $3, 'linkedin', 'profile:in/maria-lopez')`, [a.org, a.ws, twin]);
+  // 33/34: a profile-only opt-out pasted without an address, then a paste of the same profile WITH an address (positive reply).
+  // The second paste makes the email contact E and stores its message under E, while the thread stays with P.
+  const profile = await pasted(db, a, { name: 'Maria Lopez', profile: 'in/maria-lopez', body: 'please stop', intent: 'unsubscribe' });
+  const twin = await pasted(db, a, { name: 'M Lopez', email: 'ml@alpha.test', profile: 'in/maria-lopez', body: 'sorry, a question first', intent: 'question' });
+  assert.notEqual(twin, profile);
   await enroll(db, a, twin);
   const form = await contact(db, a, { name: 'Form Person', email: 'form@alpha.test' });
   await db.query(`INSERT INTO inbound_messages (org_id, workspace_id, contact_id, channel, body, received_at, intent) VALUES ($1, $2, $3, 'form', 'unsubscribe me', now(), 'unsubscribe')`, [a.org, a.ws, form]);
@@ -136,4 +161,33 @@ test('8 (prod shape): the backfill works for a non-superuser migrator on forced-
   await db.query(`SELECT rename_opted_out_contact($1, 'Renamed Person', 'Legal name change confirmed')`, [form]);
   assert.equal((await one(db, `SELECT name FROM contacts WHERE id = $1`, [form])).name, 'Renamed Person');
   assert.equal((await one(db, `SELECT count(*)::int AS n FROM audit_log WHERE action = 'rename_opted_out'`)).n, 1);
+});
+
+test('P2-3: contact-keyed legacy email opt-outs are re-applied: a corrected address no longer hides the opt-out (token, stop reason, email reply)', async () => {
+  const db = await legacyDb();
+  const a = await legacyTenant(db, 'alpha');
+  const ws2 = (await one(db, `INSERT INTO workspaces (org_id, name) VALUES ($1, 'second') RETURNING id`, [a.org])).id;
+  const cases = {};
+  for (const how of ['token', 'stop_reason', 'email_reply']) {
+    // The person opted out at old@, the operator then corrected the address; the profile twin lives in another workspace.
+    const c = await contact(db, a, { name: `Legacy ${how}`, email: `new-${how}@alpha.test` });
+    await db.query(`INSERT INTO conversations (org_id, workspace_id, contact_id, channel, thread_key) VALUES ($1, $2, $3, 'linkedin', $4)`, [a.org, a.ws, c, `profile:in/legacy-${how}`]);
+    await db.query(`INSERT INTO suppression (scope_org_id, value_hash, kind, reason) VALUES ($1, value_hash($2), 'email', 'unsubscribe')`, [a.org, `old-${how}@alpha.test`]);
+    if (how === 'token') {
+      await db.query(`INSERT INTO unsubscribe_tokens (token_hash, org_id, workspace_id, contact_id, channel, used_at) VALUES (encode(sha256(convert_to($1, 'UTF8')), 'hex'), $2, $3, $4, 'email', now())`,
+        [`tok-${how}`, a.org, a.ws, c]);
+    } else if (how === 'stop_reason') {
+      await enroll(db, a, c, 'unsubscribe');
+    } else {
+      await db.query(`INSERT INTO inbound_messages (org_id, workspace_id, contact_id, channel, body, received_at, intent) VALUES ($1, $2, $3, 'email', 'unsubscribe', now(), 'unsubscribe')`, [a.org, a.ws, c]);
+    }
+    const twin = (await one(db, `INSERT INTO contacts (org_id, workspace_id, name, email, email_status) VALUES ($1, $2, $3, $4, 'unknown') RETURNING id`, [a.org, ws2, `Twin ${how}`, `twin-${how}@alpha.test`])).id;
+    await db.query(`INSERT INTO conversations (org_id, workspace_id, contact_id, channel, thread_key) VALUES ($1, $2, $3, 'linkedin', $4)`, [a.org, ws2, twin, `profile:in/legacy-${how}`]);
+    cases[how] = { c, twin };
+  }
+  await migrate(db);
+  for (const [how, { c, twin }] of Object.entries(cases)) {
+    assert.equal(await suppressed(db, c, 'email'), true, `${how}: the corrected address is suppressed`);
+    assert.equal(await suppressed(db, twin, 'email'), true, `${how}: the profile twin follows`);
+  }
 });
