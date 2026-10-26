@@ -1,7 +1,7 @@
 // 0020, design tests 1, 2, 13: the gap scenarios, one sabotage per identity kind, and the property over every identity pair.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { freshDb, seedTenant, as, one } from './helpers.mjs';
+import { freshDb, seedTenant, as, one, refused } from './helpers.mjs';
 
 const ctxOf = (t) => ({ org: t.org, ws: [t.ws] });
 const letters = (n) => String.fromCharCode(97 + (n % 26)) + String.fromCharCode(97 + (Math.floor(n / 26) % 26)) + String.fromCharCode(97 + (Math.floor(n / 676) % 26));
@@ -90,4 +90,43 @@ test('13: property over identity pairs: B is refused on email iff B shares an em
     }
   }
   assert.equal(cases, 112);
+});
+
+// 23: the real send_guard trigger, as sender_svc under forced RLS, for a person suppressed only through a shared profile.
+async function guardScenario(sabotage) {
+  const db = await freshDb();
+  const t = await seedTenant(db, 'alpha');
+  const ctx = ctxOf(t);
+  const a = await mk(db, t, t.ws, { name: 'Pia Page', slug: 'in/pia-page' });
+  await db.query(`UPDATE contacts SET email = NULL, email_status = 'unknown', phone = NULL, linkedin_slug = 'in/pia-page' WHERE id = $1`, [t.contact]);
+  if (sabotage) await db.query(sabotage);
+  await optOut(db, t, a);
+  const draft = await as(db, 'app_rw', ctx, async () => (await one(db,
+    `INSERT INTO drafts (org_id, workspace_id, enrollment_id, channel, subject, body) VALUES ($1, $2, $3, 'email', 'Quick note', 'Your booking page has no online scheduling.') RETURNING id`,
+    [t.org, t.ws, t.enrollment])).id);
+  await as(db, 'gate_svc', ctx, () => db.query(`UPDATE drafts SET gate_passed = true, gate_body_sha = draft_sha(subject, body), gate_version = 'v1', gated_at = now(), status = 'review' WHERE id = $1`, [draft]));
+  await as(db, 'app_rw', ctx, () => db.query(`UPDATE drafts SET status = 'approved', approved_by = $2, approved_at = now() WHERE id = $1`, [draft, t.user]));
+  try {
+    await as(db, 'sender_svc', ctx, () => db.query(`INSERT INTO messages (org_id, workspace_id, draft_id, mailbox_id, channel) VALUES ($1, $2, $3, $4, 'email')`, [t.org, t.ws, draft, t.mailbox]));
+    return null;
+  } catch (err) { return err.message; }
+}
+
+test('23: send_guard refuses a profile-only-suppressed person; red when the guard_owner or identity_owner policy is removed', async () => {
+  assert.match((await guardScenario(null)) ?? '', /contact suppressed/);
+  // guard_read matters whenever the caller sets no tenant context (the tenant policy admits the guard otherwise).
+  for (const drop of [false, true]) {
+    const db = await freshDb();
+    const t = await seedTenant(db, 'alpha');
+    const a = await mk(db, t, t.ws, { name: 'Pia Page', slug: 'in/pia-page' });
+    await db.query(`UPDATE contacts SET email = NULL, email_status = 'unknown', phone = NULL, linkedin_slug = 'in/pia-page' WHERE id = $1`, [t.contact]);
+    if (drop) await db.query(`DROP POLICY guard_read ON contact_identities`);
+    await optOut(db, t, a);
+    assert.equal(await suppressed(db, t.contact), !drop, `guard_read dropped=${drop}`);
+  }
+  // Without identity_all the definer functions cannot write identities at all, so the scenario cannot even be built.
+  const db = await freshDb();
+  const t = await seedTenant(db, 'alpha');
+  await db.query(`DROP POLICY identity_all ON contact_identities`);
+  assert.match((await refused(mk(db, t, t.ws, { name: 'Pia Page', slug: 'in/pia-page' }))) ?? '', /row-level security/);
 });
