@@ -52,7 +52,6 @@ that stores state in the browser; it is kept for layout reference and is schedul
 | `apps/console` | Vite and React web app (the console). Styled only through the design tokens in `docs/design`. |
 | `edge/api-proxy` | Cloudflare Worker that passes API traffic to the Cloud Run API without state. |
 | `edge/email-worker` | Cloudflare Email Worker that parses replies and posts them, HMAC-signed, to the API inbound endpoint. |
-| `cloud-functions/waitlist-ingest` | Serverless ingest for waitlist leads into Cloud Storage. |
 | `src/` (root) | Next.js mock of the product, plus the public landing, waitlist, privacy, security and terms pages. |
 
 ## Architecture
@@ -113,7 +112,7 @@ commit them. The code that reads each variable is the authority for the full lis
 | `GEMINI_API_KEY` | root app (server side) | Gemini key for the mock's server routes. Secret |
 | `GOOGLE_PLACES_API_KEY` | `src/server/harvester` | Places API key. Secret |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER` | `src/server/dispatcher` | Twilio SMS. The token is secret |
-| `GCS_BUCKET_NAME`, `BUCKET_NAME` | `src/lib/storage.ts`, `cloud-functions/waitlist-ingest` | Cloud Storage bucket for leads |
+| (none) | `functions/api/waitlist.ts` | Writes to the D1 binding `WAITLIST_DB` (set in the Cloudflare dashboard, not an env var) |
 | `ADMIN_SECRET_KEY` | `src/app/api/waitlist` | Shared secret for the waitlist endpoint. Secret |
 
 Do not use the `NEXT_PUBLIC_` prefix for keys. Anything with that prefix is bundled into the browser.
@@ -126,8 +125,7 @@ omni-sdr/
 ├── services/decider/  # decision service and benchmarks
 ├── apps/console/      # Vite + React console
 ├── edge/              # Cloudflare Workers (API proxy, email worker)
-├── cloud-functions/   # waitlist ingest
-├── functions/api/     # serverless waitlist handler
+├── functions/api/     # Pages Function: waitlist signup into D1 (migrations/)
 ├── src/               # Next.js mock and public pages (root app)
 ├── e2e/               # end-to-end tests
 ├── infra/             # infrastructure definitions (db-vm)

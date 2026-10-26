@@ -1,4 +1,10 @@
-const GCS_INGEST_URL = 'https://omni-waitlist-api-eb7lrmqqwa-uc.a.run.app';
+// Signups go into Cloudflare D1 (binding WAITLIST_DB, schema in migrations/0001_waitlist.sql).
+const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+
+function newAccessCode(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(6));
+  return 'OMNI-VIP-' + Array.from(bytes, (b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
+}
 
 export async function onRequestPost(context: any) {
   try {
@@ -22,34 +28,40 @@ export async function onRequestPost(context: any) {
       });
     }
 
-    // Stream directly into Google Cloud Storage via serverless ingest endpoint in Google project (hip-well-509308-m9)
+    // One row per lowercased email. A repeat signup changes nothing and gets the first access code back.
     try {
-      const gcsResponse = await fetch(GCS_INGEST_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: name.trim(),
-          email: email.trim().toLowerCase(),
-          accountType: accountType === 'agency' ? 'agency' : 'owner',
-          company: company ? String(company).trim() : null,
-          phone: phone ? String(phone).trim() : null,
-          location: location ? String(location).trim() : null
-        })
+      const row: any = await context.env.WAITLIST_DB
+        .prepare(
+          `INSERT INTO waitlist (email, name, account_type, company, phone, location, access_code)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+           ON CONFLICT(email) DO UPDATE SET email = email
+           RETURNING access_code`
+        )
+        .bind(
+          email.trim().toLowerCase().slice(0, 254),
+          name.trim().slice(0, 100),
+          accountType === 'agency' ? 'agency' : 'owner',
+          company ? String(company).trim().slice(0, 100) : null,
+          phone ? String(phone).trim().slice(0, 30) : null,
+          location ? String(location).trim().slice(0, 100) : null,
+          newAccessCode()
+        )
+        .first();
+      if (!row?.access_code) throw new Error('no row returned');
+      return new Response(JSON.stringify({
+        success: true,
+        message: "Thank you! Your spot is secured. You're locked in for our exclusive early-access discount when we launch.",
+        accessCode: row.access_code
+      }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Content-Type-Options': 'nosniff',
+          'X-Frame-Options': 'DENY'
+        }
       });
-
-      if (gcsResponse.ok) {
-        const result = await gcsResponse.json();
-        return new Response(JSON.stringify(result), {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Content-Type-Options': 'nosniff',
-            'X-Frame-Options': 'DENY'
-          }
-        });
-      }
-    } catch (gcsErr) {
-      console.error('[Cloudflare Pages Edge] Error calling GCS ingest:', gcsErr);
+    } catch (dbErr) {
+      console.error('[Cloudflare Pages Edge] Error writing waitlist signup to D1:', dbErr);
     }
 
     // Nothing was saved, so say so. Never promise a spot that wasn't recorded.
@@ -69,6 +81,5 @@ export async function onRequestPost(context: any) {
   }
 }
 
-// No GET. The ingest service refuses reads (405) because it is public; this proxy for them was how the 2026-09-28
-// P0 leaked every signup, and it would reopen the leak if a read ever came back upstream (bug bounty 2026-10-02).
-// Export from an authenticated machine: gcloud storage cat "gs://omnisdr-leads/leads/*.json"
+// No GET. Signups are only ever written here; a read route is how the 2026-09-28 P0 leaked every signup.
+// Export from an authenticated machine: wrangler d1 execute WAITLIST_DB --remote --command "SELECT * FROM waitlist"
