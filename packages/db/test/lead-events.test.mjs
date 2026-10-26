@@ -3,15 +3,25 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { freshDb, seedTenant, as, one, q, refused } from './helpers.mjs';
+import { freshDb, seedTenant, approvedDraft, as, one, q, refused } from './helpers.mjs';
 
 const REC = `SELECT * FROM record_lead_event($1, $2, $3, $4, $5, $6, $7, $8, $9)`;
 const rec = (db, t, o = {}) => as(db, 'inbox_svc', { org: t.org, ws: [t.ws] }, () => one(db, REC, [
   o.org ?? t.org, o.ws ?? t.ws, o.source ?? 'web_form', o.channel ?? 'form', o.ext ?? 'ext-1', 'contact' in o ? o.contact : t.contact,
   o.consent ?? 'express_form', o.at ?? new Date().toISOString(), JSON.stringify(o.payload ?? {})]));
 const blocker = (db, role, t, id) => as(db, role, { org: t.org, ws: [t.ws] }, async () => (await one(db, `SELECT lead_touch_blocker($1) AS r`, [id])).r);
-const touch = (db, role, t, id, o = {}) => as(db, role, { org: t.org, ws: [t.ws] }, async () =>
-  (await one(db, `SELECT record_first_touch($1, $2, $3) AS r`, [id, o.channel ?? 'email', o.by ?? 'agent'])).r);
+// 0024: a touch names the message that was the touch. By default that is the tenant's seeded message (it belongs to t.contact),
+// marked sent now; pass message: <id> for another, or message: null for none.
+const markSent = async (db, t, o = {}) => {
+  await db.query(`UPDATE messages SET state = $4, sent_at = coalesce($2::timestamptz, clock_timestamp()), channel = coalesce($3, channel) WHERE id = $1`,
+    [t.message, o.at ?? null, o.channel ?? null, o.state ?? 'sent']);
+  return t.message;
+};
+const touch = async (db, role, t, id, o = {}) => {
+  const message = 'message' in o ? o.message : await markSent(db, t, { channel: o.channel ?? 'email' });
+  return as(db, role, { org: t.org, ws: [t.ws] }, async () =>
+    (await one(db, `SELECT record_first_touch($1, $2, $3, $4) AS r`, [id, o.channel ?? 'email', o.by ?? 'agent', message])).r);
+};
 // seedTenant adds one lead event; lead_events refuses DELETE (0023), so this test-only reset switches that trigger off for one statement, as a superuser can.
 const clean = async (db, label) => {
   const t = await seedTenant(db, label);
@@ -59,7 +69,7 @@ test('tenant context: another tenant, a mismatched org or workspace, and no cont
   assert.equal((await one(db, `SELECT first_touch_at FROM lead_events WHERE id = $1`, [bLead])).first_touch_at, null);
   // No context at all (the service role with no tenant): not_found too.
   await db.exec('SET ROLE sender_svc');
-  try { assert.equal((await one(db, `SELECT record_first_touch($1, 'email', 'agent') AS r`, [bLead])).r, 'not_found'); }
+  try { assert.equal((await one(db, `SELECT record_first_touch($1, 'email', 'agent', NULL) AS r`, [bLead])).r, 'not_found'); }
   finally { await db.exec('RESET ROLE'); }
 });
 
@@ -123,7 +133,7 @@ test('payload is a size-capped object, and no column on lead_events can hold a r
   assert.equal((await rec(db, t, { ext: 'small', payload: { form_id: 'f-77', page: 'landing-a' } })).outcome, 'recorded');
   // The catalog: the exact column set. A new column fails this until someone reviews it for identity.
   const cols = (await q(db, `SELECT column_name AS c FROM information_schema.columns WHERE table_name = 'lead_events' ORDER BY 1`)).map((r) => r.c);
-  assert.deepEqual(cols, ['channel', 'consent_basis', 'contact_id', 'created_at', 'external_id', 'first_touch_at', 'first_touch_by', 'first_touch_channel',
+  assert.deepEqual(cols, ['channel', 'consent_basis', 'contact_id', 'created_at', 'external_id', 'first_touch_at', 'first_touch_by', 'first_touch_channel', 'first_touch_message_id',
     'id', 'inbound_message_id', 'org_id', 'payload', 'received_at', 'source', 'workspace_id']);
   assert.deepEqual(cols.filter((c) => /mail|phone|handle|name|address|contact_(value|point)/i.test(c)), [], 'no column is named for contact identity');
 });
@@ -180,23 +190,23 @@ test('S2L-1b: the first-touch time is the server\'s; the old 4-argument function
   const id = (await rec(db, t, { at: minutes(0) })).lead_event_id;
   // The old record_first_touch(uuid, text, text, timestamptz) and the 1-argument blocker no longer exist.
   const sigs = (await q(db, `SELECT proname || '(' || pg_get_function_identity_arguments(oid) || ')' AS s FROM pg_proc WHERE proname IN ('record_first_touch', 'lead_touch_blocker') ORDER BY 1`)).map((r) => r.s);
-  assert.deepEqual(sigs, ['lead_touch_blocker(p_lead_event uuid, p_channel text)', 'record_first_touch(p_lead_event uuid, p_channel text, p_by text)']);
+  assert.deepEqual(sigs, ['lead_touch_blocker(p_lead_event uuid, p_channel text)', 'record_first_touch(p_lead_event uuid, p_channel text, p_by text, p_message uuid)']);
   await db.exec('SET ROLE sender_svc');
   try {
     assert.match(await refused(db.query(`SELECT record_first_touch($1, 'email', 'agent', now() - interval '30 minutes')`, [id])) ?? 'ran', /does not exist/);
   } finally { await db.exec('RESET ROLE'); }
-  const before = Date.now();
   assert.equal(await touch(db, 'sender_svc', t, id), 'recorded');
-  const at = new Date((await one(db, `SELECT first_touch_at FROM lead_events WHERE id = $1`, [id])).first_touch_at).getTime();
-  assert.ok(at >= before - 1000 && at <= Date.now() + 1000, 'stamped by the database clock, at the moment of the call');
+  // 0024: the time is the message's own sent_at, which the sender wrote; the caller supplies no time at all.
+  const r = await one(db, `SELECT l.first_touch_at = m.sent_at AS same, l.first_touch_message_id = m.id AS tied FROM lead_events l JOIN messages m ON m.id = l.first_touch_message_id WHERE l.id = $1`, [id]);
+  assert.deepEqual([r.same, r.tied], [true, true]);
 });
 
-test('S2L-1b: a future-dated lead (up to 5 minutes of skew) is stamped no earlier than it arrived; beyond 5 minutes is refused', async () => {
+test('S2L-1b: a future-dated lead (up to 5 minutes of skew) cannot be touched by an earlier send; beyond 5 minutes is refused', async () => {
   const db = await freshDb();
   const t = await clean(db, 'alpha');
   const soon = (await rec(db, t, { ext: 'soon', at: new Date(Date.now() + 240000).toISOString() })).lead_event_id;
-  assert.equal(await touch(db, 'sender_svc', t, soon), 'recorded');
-  assert.equal((await one(db, `SELECT first_touch_at >= received_at AS ok FROM lead_events WHERE id = $1`, [soon])).ok, true);
+  assert.equal(await touch(db, 'sender_svc', t, soon), 'message_before_lead', 'a send from before the lead arrived is not its first touch');
+  assert.equal((await one(db, `SELECT first_touch_at FROM lead_events WHERE id = $1`, [soon])).first_touch_at, null);
   assert.match(await refused(rec(db, t, { ext: 'far', at: new Date(Date.now() + 600000).toISOString() })) ?? 'ran', /5 minutes in the future/);
   assert.match(await refused(db.query(`INSERT INTO lead_events (org_id, workspace_id, source, channel, external_id, consent_basis, received_at)
     VALUES ($1, $2, 'crm', 'email', 'far-direct', 'express_form', now() + interval '10 minutes')`, [t.org, t.ws])) ?? 'ran', /5 minutes in the future/, 'the table refuses it too, not only the definer');
@@ -276,4 +286,93 @@ test('S2L-1b: the blocker judges the touch channel: an sms or voice touch on a l
   assert.equal(await touch(db, 'sender_svc', t, mail, { channel: 'sms' }), 'no_consent');
   assert.equal((await one(db, `SELECT first_touch_at FROM lead_events WHERE id = $1`, [mail])).first_touch_at, null, 'nothing written');
   assert.equal(await touch(db, 'sender_svc', t, mail, { channel: 'email' }), 'recorded');
+});
+
+// ─── 0024 (S2L-2a): a first touch needs a real send ──────────────────────────────────────────────────────────────
+// A second contact in the same workspace, with its own enrollment, draft and message (made through the real guard path).
+async function otherContactMessage(db, t, label) {
+  const c = (await one(db, `INSERT INTO contacts (org_id, workspace_id, name, email, email_status) VALUES ($1, $2, 'Other', $3, 'valid') RETURNING id`, [t.org, t.ws, `other-${label}@example.test`])).id;
+  await db.query(`INSERT INTO email_verifications (org_id, workspace_id, contact_id, email, verdict, vendor, job)
+    SELECT org_id, workspace_id, id, email, 'valid', 'seed', 'seed-job' FROM contacts WHERE id = $1`, [c]);
+  const e = (await one(db, `INSERT INTO enrollments (org_id, workspace_id, campaign_id, contact_id, heat) VALUES ($1, $2, $3, $4, 1) RETURNING id`, [t.org, t.ws, t.campaign, c])).id;
+  const draft = await approvedDraft(db, { ...t, enrollment: e });
+  const m = (await as(db, 'sender_svc', { org: t.org, ws: [t.ws] }, () => one(db,
+    `INSERT INTO messages (org_id, workspace_id, draft_id, mailbox_id, channel) VALUES ($1, $2, $3, $4, 'email') RETURNING id`, [t.org, t.ws, draft, t.mailbox]))).id;
+  await db.query(`UPDATE messages SET state = 'sent', sent_at = clock_timestamp() WHERE id = $1`, [m]);
+  return { contact: c, message: m };
+}
+const touched = async (db, id) => (await one(db, `SELECT first_touch_at, first_touch_message_id FROM lead_events WHERE id = $1`, [id]));
+
+test('S2L-2a: a first touch with no message id, or a message that is not a real send to this lead, is refused and writes nothing', async () => {
+  const db = await freshDb();
+  const a = await clean(db, 'alpha');
+  const b = await clean(db, 'bravo');
+  const lead = (await rec(db, a, { at: minutes(0) })).lead_event_id;
+  const other = await otherContactMessage(db, a, 'a');
+  const none = { first_touch_at: null, first_touch_message_id: null };
+  const refuse = async (why, o) => {
+    assert.equal(await touch(db, 'sender_svc', a, lead, o), why);
+    assert.deepEqual(await touched(db, lead), none, `${why}: nothing written`);
+  };
+  await refuse('no_message', { message: null });
+  await refuse('message_not_found', { message: other.message });                 // another contact, same workspace
+  await refuse('message_not_found', { message: b.message });                     // another tenant's message
+  await refuse('message_not_found', { message: '00000000-0000-4000-8000-000000000000' });
+  for (const state of ['claimed', 'failed', 'handed_off']) {
+    await markSent(db, a, { state });
+    await refuse('message_not_sent', { message: a.message });
+  }
+  await markSent(db, a, { state: 'sent', channel: 'sms' });
+  await refuse('message_channel', { message: a.message, channel: 'email' });
+  await markSent(db, a, { state: 'sent', channel: 'email', at: new Date(Date.now() - 2 * 3600000).toISOString() });
+  await refuse('message_before_lead', { message: a.message });
+  // The honest one works, for either service role, and ties the touch to the message.
+  await markSent(db, a, { state: 'sent', channel: 'email' });
+  assert.equal(await touch(db, 'inbox_svc', a, lead, { message: a.message }), 'recorded');
+  assert.equal((await touched(db, lead)).first_touch_message_id, a.message);
+});
+
+test('S2L-2a: a confirmed message counts as sent; another tenant cannot use this tenant\'s message', async () => {
+  const db = await freshDb();
+  const a = await clean(db, 'alpha');
+  const b = await clean(db, 'bravo');
+  const aLead = (await rec(db, a, { at: minutes(0) })).lead_event_id;
+  const bLead = (await rec(db, b, { ext: 'b-1', at: minutes(0) })).lead_event_id;
+  await markSent(db, a, { state: 'confirmed' });
+  assert.equal(await touch(db, 'sender_svc', b, bLead, { message: a.message }), 'message_not_found');
+  assert.equal(await touch(db, 'sender_svc', a, aLead, { message: a.message }), 'recorded');
+});
+
+test('S2L-2a: the message id is write-once with the touch; a message id needs a touch; only the definer may write it', async () => {
+  const db = await freshDb();
+  const t = await clean(db, 'alpha');
+  const id = (await rec(db, t, { at: minutes(0) })).lead_event_id;
+  assert.equal(await touch(db, 'sender_svc', t, id), 'recorded');
+  const other = await otherContactMessage(db, t, 'w');
+  assert.match(await refused(db.query(`UPDATE lead_events SET first_touch_message_id = $2 WHERE id = $1`, [id, other.message])) ?? 'ran', /write-once/);
+  assert.match(await refused(db.query(`UPDATE lead_events SET first_touch_message_id = NULL WHERE id = $1`, [id])) ?? 'ran', /write-once/);
+  const id2 = (await rec(db, t, { ext: 'untouched' })).lead_event_id;
+  assert.ok(await refused(db.query(`UPDATE lead_events SET first_touch_message_id = $2 WHERE id = $1`, [id2, t.message])), 'a message with no touch');
+  for (const role of ['app_rw', 'inbox_svc', 'sender_svc']) {
+    assert.equal((await one(db, `SELECT has_column_privilege($1, 'lead_events', 'first_touch_message_id', 'UPDATE') AS h`, [role])).h, false, role);
+  }
+});
+
+test('S2L-2a: lead_owner only reads messages, drafts and enrollments; with no tenant context the definer finds nothing', async () => {
+  const db = await freshDb();
+  const t = await clean(db, 'alpha');
+  const grants = await q(db, `SELECT table_name AS t, privilege_type AS p FROM information_schema.role_table_grants WHERE grantee = 'lead_owner' AND table_name IN ('messages', 'drafts', 'enrollments') ORDER BY 1, 2`);
+  assert.deepEqual(grants, [{ t: 'drafts', p: 'SELECT' }, { t: 'enrollments', p: 'SELECT' }, { t: 'messages', p: 'SELECT' }]);
+  // The lead_read policies are tenant-scoped: under tenant A, lead_owner sees none of B's rows; with no context, none at all.
+  const b = await clean(db, 'bravo');
+  const count = (t) => as(db, 'lead_owner', t, async () => Object.fromEntries(await Promise.all(['messages', 'drafts', 'enrollments'].map(async (n) =>
+    [n, (await one(db, `SELECT count(*)::int AS c FROM ${n} WHERE org_id = $1`, [b.org])).c]))));
+  assert.deepEqual(await count({ org: t.org, ws: [t.ws] }), { messages: 0, drafts: 0, enrollments: 0 }, 'tenant A sees nothing of B');
+  assert.deepEqual(await count({ org: b.org, ws: [b.ws] }), { messages: 1, drafts: 1, enrollments: 1 }, 'tenant B sees its own');
+  assert.deepEqual(await count({ org: b.org, ws: [t.ws] }), { messages: 0, drafts: 0, enrollments: 0 }, 'B org with A workspace sees nothing');
+  const all = (ctx) => as(db, 'lead_owner', ctx, async () => (await one(db, `SELECT (SELECT count(*) FROM messages)::int + (SELECT count(*) FROM drafts)::int + (SELECT count(*) FROM enrollments)::int AS c`)).c);
+  assert.equal(await all(null), 0, 'no context: nothing');
+  await db.exec('SET ROLE sender_svc');
+  try { assert.equal((await one(db, `SELECT record_first_touch($1, 'email', 'agent', $2) AS r`, [t.lead, t.message])).r, 'not_found'); }
+  finally { await db.exec('RESET ROLE'); }
 });
