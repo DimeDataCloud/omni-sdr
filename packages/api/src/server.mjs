@@ -2,7 +2,8 @@
 // Config is environment only; secrets arrive from Secret Manager as env vars, never files in the repo.
 //
 //   DATABASE_URL            Cloud SQL connection (login role: member of app_rw, gate_svc, sender_svc, inbox_svc only)
-//   OMNI_FIREBASE_PROJECT   Identity Platform project id; ID tokens must have this audience
+//   ACCESS_TEAM_DOMAIN      the Cloudflare Access team domain, <team>.cloudflareaccess.com (required)
+//   ACCESS_AUD              the Access application's AUD tag; the JWT in Cf-Access-Jwt-Assertion must carry it (required)
 //   OMNI_CORS_ORIGINS       comma-separated exact origins allowed to call the API from a browser
 //   OMNI_APP_URL            base for invite links (required: the old default, app.omnisdr.com, has no DNS record)
 //   OMNI_UNSUBSCRIBE_BASE   the API's public origin, for /u/<token> and hook URLs (required, same reason)
@@ -16,7 +17,7 @@
 import { createServer } from 'node:http';
 import { createApp } from './app.mjs';
 import { pgPool } from './pool.mjs';
-import { firebaseVerifier } from './auth.mjs';
+import { accessVerifier } from './access.mjs';
 import { offModel, geminiApiModel } from './services/model.mjs';
 import { offPlaces, googlePlaces } from './services/places.mjs';
 import { offVerifier } from './services/verify.mjs';
@@ -54,7 +55,7 @@ export async function main() {
   const places = env.OMNI_PLACES === 'google' ? googlePlaces({ key: need('OMNI_PLACES_KEY') }) : offPlaces();
   const app = createApp({
     pool,
-    verifyToken: firebaseVerifier({ projectId: need('OMNI_FIREBASE_PROJECT') }),
+    verifyToken: accessVerifier({ teamDomain: need('ACCESS_TEAM_DOMAIN'), aud: need('ACCESS_AUD') }),
     model,
     config: {
       corsOrigins: (env.OMNI_CORS_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean),

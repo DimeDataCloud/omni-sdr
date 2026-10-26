@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { generateKeyPairSync, createSign, createHmac } from 'node:crypto';
 import { PGlite } from '@electric-sql/pglite';
 import { migrate } from '../../db/src/migrate.mjs';
-import { createApp } from '../src/app.mjs';
+import { createApp, PUBLIC_ROUTES } from '../src/app.mjs';
 import { pglitePool } from '../src/pool.mjs';
 import { firebaseVerifier, staticKeySource } from '../src/auth.mjs';
 import { fakeModel } from '../src/services/model.mjs';
@@ -39,6 +39,9 @@ export async function startApi({ model = fakeModel(), config = {}, seed = true }
   const app = createApp({
     pool: pglitePool(db),
     verifyToken: firebaseVerifier({ projectId: PROJECT, getKey: staticKeySource(KEYS) }),
+    // The hooks route is closed in production (B-11); its own tests open it here, in the test config only.
+    publicRoutes: new Set([...PUBLIC_ROUTES, 'POST /v1/hooks/:id']),
+    tokenFrom: (req) => /^Bearer (.+)$/.exec(req.headers.authorization ?? '')?.[1] ?? null,   // the suite's own sign-in; production reads the Access header
     model,
     config: { corsOrigins: ['https://console.example'], inboundSecret: INBOUND_SECRET, appUrl: 'https://app.test', ...config },
     log: (e) => logs.push(e),

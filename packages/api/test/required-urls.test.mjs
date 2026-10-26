@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const SERVER = fileURLToPath(new URL('../src/server.mjs', import.meta.url));
 // Scrubbed environment: nothing from the developer's shell leaks in. The pool is lazy, so no database is needed.
 const BASE = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, DATABASE_URL: 'postgres://u:p@127.0.0.1:1/none',
-  OMNI_FIREBASE_PROJECT: 'test-project', PORT: '8831' };
+  ACCESS_TEAM_DOMAIN: 'team.cloudflareaccess.com', ACCESS_AUD: 'aud-tag', PORT: '8831' };
 
 function start(env) {
   const child = spawn(process.execPath, [SERVER], { env, stdio: ['ignore', 'pipe', 'pipe'] });
