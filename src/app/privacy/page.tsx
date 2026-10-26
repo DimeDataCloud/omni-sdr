@@ -63,7 +63,7 @@ export default function PrivacyPage() {
             <h2 className="text-xl font-bold text-[#111111]">3. AI Processing & Foundation Models</h2>
             <p>Omni SDR is engineered with a strict <strong>Zero-Training Enterprise Guarantee</strong>:</p>
             <ul className="list-disc pl-5 space-y-2">
-              <li>Customer data, prospect information, and message drafts processed through our AI gateway are <strong>never</strong> used to train, retrain, or improve foundational commercial AI models (Google Vertex AI / Gemini).</li>
+              <li>Customer data, prospect information, and message drafts processed through our AI gateway are <strong>never</strong> used to train, retrain, or improve foundational commercial AI models (Google Gemini API).</li>
               <li>All generative tasks run within private, enterprise-tier Google Cloud boundaries governed by SOC 2, ISO 27001, and HIPAA-compliant data agreements.</li>
             </ul>
           </section>
