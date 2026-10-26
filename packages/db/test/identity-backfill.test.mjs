@@ -191,3 +191,33 @@ test('P2-3: contact-keyed legacy email opt-outs are re-applied: a corrected addr
     assert.equal(await suppressed(db, twin, 'email'), true, `${how}: the profile twin follows`);
   }
 });
+
+test('N-2: opt-outs made by the reply model (decision.applied has suppress; stop_reason reply:model_stop) are re-applied, and a model decision that only started an SLA is not', async () => {
+  const db = await legacyDb();
+  const a = await legacyTenant(db, 'alpha');
+  const ws2 = (await one(db, `INSERT INTO workspaces (org_id, name) VALUES ($1, 'second') RETURNING id`, [a.org])).id;
+  const cases = {};
+  for (const how of ['decision', 'model_stop', 'sla_only']) {
+    // The rules read the reply as a question, so `intent` stays 'question'; the model then opted out old@, which the operator later corrected.
+    const c = await contact(db, a, { name: `Model ${how}`, email: `new-${how}@alpha.test` });
+    await db.query(`INSERT INTO conversations (org_id, workspace_id, contact_id, channel, thread_key) VALUES ($1, $2, $3, 'linkedin', $4)`, [a.org, a.ws, c, `profile:in/model-${how}`]);
+    await db.query(`INSERT INTO suppression (scope_org_id, value_hash, kind, reason) VALUES ($1, value_hash($2), 'email', 'reply_unsubscribe_model')`, [a.org, `old-${how}@alpha.test`]);
+    if (how === 'model_stop') {
+      await enroll(db, a, c, 'reply:model_stop');
+    } else {
+      const applied = how === 'decision' ? ['suppress', 'stop'] : ['sla'];
+      await db.query(`INSERT INTO inbound_messages (org_id, workspace_id, contact_id, channel, body, received_at, intent, decision, decided_at)
+                      VALUES ($1, $2, $3, 'email', 'take me off this', now(), 'question', $4::jsonb, now())`, [a.org, a.ws, c, JSON.stringify({ engine: 'm', applied })]);
+    }
+    const twin = (await one(db, `INSERT INTO contacts (org_id, workspace_id, name, email, email_status) VALUES ($1, $2, $3, $4, 'unknown') RETURNING id`, [a.org, ws2, `Twin ${how}`, `twin-${how}@alpha.test`])).id;
+    await db.query(`INSERT INTO conversations (org_id, workspace_id, contact_id, channel, thread_key) VALUES ($1, $2, $3, 'linkedin', $4)`, [a.org, ws2, twin, `profile:in/model-${how}`]);
+    cases[how] = { c, twin };
+  }
+  await migrate(db);
+  for (const how of ['decision', 'model_stop']) {
+    assert.equal(await suppressed(db, cases[how].c, 'email'), true, `${how}: the corrected address is suppressed`);
+    assert.equal(await suppressed(db, cases[how].twin, 'email'), true, `${how}: the profile twin follows`);
+  }
+  assert.equal(await suppressed(db, cases.sla_only.c, 'email'), false, 'a decision with no suppress is not an opt-out');
+  assert.equal(await suppressed(db, cases.sla_only.twin, 'email'), false);
+});
