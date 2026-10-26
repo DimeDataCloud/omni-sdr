@@ -49,7 +49,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             Omni-SDR Workspace & Compliance Settings
           </h1>
           <p className="text-xs text-[#6f7a6e] mt-1">
-            GCP project: <code className="font-mono bg-[#f0eeea] px-1 py-0.5 rounded">hip-well-509308-m9 (omni-sdr)</code> · Cloudflare Pages Edge: <code className="font-mono bg-[#f0eeea] px-1 py-0.5 rounded">omnisdr.com</code>
+            Project: <code className="font-mono bg-[#f0eeea] px-1 py-0.5 rounded">omni-sdr</code> · Cloudflare Pages Edge: <code className="font-mono bg-[#f0eeea] px-1 py-0.5 rounded">omnisdr.com</code>
           </p>
         </div>
 

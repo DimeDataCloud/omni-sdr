@@ -367,7 +367,7 @@ export const TopNavigation: React.FC<TopNavigationProps> = ({
               </div>
 
               <div className="bg-[#f5f3ef] border border-[#eae4d9] rounded-xl p-3 text-[11px] font-mono text-[#6f7a6e] space-y-1">
-                <div>Single Production Env: hip-well-509308-m9 (omni-sdr)</div>
+                <div>Single production environment (omni-sdr)</div>
                 <div>Local verification: PGlite in packages/db</div>
               </div>
             </div>

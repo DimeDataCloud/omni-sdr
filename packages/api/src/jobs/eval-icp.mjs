@@ -1,5 +1,5 @@
 // Eval for icp@1 (SPEC §10). Needs a real model; nothing here runs in CI without one.
-//   OMNI_VERTEX_PROJECT=… OMNI_MODEL_PRO=… node packages/api/src/jobs/eval-icp.mjs
+//   OMNI_GEMINI_KEY=… node packages/api/src/jobs/eval-icp.mjs
 // Pass = a proposal comes back, every trait cites real rows or the notes, no forbidden value appears (injections),
 // and at least one trait contains an expected word (when the case names any). Exit 1 below 100%.
 import { readFileSync } from 'node:fs';

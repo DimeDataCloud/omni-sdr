@@ -1,5 +1,5 @@
 // Demo-mode agent replies. Not a model: a deterministic reader over this workspace's rows, so every answer is
-// true of the data on screen and names where it came from. The real API routes chat to Vertex (services/model.mjs).
+// true of the data on screen and names where it came from. The real API routes chat to the Gemini API (services/model.mjs).
 // Phase 3 adds: an attached object ("Ask about this") answered from that object's rows, composer modes that pick
 // the part of the workspace to answer from, and `sources`, the rows each answer read.
 import type { World, AgentRow } from './seed';
