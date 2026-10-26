@@ -156,3 +156,23 @@ test('send: an opt-out that lands between the claim and the hand-off stops the s
   const m = await one(db, `SELECT state, error FROM messages WHERE id = $1`, [r.messageId]);
   assert.deepEqual([m.state, m.error], ['failed', 'suppressed_check']);
 });
+
+// 40: the hand-off fails closed. A re-check that raises, or answers anything but true, never reaches the provider.
+test('send: a hand-off check that raises or answers null does not call the provider', async () => {
+  for (const mode of ['raise', 'null']) {
+    const { db, t, draft } = await setup();
+    const adapter = fakeAdapter();
+    const client = {
+      async query(sql, params) {
+        if (typeof sql === 'string' && sql.includes('message_handoff_ok')) {
+          if (mode === 'raise') throw new Error('handoff exploded');
+          return { rows: [{ ok: null }] };
+        }
+        return db.query(sql, params);
+      },
+    };
+    const out = await sendDraft(client, opts(t, draft, adapter)).then((r) => r, (e) => ({ outcome: 'threw', reason: e.message }));
+    assert.equal(adapter.calls.length, 0, mode);
+    assert.ok(out.outcome === 'threw' || (out.outcome === 'failed' && out.reason === 'suppressed_check'), `${mode}: ${JSON.stringify(out)}`);
+  }
+});
