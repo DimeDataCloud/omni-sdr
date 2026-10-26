@@ -423,7 +423,7 @@ BEGIN
       UPDATE contacts k SET hold_reason = 'name_match:seed:' || substr(nh, 1, 12)
       WHERE k.org_id = p_org AND k.id <> c.id AND k.hold_reason IS NULL AND k.hold_cleared_at IS NULL
         AND name_seed_hash(p_org, k.name) = nh
-        AND NOT EXISTS (SELECT 1 FROM contact_identities a JOIN contact_identities b ON a.kind = b.kind AND a.value_hash = b.value_hash
+        AND NOT EXISTS (SELECT 1 FROM contact_identities a JOIN contact_identities b ON a.kind = b.kind AND a.value_hash = b.value_hash AND a.kind IN ('email', 'linkedin')
                         WHERE a.contact_id = k.id AND b.contact_id = c.id)
         AND NOT EXISTS (SELECT 1 FROM contact_identities i JOIN suppression s ON s.scope_org_id = p_org AND s.value_hash = i.value_hash
                         WHERE i.contact_id = k.id AND i.kind IN ('email', 'linkedin'))
