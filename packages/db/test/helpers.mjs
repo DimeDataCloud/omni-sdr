@@ -130,7 +130,12 @@ export async function seedTenant(db, label, { cap = 5, trust = 1, heat = 1 } = {
   await db.query(`INSERT INTO qualification_questions (org_id, workspace_id, position, key, question) VALUES ($1, $2, 1, 'timing', 'When are you hoping to start?')`, [org, ws]);
   await db.query(`INSERT INTO reply_drafts (org_id, workspace_id, conversation_id, inbound_message_id, playbook_reply_id, category, body_proposed)
     VALUES ($1, $2, $3, $4, $5, 'not_interested', 'Understood, Pat. Thanks for letting us know.')`, [org, ws, conversation, inbound, playbook]);
-  return { ...t, message, inbound, conversation, playbook };
+  // 0022: a touched lead event per tenant, for the RLS matrix, the FK rule and the metric.
+  const lead = (await one(db, `INSERT INTO lead_events (org_id, workspace_id, contact_id, source, channel, external_id, consent_basis, received_at,
+      first_touch_at, first_touch_channel, first_touch_by)
+    VALUES ($1, $2, $3, 'web_form', 'form', $4, 'express_form', now() - interval '10 minutes', now() - interval '9 minutes', 'email', 'system') RETURNING id`,
+    [org, ws, contact, `seed-lead-${label}`])).id;
+  return { ...t, message, inbound, conversation, playbook, lead };
 }
 
 // A new draft for the tenant's enrollment, passed through the gate and approved.

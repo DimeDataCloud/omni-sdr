@@ -31,8 +31,10 @@ const EXPECTED = {
   close_component: [], name_seed_hash: [], org_salts_immutable: [], contacts_fill_identities: [], conversations_fill_identity: [],
   identities_close_person: [], suppression_close_person: [], suppression_org_lock: [], contacts_name_hold: [],
   can_resolve_hold: ['rename_owner'], clear_name_hold: ['app_rw'], rename_opted_out_contact: ['app_rw'],
-  contact_opted_out: ['app_rw', 'ops', 'rename_owner'], person_suppressed: ['app_rw'], message_handoff_ok: ['sender_svc'],
+  contact_opted_out: ['app_rw', 'ops', 'rename_owner'], person_suppressed: ['app_rw', 'lead_owner'], message_handoff_ok: ['sender_svc'],
   record_mail_event: ['inbox_svc'],   // 0021: provider bounce and complaint events
+  // 0022: speed to lead
+  record_lead_event: ['inbox_svc'], lead_touch_blocker: ['app_rw', 'inbox_svc', 'sender_svc'], record_first_touch: ['inbox_svc', 'sender_svc'],
 };
 
 async function asProdOwner() {
