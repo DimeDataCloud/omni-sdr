@@ -274,9 +274,12 @@ export async function ingestForm(client, hook, msg, { classify = classifyReply, 
  */
 export async function ingestPasted(client, { orgId, workspaceId, actor }, msg, { classify = classifyReply } = {}) {
   const email = msg.email ? String(msg.email).trim().toLowerCase() : null;
-  const profile = msg.profileUrl ? normalizeLinkedIn(msg.profileUrl) : null;
+  const rawProfile = msg.profileUrl ? normalizeLinkedIn(msg.profileUrl) : null;
   const verdict = classify({ subject: '', body: msg.body ?? '', from: email ?? '' });
   return withService(client, { orgId, workspaceId, role: 'inbox_svc' }, async (tx) => {
+    // A profile the database refuses to canonicalise (a reserved escape such as %2f, nesting over 3 deep) must not sink the paste:
+    // the stop and the opt-out still apply, only the profile link is dropped (ADV N-4).
+    const profile = await usableProfile(tx, rawProfile);
     let contactId = null;
     if (email) {
       await tx.query(`INSERT INTO contacts (org_id, workspace_id, name, email) VALUES ($1, $2, $3, $4) ON CONFLICT (workspace_id, email) DO NOTHING`,
@@ -322,6 +325,21 @@ export async function ingestPasted(client, { orgId, workspaceId, actor }, msg, {
       [orgId, id, JSON.stringify({ inbound_id: id, channel: 'linkedin', intent: verdict.intent, sla_due_at: slaDueAt })]);
     return { outcome: 'recorded', id, conversationId: conversation.id, intent: verdict.intent, slaDueAt: slaDueAt?.toISOString() ?? null };
   });
+}
+
+/** The profile if the database can canonicalise it, else null. Company pages (`company/…`) pass through as before. */
+async function usableProfile(tx, profile) {
+  if (!profile?.startsWith('in/')) return profile;
+  await tx.query('SAVEPOINT canon_profile');
+  try {
+    await tx.query(`SELECT canon_linkedin_slug($1)`, [profile]);
+    await tx.query('RELEASE SAVEPOINT canon_profile');
+    return profile;
+  } catch (e) {
+    await tx.query('ROLLBACK TO SAVEPOINT canon_profile');
+    if (e.code === '22023') return null;
+    throw e;
+  }
 }
 
 /** linkedin.com/in/<slug> as `in/<slug>`, lower-cased; anything else is refused by the route before it gets here. */

@@ -54,15 +54,25 @@ export function registerProspects(r) {
         const profile = c.linkedinUrl ? normalizeLinkedIn(c.linkedinUrl) : null;
         if (c.linkedinUrl && !profile?.startsWith('in/')) throw new HttpError(400, 'bad_request', 'use a linkedin.com/in/… link to a person', { field: `contacts.${i}.linkedinUrl` });
         await tx.query('SAVEPOINT import_row');
-        const row = (await tx.query(
-          `INSERT INTO contacts (org_id, workspace_id, name, email, email_status, phone, company, title, linkedin_slug)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (workspace_id, email) DO NOTHING RETURNING id, email_status`,
-          [m.orgId, m.workspaceId, c.name ?? null, check?.email ?? null, check?.status ?? 'unknown', c.phone ?? null,
-            c.company ?? null, c.title ?? null, profile])).rows[0];
+        // A slug the database cannot canonicalise (a reserved escape, nested encoding) is a bad link, not a server error.
+        let row;
+        try {
+          row = (await tx.query(
+            `INSERT INTO contacts (org_id, workspace_id, name, email, email_status, phone, company, title, linkedin_slug)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (workspace_id, email) DO NOTHING RETURNING id, email_status`,
+            [m.orgId, m.workspaceId, c.name ?? null, check?.email ?? null, check?.status ?? 'unknown', c.phone ?? null,
+              c.company ?? null, c.title ?? null, profile])).rows[0];
+        } catch (e) {
+          if (e.code === '22023') throw new HttpError(400, 'bad_request', 'that linkedin link cannot be used', { field: `contacts.${i}.linkedinUrl` });
+          throw e;
+        }
         if (row) {
           // person_suppressed is STABLE, so it cannot see the row inserted by the statement that calls it: ask in a new statement.
           if ((await tx.query(`SELECT person_suppressed($1) AS held`, [row.id])).rows[0].held) {
             await tx.query('ROLLBACK TO SAVEPOINT import_row');
+            // The rollback also took the suppression of the row's own address and phone. When the row was held through a profile that
+            // is opted out, they are that person's: write them back, outside the rolled-back work (ADV N-3).
+            if (profile) await tx.query(`SELECT import_suppress_held($1, $2, $3)`, [profile, check?.email ?? null, c.phone ?? null]);
             held.push({ index: i, reason: 'matches an opted-out person' });
           } else created.push({ index: i, id: row.id, emailStatus: row.email_status, role: check?.role ?? false, reason: check?.reason ?? null });
         } else {

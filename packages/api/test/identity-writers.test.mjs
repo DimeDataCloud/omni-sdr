@@ -28,6 +28,30 @@ test('paste: a LinkedIn opt-out with only a profile closes the person, and a lat
   assert.equal(await suppressed(late.id), true);
 });
 
+test('paste: a profile the database cannot canonicalise does not sink the opt-out (ADV N-4): the stop and the suppression still happen, the link is dropped', async () => {
+  const urls = ['https://www.linkedin.com/in/reserved%2fslash', 'https://www.linkedin.com/in/nul%00byte', 'https://www.linkedin.com/in/query%3fmark',
+    'https://www.linkedin.com/in/hash%23frag', 'https://www.linkedin.com/in/deep%2525252525252541nest'];
+  for (const [i, profileUrl] of urls.entries()) {
+    const r = await api.call('POST', `${api.W}/conversations/paste`, { as: 'sam@example.com',
+      body: { name: `Escape Person${'x'.repeat(i)}`, profileUrl, email: `escape${i}@lead.example`, body: 'Please stop. Remove me from your list.' } });
+    assert.equal(r.status, 201, `${profileUrl}: ${JSON.stringify(r.body)}`);
+    assert.equal(r.body.intent, 'unsubscribe');
+    const [c] = await api.q(`SELECT id, linkedin_slug FROM contacts WHERE email = $1`, [`escape${i}@lead.example`]);
+    assert.equal(await suppressed(c.id), true, `${profileUrl}: the person is opted out`);
+    assert.equal(c.linkedin_slug, null);
+    assert.equal((await api.q(`SELECT count(*)::int AS n FROM contact_identities WHERE contact_id = $1 AND kind = 'linkedin'`, [c.id]))[0].n, 0);
+  }
+  // Profile only, no address: the paste is recorded (it used to roll back with a 500). With no usable profile and no address the
+  // person has nothing to key a suppression on, as for any paste that gives only a name; the message and the stop are kept.
+  const r = await api.call('POST', `${api.W}/conversations/paste`, { as: 'sam@example.com',
+    body: { name: 'Escape Solo', profileUrl: 'https://www.linkedin.com/in/solo%2fslash', body: 'unsubscribe me' } });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.equal(r.body.intent, 'unsubscribe');
+  const [{ contact_id: solo }] = await api.q(`SELECT contact_id FROM inbound_messages WHERE id = $1`, [r.body.id]);
+  assert.ok(solo);
+  assert.equal((await api.q(`SELECT count(*)::int AS n FROM contact_identities WHERE contact_id = $1`, [solo]))[0].n, 0);
+});
+
 test('form hook: an opt-out reaches an identity-linked twin; the hook created a contact to key it on', async () => {
   const hook = (await api.call('POST', `${api.W}/hooks`, { body: { name: 'Writers form' } })).body;
   const res = await api.call('POST', `/v1/hooks/${hook.id}`, { as: null, token: hook.token,
