@@ -130,3 +130,49 @@ test('ops_unknown_outcomes: a claim that never got recorded surfaces after 15 mi
   // And the stuck draft can't be sent again by the normal path.
   assert.equal((await sendDraft(db, opts(t, d2, fakeAdapter()))).outcome, 'already_claimed');
 });
+
+// 0020: the sender's last look. An opt-out that commits after the claim must stop the provider call; the message is
+// marked failed with the reason, and the adapter is never reached.
+test('send: an opt-out that lands between the claim and the hand-off stops the send (suppressed_check)', async () => {
+  const { db, t, draft } = await setup();
+  const adapter = fakeAdapter();
+  let commits = 0;
+  const client = {
+    async query(sql, params) {
+      const r = await db.query(sql, params);
+      if (sql === 'COMMIT' && ++commits === 1) {
+        await db.query(`SELECT set_config('app.org_id', $1, false), set_config('app.workspace_ids', $2, false)`, [t.org, t.ws]);
+        await db.exec('SET ROLE inbox_svc');
+        try { await db.query(`SELECT suppress_person($1, 'manual')`, [t.contact]); } finally { await db.exec('RESET ROLE'); }
+        await db.query(`SELECT set_config('app.org_id', '', false), set_config('app.workspace_ids', '', false)`);
+      }
+      return r;
+    },
+  };
+  const r = await sendDraft(client, opts(t, draft, adapter));
+  assert.equal(r.outcome, 'failed');
+  assert.equal(r.reason, 'suppressed_check');
+  assert.equal(adapter.calls.length, 0);
+  const m = await one(db, `SELECT state, error FROM messages WHERE id = $1`, [r.messageId]);
+  assert.deepEqual([m.state, m.error], ['failed', 'suppressed_check']);
+});
+
+// 40: the hand-off fails closed. A re-check that raises, or answers anything but true, never reaches the provider.
+test('send: a hand-off check that raises or answers null does not call the provider', async () => {
+  for (const mode of ['raise', 'null']) {
+    const { db, t, draft } = await setup();
+    const adapter = fakeAdapter();
+    const client = {
+      async query(sql, params) {
+        if (typeof sql === 'string' && sql.includes('message_handoff_ok')) {
+          if (mode === 'raise') throw new Error('handoff exploded');
+          return { rows: [{ ok: null }] };
+        }
+        return db.query(sql, params);
+      },
+    };
+    const out = await sendDraft(client, opts(t, draft, adapter)).then((r) => r, (e) => ({ outcome: 'threw', reason: e.message }));
+    assert.equal(adapter.calls.length, 0, mode);
+    assert.ok(out.outcome === 'threw' || (out.outcome === 'failed' && out.reason === 'suppressed_check'), `${mode}: ${JSON.stringify(out)}`);
+  }
+});

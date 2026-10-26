@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { freshDb, seedTenant, one, q } from './helpers.mjs';
-import { withTenant, TenantAccessError } from '../src/context.mjs';
+import { withTenant, withService, withoutTenant, TenantAccessError, MAX_TX_ATTEMPTS } from '../src/context.mjs';
 import { can, ACTIONS } from '../src/permissions.mjs';
 
 const ctxOf = (t, extra = {}) => ({ userId: t.user, orgId: t.org, workspaceId: t.ws, ...extra });
@@ -99,4 +99,48 @@ test('permissions: the SPEC §7 matrix, cell by cell', () => {
   assert.equal(can({ role: 'client_viewer', clientApprovalsEnabled: true }, 'build'), false);
   assert.equal(can({ role: 'owner' }, 'reports_view'), false, 'unknown role fails closed');
   assert.throws(() => can({ role: 'admin' }, 'aprove'), /unknown action/);
+});
+
+// ADV N-1: a deadlock (40P01) or serialization failure (40001) rolls the whole transaction back in the database. The wrappers
+// run the callback again from BEGIN, a bounded number of times, and never retry any other error.
+test('transactions: 40P01 and 40001 are retried from BEGIN, up to the cap; other errors are not', async () => {
+  const db = await freshDb();
+  const a = await seedTenant(db, 'alpha');
+  const wrappers = {
+    withTenant: (fn) => withTenant(db, ctxOf(a), fn),
+    withService: (fn) => withService(db, { orgId: a.org, workspaceId: a.ws, role: 'inbox_svc' }, fn),
+    withoutTenant: (fn) => withoutTenant(db, { role: 'inbox_svc' }, fn),
+  };
+  for (const [name, run] of Object.entries(wrappers)) {
+    for (const code of ['40P01', '40001']) {
+      let calls = 0;
+      const out = await run(async (tx) => {
+        calls++;
+        await tx.query('SELECT 1');
+        if (calls < 3) throw Object.assign(new Error('simulated ' + code), { code });
+        return 'done after ' + calls;
+      });
+      assert.equal(out, 'done after 3', name + ' ' + code);
+    }
+    // Always failing: gives up at the cap with the original error.
+    let calls = 0;
+    const err = await run(async () => { calls++; throw Object.assign(new Error('still deadlocked'), { code: '40P01' }); }).catch((e) => e);
+    assert.equal(err.code, '40P01');
+    assert.equal(calls, MAX_TX_ATTEMPTS, name + ' stops at the cap');
+    // Anything else is thrown at once.
+    calls = 0;
+    const other = await run(async () => { calls++; throw Object.assign(new Error('unique'), { code: '23505' }); }).catch((e) => e);
+    assert.equal([other.code, calls].join(), '23505,1', name + ' does not retry other errors');
+  }
+  // A failed attempt leaves nothing behind: the retried callback sees none of the first attempt's writes.
+  let attempt = 0;
+  const seen = await withTenant(db, ctxOf(a), async (tx) => {
+    attempt++;
+    const before = (await tx.query("SELECT count(*)::int AS n FROM contacts WHERE name = 'Retry Probe'")).rows[0].n;
+    await tx.query("INSERT INTO contacts (org_id, workspace_id, name) VALUES ($1, $2, 'Retry Probe')", [a.org, a.ws]);
+    if (attempt === 1) throw Object.assign(new Error('deadlock'), { code: '40P01' });
+    return before;
+  });
+  assert.equal(seen, 0, 'the first attempt was rolled back');
+  assert.equal((await one(db, "SELECT count(*)::int AS n FROM contacts WHERE name = 'Retry Probe'")).n, 1);
 });

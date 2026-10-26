@@ -13,6 +13,21 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // Roles request code may run as. SET ROLE can't take a bind parameter, so the name must come from here.
 export const SERVICE_ROLES = Object.freeze(['app_rw', 'gate_svc', 'sender_svc']);
 
+// A deadlock (40P01) or serialization failure (40001) aborts the whole transaction and nothing else: the database has already rolled
+// it back, so running the callback again from BEGIN is safe as long as the callback only touches the database (every route and worker
+// pass here does; a provider call is made outside these wrappers). Without this an opt-out that lost a lock race was simply lost (ADV N-1).
+const RETRYABLE = new Set(['40P01', '40001']);
+export const MAX_TX_ATTEMPTS = 3;
+async function retrying(run) {
+  for (let n = 1; ; n++) {
+    try { return await run(); }
+    catch (err) {
+      if (n >= MAX_TX_ATTEMPTS || !RETRYABLE.has(err?.code)) throw err;
+      await new Promise((r) => setTimeout(r, 15 * n + Math.floor(Math.random() * 25)));
+    }
+  }
+}
+
 export class TenantAccessError extends Error {
   constructor(reason) {
     super(`tenant access refused: ${reason}`);
@@ -37,6 +52,7 @@ export async function withTenant(client, { userId, orgId, workspaceId, role = 'a
   assertUuid(workspaceId, 'workspaceId');
   if (!SERVICE_ROLES.includes(role)) throw new TenantAccessError(`role ${JSON.stringify(role)} is not a service role`);
 
+  return retrying(async () => {
   await client.query('BEGIN');
   try {
     await client.query(`SET LOCAL ROLE ${role}`);
@@ -65,6 +81,7 @@ export async function withTenant(client, { userId, orgId, workspaceId, role = 'a
     await client.query('ROLLBACK');
     throw err;
   }
+  });
 }
 
 // Worker modules (gate, sender, sequencer) act for a tenant without a signed-in user. Same
@@ -76,6 +93,7 @@ export async function withService(client, { orgId, workspaceId, role }, fn) {
   assertUuid(orgId, 'orgId');
   assertUuid(workspaceId, 'workspaceId');
   if (!WORKER_ROLES.includes(role)) throw new TenantAccessError(`role ${JSON.stringify(role)} is not a worker role`);
+  return retrying(async () => {
   await client.query('BEGIN');
   try {
     await client.query(`SET LOCAL ROLE ${role}`);
@@ -88,6 +106,7 @@ export async function withService(client, { orgId, workspaceId, role }, fn) {
     await client.query('ROLLBACK');
     throw err;
   }
+  });
 }
 
 // Before a tenant is known: first sign-in (ensure_user), "which orgs am I in" (my_memberships), sign-up
@@ -97,6 +116,7 @@ export async function withService(client, { orgId, workspaceId, role }, fn) {
 export async function withoutTenant(client, { role = 'app_rw', userId = null } = {}, fn) {
   if (!SERVICE_ROLES.includes(role) && !WORKER_ROLES.includes(role)) throw new TenantAccessError(`role ${JSON.stringify(role)} is not a service role`);
   if (userId !== null) assertUuid(userId, 'userId');
+  return retrying(async () => {
   await client.query('BEGIN');
   try {
     await client.query(`SET LOCAL ROLE ${role}`);
@@ -109,4 +129,5 @@ export async function withoutTenant(client, { role = 'app_rw', userId = null } =
     await client.query('ROLLBACK');
     throw err;
   }
+  });
 }
