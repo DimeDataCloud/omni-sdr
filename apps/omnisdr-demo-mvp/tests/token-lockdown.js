@@ -95,7 +95,7 @@ const secsFromNow = (iso) => (Date.parse(iso) - Date.now()) / 1000;
     await dev('/api/dev/kill', { on: false });
 
     // 6 secrets never show up anywhere visible
-    const page = await (await fetch(BASE + '/')).text(); const st = JSON.stringify(await stats());
+    const page = await (await fetch(BASE + '/tryme')).text(); const st = JSON.stringify(await stats());
     ok('key not in page or stats', !page.includes(FAKE_KEY) && !st.includes(FAKE_KEY));
     ok('token not in stats', !st.includes('auth_tokens/mock-'));
 
@@ -108,7 +108,7 @@ const secsFromNow = (iso) => (Date.parse(iso) - Date.now()) / 1000;
     ok('ceiling reached and refused', !!refused, refused ? JSON.stringify(refused) : 'never refused');
     ok('upstream calls stop exactly at the ceiling', hits === CEIL, hits + ' of ' + CEIL);
     const sc = await stats();
-    ok('/dev shows the ceiling and usage', sc.testMints && sc.testMints.ceiling === CEIL && sc.testMints.used === CEIL, JSON.stringify(sc.testMints));
+    ok('/tryme/dev shows the ceiling and usage', sc.testMints && sc.testMints.ceiling === CEIL && sc.testMints.used === CEIL, JSON.stringify(sc.testMints));
     await dev('/api/dev/reset-today');
     const s7 = await startSession(); const hb2 = hits; const after = await post('/api/token', { sid: s7 });
     ok('reset-today does NOT clear the ceiling', after.status !== 200 && hits === hb2, 'status ' + after.status);

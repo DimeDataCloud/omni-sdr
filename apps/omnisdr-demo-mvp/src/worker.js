@@ -204,8 +204,9 @@ export default {
   async fetch(req, env) {
     try {
       const u = new URL(req.url), p = u.pathname, m = req.method;
-      if (m === 'GET' && p === '/') return page(demoHtml, env);
-      if (m === 'GET' && p === '/dev') return page(devHtml, env);
+      if (m === 'GET' && p === '/tryme') return page(demoHtml, env);
+      if (m === 'GET' && p === '/tryme/dev') return page(devHtml, env);
+      if (m === 'GET' && (p === '/' || p === '/dev')) return new Response(null, { status: 302, headers: { location: '/tryme' + (p === '/dev' ? '/dev' : '') + u.search, 'cache-control': 'no-store', 'x-robots-tag': 'noindex' } });
       if (m === 'GET' && p === '/healthz') return json({ ok: true });
       if (m === 'GET' && p === '/robots.txt') return new Response('User-agent: *\nDisallow: /\n', { headers: { 'content-type': 'text/plain' } });
       if (m === 'GET' && p === '/api/dev/me') return json({ ok: true, authed: await devAuthed(req, env) });

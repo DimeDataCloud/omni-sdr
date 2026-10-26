@@ -8,10 +8,10 @@ const agentText = async (page) => (await page.$$eval('.bubble.a', n => n.map(x =
 (async () => {
   const b = await chromium.launch();
   const mk = async (opts = {}) => { const c = await b.newContext(opts); const p = await c.newPage(); const errs = []; p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); }); p.on('pageerror', e => errs.push(String(e))); p._errs = errs; return p; };
-  const startCall = async (p) => { await p.goto(BASE + '/'); await p.click('#start'); await p.waitForSelector('#live:not([hidden])'); };
+  const startCall = async (p) => { await p.goto(BASE + '/tryme'); await p.click('#start'); await p.waitForSelector('#live:not([hidden])'); };
 
   // 1 happy path
-  let p = await mk(); await p.goto(BASE + '/');
+  let p = await mk(); await p.goto(BASE + '/tryme');
   ok('demo page loads with title', (await p.title()).includes('Demo'));
   await p.click('#start'); await p.waitForSelector('#live:not([hidden])');
   let t = await agentText(p);
@@ -77,7 +77,7 @@ const agentText = async (page) => (await page.$$eval('.bubble.a', n => n.map(x =
   ok('out-of-area zip not booked', /outside our service area/.test(t) && /Out of area/.test(await p.textContent('#flags')) && /Not booked/.test(await p.textContent('#booked')));
 
   // 5 CHASE tab
-  p = await mk(); await p.goto(BASE + '/'); await p.click('#t2'); await p.click('#lf button[type=submit]');
+  p = await mk(); await p.goto(BASE + '/tryme'); await p.click('#t2'); await p.click('#lf button[type=submit]');
   await p.waitForTimeout(1800);
   ok('first text arrives in seconds, says automated and STOP', /Reply STOP/.test(await p.textContent('#thread')) && /Automated/.test(await p.textContent('#thread')));
   await p.click('[data-a=stop]'); await p.waitForTimeout(11000);
@@ -86,12 +86,12 @@ const agentText = async (page) => (await page.$$eval('.bubble.a', n => n.map(x =
   ok('chase labeled simulated', /Simulated, not sent/.test(await p.textContent('#p2')));
 
   // 6 mobile + dark
-  const m = await mk({ viewport: { width: 375, height: 800 }, colorScheme: 'dark' }); await m.goto(BASE + '/');
+  const m = await mk({ viewport: { width: 375, height: 800 }, colorScheme: 'dark' }); await m.goto(BASE + '/tryme');
   const sw = await m.evaluate(() => document.documentElement.scrollWidth); ok('no horizontal scroll at 375px', sw <= 376, 'scrollWidth=' + sw);
   await m.screenshot({ path: 'tests/shot-demo-mobile-dark.png', fullPage: true });
 
   // 7 dev portal
-  p = await mk(); await p.goto(BASE + '/dev');
+  p = await mk(); await p.goto(BASE + '/tryme/dev');
   ok('dev portal shows login first', await p.isVisible('#gate') && !await p.isVisible('#app'));
   await p.fill('#pc', 'wrong'); await p.click('#lf button'); await p.waitForTimeout(400);
   ok('wrong passcode rejected', await p.isVisible('#le'));
@@ -103,7 +103,7 @@ const agentText = async (page) => (await page.$$eval('.bubble.a', n => n.map(x =
   ok('dev shows Durable Object storage', /Durable Object/.test(await p.textContent('#store')));
   await p.click('#kill'); await p.waitForTimeout(500);
   ok('kill switch shows paused', /paused/.test(await p.textContent('#killState')));
-  const d = await mk(); await d.goto(BASE + '/'); await d.click('#start'); await d.waitForTimeout(600);
+  const d = await mk(); await d.goto(BASE + '/tryme'); await d.click('#start'); await d.waitForTimeout(600);
   ok('demo refuses new sessions while paused', await d.isVisible('#startErr') && /paused/.test(await d.textContent('#startErr')));
   await p.click('#kill'); await p.waitForTimeout(500);
   ok('resume works', /live/.test(await p.textContent('#killState')));
