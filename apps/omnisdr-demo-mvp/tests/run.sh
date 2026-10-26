@@ -12,4 +12,8 @@ bash tests/stop.sh
 # Fail-closed check: site key set, secret deliberately absent -> session start must refuse.
 bash tests/start.sh --var DEV_PASSCODE:test-passcode --var TURNSTILE_SITEKEY:1x00000000000000000000AA && node tests/turnstile-failclosed.js || rc=1
 bash tests/stop.sh
+# Token lock-down (offline): ENGINE_B=1 with a FAKE key against the mock Google the suite starts on 127.0.0.1:$MOCK_PORT. Never reaches Google.
+export MOCK_PORT="${MOCK_PORT:-8802}"; export ENGINE_B_TEST_MINTS=12; export FAKE_KEY=test-key-NOT-REAL
+bash tests/start.sh --var ENGINE_B:1 --var GEMINI_API_KEY:$FAKE_KEY --var GEMINI_BASE:http://127.0.0.1:$MOCK_PORT --var SESSION_SECONDS:3 --var ENGINE_B_TEST_MINTS:$ENGINE_B_TEST_MINTS --var IP_CAP:5000 --var DAILY_CAP:5000 --var DEV_PASSCODE:test-passcode --var TURNSTILE_SITEKEY: && node tests/token-lockdown.js || rc=1
+bash tests/stop.sh
 exit $rc
