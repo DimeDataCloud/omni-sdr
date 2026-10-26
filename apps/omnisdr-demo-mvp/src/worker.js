@@ -2,7 +2,7 @@ import demoHtml from './demo.html';
 import devHtml from './dev.html';
 import CSS from './base.css';
 import LOGO from './logo.txt';
-import salesLoginHtml from './sales-login.html';
+import entryHtml from './entry.html';
 import salesDeckHtml from './sales-deck.html';
 import SLIDES from './sales-slides.js';
 import { TENANTS, DEFAULT_TENANT } from './tenant.js';
@@ -154,6 +154,13 @@ async function salesLogin(req, env, b) {
   return json({ ok: true }, 200, { 'set-cookie': 'sales=' + id + '; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=28800' });
 }
 
+const triedGated = (env) => !['off', '0', 'false', 'no'].includes(String(env.TRYME_GATED ?? '').trim().toLowerCase());
+const toEntry = () => new Response(null, { status: 302, headers: { location: '/', 'cache-control': 'no-store', 'x-robots-tag': 'noindex' } });
+const LOGIN_PANEL = '<div class="card"><h1>Hello</h1><p class="sub u-mb12">Enter the passcode to come in.</p><form id="lf"><label for="pc">Passcode</label><input id="pc" type="password" autocomplete="current-password" required><div id="le" class="err u-mt12" role="alert" hidden></div><button class="btn u-full-mt18" type="submit">Open</button></form></div>';
+const PORTAL_PANEL = '<div class="card"><h1>Where to?</h1><div class="choices"><a class="choice" href="/tryme"><b>Try me</b><span>Run the live demo.</span></a><a class="choice" href="/sales"><b>Sales</b><span>Open the sales deck.</span></a></div><div class="out-row"><button class="btn ghost" id="so" type="button">Sign out</button></div></div>';
+// The gate decision is made here, on the server. The animation and skip are cosmetic; the portal links are only sent with a valid session.
+function entryPage(authed, env) { return page(entryHtml.replace('__MODE__', authed ? 'portal' : 'login').replace('__PANEL__', () => (authed ? PORTAL_PANEL : LOGIN_PANEL)), env); }
+
 /* ---------- handlers ---------- */
 const publicTenant = (id) => { const t = TENANTS[id]; return { id: t.id, business: t.business, owner: t.owner, persona: t.persona, niche: t.niche, hours: t.hours, serviceZips: t.serviceZips, services: t.services, outOfScope: t.outOfScope, estimate: t.estimate, slots: t.slots, hot: t.hot, license: t.license }; };
 const pickTenant = (id) => (typeof id === 'string' && Object.hasOwn(TENANTS, id)) ? id : DEFAULT_TENANT;
@@ -236,10 +243,11 @@ export default {
   async fetch(req, env) {
     try {
       const u = new URL(req.url), p = u.pathname, m = req.method;
-      if (m === 'GET' && p === '/tryme') return page(demoHtml, env);
+      if (m === 'GET' && p === '/tryme') return (!triedGated(env) || (await salesAuthed(req, env))) ? page(demoHtml, env) : toEntry();
       if (m === 'GET' && p === '/tryme/dev') return page(devHtml, env);
-      if (m === 'GET' && (p === '/' || p === '/dev')) return new Response(null, { status: 302, headers: { location: '/tryme' + (p === '/dev' ? '/dev' : '') + u.search, 'cache-control': 'no-store', 'x-robots-tag': 'noindex' } });
-      if (m === 'GET' && p === '/sales') return (await salesAuthed(req, env)) ? deckPage(env) : page(salesLoginHtml, env);
+      if (m === 'GET' && p === '/dev') return new Response(null, { status: 302, headers: { location: '/tryme/dev' + u.search, 'cache-control': 'no-store', 'x-robots-tag': 'noindex' } });
+      if (m === 'GET' && p === '/') return entryPage(await salesAuthed(req, env), env);
+      if (m === 'GET' && p === '/sales') return (await salesAuthed(req, env)) ? deckPage(env) : toEntry();
       if (m === 'GET' && p === '/healthz') return json({ ok: true });
       if (m === 'GET' && p === '/robots.txt') return new Response('User-agent: *\nDisallow: /\n', { headers: { 'content-type': 'text/plain' } });
       if (m === 'GET' && p === '/api/dev/me') return json({ ok: true, authed: await devAuthed(req, env) });

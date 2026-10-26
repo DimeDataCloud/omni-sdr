@@ -67,7 +67,7 @@ const post = (u, b, h = {}) => fetch(BASE + u, { method: 'POST', headers: { ...J
   ok('unauthenticated /api/dev/me is 200 with authed:false', (await (await fetch(BASE + '/api/dev/me')).json()).authed === false);
   // route move: demo at /tryme, dev portal at /tryme/dev, old paths redirect (302, query kept), /api/* untouched
   const nf = (u) => fetch(BASE + u, { redirect: 'manual' });
-  for (const [from, to] of [['/', '/tryme'], ['/dev', '/tryme/dev'], ['/?a=1&b=2', '/tryme?a=1&b=2'], ['/dev?x=y', '/tryme/dev?x=y']]) { const r = await nf(from); ok('redirect ' + from, r.status === 302 && r.headers.get('location') === to, r.status + ' ' + r.headers.get('location')); }
+  for (const [from, to] of [['/dev', '/tryme/dev'], ['/dev?x=y&z=1', '/tryme/dev?x=y&z=1']]) { const r = await nf(from); ok('redirect ' + from, r.status === 302 && r.headers.get('location') === to, r.status + ' ' + r.headers.get('location')); }
   const t1 = await nf('/tryme'); ok('/tryme serves the demo', t1.status === 200 && /id="start"/.test(await t1.text()));
   const t2 = await nf('/tryme/dev'); ok('/tryme/dev serves the dev portal', t2.status === 200 && /id="pc"/.test(await t2.text()));
   ok('/tryme/ and /tryme/x are not pages', (await nf('/tryme/x')).status === 404);

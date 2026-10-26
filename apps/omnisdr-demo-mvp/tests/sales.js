@@ -9,11 +9,16 @@ const post = (u, b, h = {}) => fetch(BASE + u, { method: 'POST', headers: { ...J
 const get = (u, h = {}) => fetch(BASE + u, { redirect: 'manual', headers: h });
 (async () => {
   // 1 unauthenticated: login page only, no deck content
-  const a = await get('/sales'); const at = await a.text();
-  ok('GET /sales without a session is 200 login page', a.status === 200 && /id="lf"/.test(at));
-  ok('login page carries no deck markup or slide data', !/id="sd"|id="slide"|Slide copy pending|Speaker notes/.test(at));
-  ok('login page is noindex', /noindex/.test(a.headers.get('x-robots-tag') || '') && /name="robots"/.test(at));
-  ok('login page never contains the passcode', !at.includes(PASS));
+  const a = await get('/'); const at = await a.text();
+  ok('GET / without a session is the entry page with the prompt', a.status === 200 && /id="lf"/.test(at) && /data-mode="login"/.test(at));
+  ok('entry page carries no portal links, deck markup or slide data', !/href="\/tryme"|href="\/sales"|id="sd"|id="slide"|Slide copy pending|Speaker notes/.test(at));
+  ok('entry page is noindex', /noindex/.test(a.headers.get('x-robots-tag') || '') && /name="robots"/.test(at));
+  ok('entry page never contains the passcode', !at.includes(PASS));
+  ok('entry page honours reduced motion and has skip handlers', /prefers-reduced-motion:reduce/.test(at) && /keydown/.test(at) && /pointerdown/.test(at));
+  ok('entry page has no external assets', !/(src|href)="https?:/.test(at) && !/<link /.test(at));
+  const sr = await get('/sales'); ok('GET /sales without a session redirects to /', sr.status === 302 && sr.headers.get('location') === '/');
+  const tr = await get('/tryme'); ok('GET /tryme without a session redirects to /', tr.status === 302 && tr.headers.get('location') === '/');
+  const td = await get('/tryme/dev'); ok('/tryme/dev keeps its own login (not session gated)', td.status === 200 && /id="pc"/.test(await td.text()));
   // 2 wrong passcodes: same status and body for any input, input never echoed
   const ip1 = { 'cf-connecting-ip': '31.1.1.1' };
   const w = [];
@@ -41,18 +46,22 @@ const get = (u, h = {}) => fetch(BASE + u, { redirect: 'manual', headers: h });
   const sc = lg.headers.get('set-cookie') || ''; const ck = sc.split(';')[0];
   ok('correct passcode returns 200', lg.status === 200);
   ok('cookie is HttpOnly, Secure, SameSite=Strict, 8h', /HttpOnly/.test(sc) && /Secure/.test(sc) && /SameSite=Strict/.test(sc) && /Max-Age=28800/.test(sc), sc.replace(/=[a-f0-9]{64}/, '=<id>'));
+  const pr = await (await get('/', { cookie: ck })).text();
+  ok('with the cookie / shows the portal chooser', /data-mode="portal"/.test(pr) && /href="\/tryme"/.test(pr) && /href="\/sales"/.test(pr) && !/id="lf"/.test(pr));
+  ok('with the cookie /tryme serves the demo', /id="start"/.test(await (await get('/tryme', { cookie: ck })).text()));
   const d = await get('/sales', { cookie: ck }); const dt = await d.text();
   ok('with the cookie /sales serves the deck', d.status === 200 && /id="slide"/.test(dt) && /id="sd"/.test(dt));
   ok('deck is noindex and no-store', /noindex/.test(d.headers.get('x-robots-tag') || '') && d.headers.get('cache-control') === 'no-store');
   ok('deck html does not contain the passcode', !dt.includes(PASS));
   ok('deck has no em dashes', !dt.includes('\u2014'));
-  for (const c of ['sales=' + 'a'.repeat(64), 'xsales=' + ck.split('=')[1], 'sales=short', 'dev=' + ck.split('=')[1]]) { const f = await (await get('/sales', { cookie: c })).text(); ok('forged cookie shows login only: ' + c.slice(0, 10), /id="lf"/.test(f) && !/id="sd"/.test(f)); }
+  for (const c of ['sales=' + 'a'.repeat(64), 'xsales=' + ck.split('=')[1], 'sales=short', 'dev=' + ck.split('=')[1]]) { const f = await get('/sales', { cookie: c }); const e = await (await get('/', { cookie: c })).text(); ok('forged cookie gets nothing: ' + c.slice(0, 10), f.status === 302 && (await get('/tryme', { cookie: c })).status === 302 && /id="lf"/.test(e)); }
   ok('cross-site login refused', (await post('/api/sales/login', { passcode: PASS }, { origin: 'https://evil.example', 'cf-connecting-ip': '31.6.6.6' })).status === 403);
   ok('non-JSON login refused', (await fetch(BASE + '/api/sales/login', { method: 'POST', headers: { 'content-type': 'text/plain' }, body: PASS })).status === 415);
   // 7 logout revokes server-side
   await post('/api/sales/logout', {}, { cookie: ck });
-  ok('logout revokes the session', /id="lf"/.test(await (await get('/sales', { cookie: ck })).text()));
-  // 8 public pages unaffected
+  ok('logout revokes the session', (await get('/sales', { cookie: ck })).status === 302 && (await get('/tryme', { cookie: ck })).status === 302);
+  // 8 flag: TRYME_GATED=off is checked in tests/tryme-open.js on its own instance
+  // 9 public pages unaffected
   ok('/robots.txt and /healthz still open', (await get('/robots.txt')).status === 200 && (await get('/healthz')).status === 200);
   let f = 0; for (const [s, n, dd] of R) { if (s === 'FAIL') f++; console.log(s, n, dd ? '- ' + dd : ''); }
   console.log(`\n${R.length - f}/${R.length} passed`); process.exit(f ? 1 : 0);
