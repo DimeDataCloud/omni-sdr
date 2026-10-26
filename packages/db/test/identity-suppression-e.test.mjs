@@ -130,3 +130,29 @@ test('23: send_guard refuses a profile-only-suppressed person; red when the guar
   await db.query(`DROP POLICY identity_all ON contact_identities`);
   assert.match((await refused(mk(db, t, t.ws, { name: 'Pia Page', slug: 'in/pia-page' }))) ?? '', /row-level security/);
 });
+
+test('28: a same-name import carrying a made-up profile is held; one sharing the opted-out profile is suppressed by identity', async () => {
+  const db = await freshDb();
+  const t = await seedTenant(db, 'alpha');
+  const a = await mk(db, t, t.ws, { name: 'Rhea Rowe', slug: 'in/rhea-rowe' });
+  await optOut(db, t, a);
+  const made = await mk(db, t, t.ws, { name: 'Rhea Rowe', email: 'r1@x.test', slug: 'in/someone-invented' });
+  assert.equal(await suppressed(db, made), true);
+  assert.match((await one(db, `SELECT hold_reason FROM contacts WHERE id = $1`, [made])).hold_reason, /^name_match:seed:/);
+  const same = await mk(db, t, t.ws, { name: 'Other Name', email: 'r2@x.test', slug: 'in/rhea-rowe' });
+  assert.equal(await suppressed(db, same), true);
+  assert.equal((await one(db, `SELECT hold_reason FROM contacts WHERE id = $1`, [same])).hold_reason, null, 'identity, not a hold');
+});
+
+test('57: an upsert that sets the name of an opted-out contact is refused; a contact that is not opted out renames normally', async () => {
+  const db = await freshDb();
+  const t = await seedTenant(db, 'alpha');
+  const a = await mk(db, t, t.ws, { name: 'Sol Sage', slug: 'in/sol-sage', email: 'sol@x.test' });
+  const b = await mk(db, t, t.ws, { name: 'Tess Tide', email: 'tess@x.test' });
+  await optOut(db, t, a);
+  const upsert = (email, name) => as(db, 'app_rw', ctxOf(t), () => db.query(
+    `INSERT INTO contacts (org_id, workspace_id, name, email) VALUES ($1, $2, $3, $4) ON CONFLICT (workspace_id, email) DO UPDATE SET name = EXCLUDED.name`, [t.org, t.ws, name, email]));
+  assert.match((await refused(upsert('sol@x.test', 'Solomon Sage'))) ?? '', /opted out/);
+  await upsert('tess@x.test', 'Theresa Tide');
+  assert.equal((await one(db, `SELECT name FROM contacts WHERE id = $1`, [b])).name, 'Theresa Tide');
+});

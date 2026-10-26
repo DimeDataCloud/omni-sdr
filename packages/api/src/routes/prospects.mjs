@@ -6,6 +6,7 @@ import { T, camel, audit } from './index.mjs';
 import { v, parse } from '../validate.mjs';
 import { notFound, HttpError } from '../errors.mjs';
 import { freeEmailChecks } from '../services/catalog.mjs';
+import { normalizeLinkedIn } from '../services/inbox.mjs';
 import { gateDraft } from '../../../gate/src/apply.mjs';
 import { enrichContact, websiteFor } from '../../../enrich/src/enrich.mjs';
 import { safeFetch } from '../../../enrich/src/fetch.mjs';
@@ -19,6 +20,8 @@ const CONTACT = {
   phone: v.optional(v.nullable(v.string({ max: 40, pattern: /^\+?[0-9 ().-]{7,40}$/ }))),
   company: v.optional(v.nullable(v.string({ max: 200 }))),
   title: v.optional(v.nullable(v.string({ max: 200 }))),
+  // A person's own profile. Company pages are not people and are refused; the database stores the canonical slug.
+  linkedinUrl: v.optional(v.nullable(v.string({ max: 300 }))),
 };
 
 export function registerProspects(r) {
@@ -43,13 +46,18 @@ export function registerProspects(r) {
       const skipped = [];
       for (const [i, c] of b.contacts.entries()) {
         const check = c.email ? freeEmailChecks(c.email) : null;
+        const profile = c.linkedinUrl ? normalizeLinkedIn(c.linkedinUrl) : null;
+        if (c.linkedinUrl && !profile?.startsWith('in/')) throw new HttpError(400, 'bad_request', 'use a linkedin.com/in/… link to a person', { field: `contacts.${i}.linkedinUrl` });
         const row = (await tx.query(
-          `INSERT INTO contacts (org_id, workspace_id, name, email, email_status, phone, company, title)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (workspace_id, email) DO NOTHING RETURNING id, email_status`,
+          `INSERT INTO contacts (org_id, workspace_id, name, email, email_status, phone, company, title, linkedin_slug)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (workspace_id, email) DO NOTHING RETURNING id, email_status`,
           [m.orgId, m.workspaceId, c.name ?? null, check?.email ?? null, check?.status ?? 'unknown', c.phone ?? null,
-            c.company ?? null, c.title ?? null])).rows[0];
-        if (row) created.push({ index: i, id: row.id, emailStatus: row.email_status, role: check?.role ?? false, reason: check?.reason ?? null });
-        else skipped.push({ index: i, reason: 'email already in this workspace' });
+            c.company ?? null, c.title ?? null, profile])).rows[0];
+        // A row that matches an opted-out person is saved but never sent to; the caller is told so and the rest of the batch goes on.
+        if (row) {
+          const held = (await tx.query(`SELECT person_suppressed($1) AS held`, [row.id])).rows[0].held;
+          created.push({ index: i, id: row.id, emailStatus: row.email_status, role: check?.role ?? false, reason: check?.reason ?? null, held });
+        } else skipped.push({ index: i, reason: 'email already in this workspace' });
       }
       await audit(tx, m, 'import', 'contacts', `${created.length}`);
       return { status: 201, body: { created, skipped } };
