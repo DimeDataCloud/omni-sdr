@@ -39,28 +39,49 @@ export function registerProspects(r) {
   });
 
   // One or many (CSV rows mapped by the client). Duplicates by email are skipped, not overwritten.
+  // A row that is, or turns out to be, an opted-out person is REFUSED: it is not stored (each row runs in a savepoint that is
+  // rolled back) and comes back under `held`, while the rest of the batch goes on. A held row is never left in a sendable state.
+  // A duplicate skipped by address still keeps its profile link as an identity of the existing contact: the import is the
+  // evidence that links it to the person who opted out by profile.
   r.post(`${T}/contacts`, (ctx) => {
     const b = parse(v.object({ contacts: v.array(v.object(CONTACT), { min: 1, max: 500 }) }), ctx.body);
     return ctx.tenant(async (tx, m) => {
       const created = [];
       const skipped = [];
+      const held = [];
       for (const [i, c] of b.contacts.entries()) {
         const check = c.email ? freeEmailChecks(c.email) : null;
         const profile = c.linkedinUrl ? normalizeLinkedIn(c.linkedinUrl) : null;
         if (c.linkedinUrl && !profile?.startsWith('in/')) throw new HttpError(400, 'bad_request', 'use a linkedin.com/in/… link to a person', { field: `contacts.${i}.linkedinUrl` });
+        await tx.query('SAVEPOINT import_row');
         const row = (await tx.query(
           `INSERT INTO contacts (org_id, workspace_id, name, email, email_status, phone, company, title, linkedin_slug)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (workspace_id, email) DO NOTHING RETURNING id, email_status`,
           [m.orgId, m.workspaceId, c.name ?? null, check?.email ?? null, check?.status ?? 'unknown', c.phone ?? null,
             c.company ?? null, c.title ?? null, profile])).rows[0];
-        // A row that matches an opted-out person is saved but never sent to; the caller is told so and the rest of the batch goes on.
         if (row) {
-          const held = (await tx.query(`SELECT person_suppressed($1) AS held`, [row.id])).rows[0].held;
-          created.push({ index: i, id: row.id, emailStatus: row.email_status, role: check?.role ?? false, reason: check?.reason ?? null, held });
-        } else skipped.push({ index: i, reason: 'email already in this workspace' });
+          // person_suppressed is STABLE, so it cannot see the row inserted by the statement that calls it: ask in a new statement.
+          if ((await tx.query(`SELECT person_suppressed($1) AS held`, [row.id])).rows[0].held) {
+            await tx.query('ROLLBACK TO SAVEPOINT import_row');
+            held.push({ index: i, reason: 'matches an opted-out person' });
+          } else created.push({ index: i, id: row.id, emailStatus: row.email_status, role: check?.role ?? false, reason: check?.reason ?? null });
+        } else {
+          skipped.push({ index: i, reason: 'email already in this workspace' });
+          if (profile && check?.email) {
+            const existing = (await tx.query(`SELECT id FROM contacts WHERE workspace_id = $1 AND email = $2`, [m.workspaceId, check.email])).rows[0];
+            if (existing) {
+              // A slug the identity table refuses must not sink the batch: the row stays skipped, unlinked.
+              await tx.query('SAVEPOINT import_link');
+              try { await tx.query(`SELECT record_identity($1, $2, 'import')`, [existing.id, profile]); await tx.query('RELEASE SAVEPOINT import_link'); }
+              catch { await tx.query('ROLLBACK TO SAVEPOINT import_link'); }
+              if ((await tx.query(`SELECT person_suppressed($1) AS held`, [existing.id])).rows[0].held) held.push({ index: i, reason: 'existing contact matches an opted-out person' });
+            }
+          }
+        }
+        await tx.query('RELEASE SAVEPOINT import_row');
       }
       await audit(tx, m, 'import', 'contacts', `${created.length}`);
-      return { status: 201, body: { created, skipped } };
+      return { status: 201, body: { created, skipped, held } };
     }, { action: 'build' });
   });
 

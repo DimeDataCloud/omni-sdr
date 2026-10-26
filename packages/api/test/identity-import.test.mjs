@@ -19,7 +19,7 @@ test('import: a profile link is stored canonical; company pages and bad links ar
   }
 });
 
-test('import: a row that matches an opted-out person is saved but reported held; the rest of the batch is unaffected', async () => {
+test('import: a row that matches an opted-out person is refused, not stored, and reported under held; the rest of the batch goes on', async () => {
   const ws = api.demo.workspaces[0];
   const [a] = await api.q(`INSERT INTO contacts (org_id, workspace_id, name, linkedin_slug) VALUES ($1, $2, 'Wen Xu', 'in/wen-xu') RETURNING id`, [api.demo.org, ws]);
   await api.q(`SELECT _suppress_person($1, $2, 'manual', true)`, [a.id, api.demo.org]);
@@ -30,5 +30,21 @@ test('import: a row that matches an opted-out person is saved but reported held;
     { name: 'Wen Xu', email: 'wen3@imp.example', linkedinUrl: 'https://linkedin.com/in/made-up-link' },  // made-up link, same name
   ]);
   assert.equal(r.status, 201, JSON.stringify(r.body));
-  assert.deepEqual(r.body.created.map((c) => c.held), [false, true, true, true]);
+  assert.deepEqual(r.body.created.map((c) => c.index), [0]);
+  assert.deepEqual(r.body.held.map((h) => h.index), [1, 2, 3]);
+  const stored = await api.q(`SELECT email FROM contacts WHERE email LIKE '%@imp.example' AND email IN ('fine@imp.example','wen@imp.example','wen2@imp.example','wen3@imp.example') ORDER BY email`);
+  assert.deepEqual(stored.map((x) => x.email), ['fine@imp.example'], 'a held row is never stored, sendable or not');
+});
+
+test('import: a duplicate address that carries the opted-out profile keeps the link and is suppressed (ADV P2-2)', async () => {
+  const ws = api.demo.workspaces[0];
+  const [p] = await api.q(`INSERT INTO contacts (org_id, workspace_id, name, linkedin_slug) VALUES ($1, $2, 'Zed Moon', 'in/zed-moon') RETURNING id`, [api.demo.org, ws]);
+  await api.q(`SELECT _suppress_person($1, $2, 'manual', true)`, [p.id, api.demo.org]);
+  const [e] = await api.q(`INSERT INTO contacts (org_id, workspace_id, name, email, email_status) VALUES ($1, $2, 'Z M', 'zed@imp.example', 'unknown') RETURNING id`, [api.demo.org, ws]);
+  assert.equal((await api.q(`SELECT person_suppressed($1) AS s`, [e.id]))[0].s, false, 'unlinked before the import');
+  const r = await imp([{ name: 'Z M', email: 'zed@imp.example', linkedinUrl: 'https://www.linkedin.com/in/zed-moon' }]);
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.deepEqual(r.body.skipped.map((x) => x.index), [0]);
+  assert.deepEqual(r.body.held.map((x) => x.index), [0]);
+  assert.equal((await api.q(`SELECT person_suppressed($1) AS s`, [e.id]))[0].s, true, 'the profile link joined it to the person');
 });
