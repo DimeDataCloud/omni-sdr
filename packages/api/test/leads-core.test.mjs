@@ -1,10 +1,12 @@
 // S2L-1: the speed-to-lead core, driven by the fake adapter. Records and measures only; nothing is sent.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { migrate } from '../../db/src/migrate.mjs';
 import { seedDemo } from '../src/seed-demo.mjs';
-import { ingestLead, markFirstTouch, ttftBySource, normalizeLead, LeadError, SOURCES } from '../src/leads/core.mjs';
+import { ingestLead, markFirstTouch, ttftBySource, normalizeLead, LeadError, SOURCES, payloadIdentityProblem, externalIdIdentityProblem } from '../src/leads/core.mjs';
 import { fakeAdapter, event } from './fake-lead-adapter.mjs';
 
 async function setup() {
@@ -12,7 +14,11 @@ async function setup() {
   await migrate(db);
   const demo = await seedDemo(db);
   const ctx = { orgId: demo.org, workspaceId: demo.workspaces[0] };
-  await db.query('DELETE FROM lead_events');   // the demo may seed none; start from empty either way
+  // The demo may seed none; start from empty either way. lead_events refuses DELETE (0023), so this test-only reset switches
+  // that one trigger off for the statement, as a superuser can, and back on.
+  await db.exec('ALTER TABLE lead_events DISABLE TRIGGER lead_events_no_delete');
+  await db.query('DELETE FROM lead_events');
+  await db.exec('ALTER TABLE lead_events ENABLE TRIGGER lead_events_no_delete');
   return { db, demo, ctx, userId: demo.users['maya@example.com'] };
 }
 const rows = async (db, sql, p) => (await db.query(sql, p)).rows;
@@ -57,7 +63,7 @@ test('refusal cases: no consent basis, no address, and an opted-out person block
 test('first touch is write-once, and agent, human and system are the only touchers', async () => {
   const { db, ctx } = await setup();
   const lead = await ingestLead(db, ctx, fakeAdapter(), event('t-1'));
-  assert.equal(await markFirstTouch(db, ctx, lead.leadEventId, { channel: 'sms', by: 'system' }), 'recorded');
+  assert.equal(await markFirstTouch(db, ctx, lead.leadEventId, { channel: 'email', by: 'system' }), 'recorded');
   assert.equal(await markFirstTouch(db, ctx, lead.leadEventId, { channel: 'email', by: 'human' }), 'already_touched');
   assert.equal((await rows(db, `SELECT first_touch_by AS b FROM lead_events`))[0].b, 'system');
   await assert.rejects(markFirstTouch(db, ctx, lead.leadEventId, { channel: 'email', by: 'robot' }), LeadError);
@@ -87,13 +93,41 @@ test('normalizer: identity in the payload, an email as the external id, a missin
 test('time to first touch end to end through the core', async () => {
   const { db, ctx, userId } = await setup();
   const a = fakeAdapter();
-  const t0 = new Date(Date.now() - 3600000);
-  const at = (m) => new Date(t0.getTime() + m * 60000);
-  for (const [id, touchMin] of [['m-1', 1], ['m-2', 3], ['m-3', 9]]) {
-    const lead = await ingestLead(db, ctx, a, event(id, { at: t0, contact: { email: `${id}@example.test` } }));
-    await markFirstTouch(db, ctx, lead.leadEventId, { channel: 'email', by: 'agent', at: at(touchMin) });
+  // The database stamps the touch with its own clock, so the leads arrive 1, 3 and 9 minutes ago and are touched now.
+  const ago = (m) => new Date(Date.now() - m * 60000);
+  for (const [id, minsAgo] of [['m-1', 1], ['m-2', 3], ['m-3', 9]]) {
+    const lead = await ingestLead(db, ctx, a, event(id, { at: ago(minsAgo), contact: { email: `${id}@example.test` } }));
+    assert.equal(await markFirstTouch(db, ctx, lead.leadEventId, { channel: 'email', by: 'agent' }), 'recorded');
   }
-  const [row] = await ttftBySource(db, { ...ctx, userId }, new Date(t0.getTime() - 60000), new Date());
+  const [row] = await ttftBySource(db, { ...ctx, userId }, ago(60), new Date(Date.now() + 60000));
   assert.deepEqual([row.source, row.channel, row.n, row.touched, row.within_window], ['web_form', 'form', 3, 3, 2]);
-  assert.equal(row.median_s, 180);
+  assert.ok(Math.abs(row.median_s - 180) < 5, `median ${row.median_s}`);
+});
+
+test('S2L-1b: markFirstTouch has no time argument; a lead received in the future is stamped no earlier than it arrived', async () => {
+  const { db, ctx } = await setup();
+  const lead = await ingestLead(db, ctx, fakeAdapter(), event('fut-1', { at: new Date(Date.now() + 120000) }));   // 2 min of clock skew
+  assert.equal(await markFirstTouch(db, ctx, lead.leadEventId, { channel: 'email', by: 'agent', at: new Date(0) }), 'recorded', 'an at option is ignored');
+  const r = (await rows(db, `SELECT first_touch_at >= received_at AS ok, first_touch_at < now() - interval '1 hour' AS back FROM lead_events`))[0];
+  assert.deepEqual([r.ok, r.back], [true, false]);
+  await assert.rejects(ingestLead(db, ctx, fakeAdapter(), event('fut-2', { at: new Date(Date.now() + 3600000) })), /5 minutes in the future/);
+});
+
+test('S2L-1b: a sms touch on an email lead is blocked (no sms consent); suppression is judged on the touch channel', async () => {
+  const { db, ctx } = await setup();
+  const mail = await ingestLead(db, ctx, fakeAdapter(), event('mail-1', { channel: 'email' }));
+  assert.equal(await markFirstTouch(db, ctx, mail.leadEventId, { channel: 'sms', by: 'agent' }), 'no_consent');
+  assert.equal(await markFirstTouch(db, ctx, mail.leadEventId, { channel: 'voice', by: 'agent' }), 'no_consent');
+  assert.equal((await rows(db, `SELECT 1 FROM lead_events WHERE first_touch_at IS NOT NULL`)).length, 0, 'nothing written');
+  const sms = await ingestLead(db, ctx, fakeAdapter({ source: 'sms' }), event('sms-1', { channel: 'sms', contact: { email: 'texter@example.test' } }));
+  assert.equal(await markFirstTouch(db, ctx, sms.leadEventId, { channel: 'sms', by: 'system' }), 'recorded', 'they texted us: a text back is allowed');
+});
+
+const CASES = JSON.parse(readFileSync(fileURLToPath(new URL('../../db/test/lead-identity-cases.json', import.meta.url)), 'utf8'));
+
+test('S2L-1b: the shared identity case list, JS layer (the DB layer runs the same list in db/test/lead-events.test.mjs)', () => {
+  for (const c of CASES.payloadRefuse) assert.ok(payloadIdentityProblem(c.payload), `refuse: ${c.why}`);
+  for (const c of CASES.payloadAllow) assert.equal(payloadIdentityProblem(c.payload), null, `allow: ${c.why}`);
+  for (const id of CASES.externalIdRefuse) assert.ok(externalIdIdentityProblem(id), `externalId refuse: ${id}`);
+  for (const id of CASES.externalIdAllow) assert.equal(externalIdIdentityProblem(id), null, `externalId allow: ${id}`);
 });
