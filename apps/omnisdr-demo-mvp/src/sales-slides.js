@@ -1,0 +1,4 @@
+// Placeholder slides. Titles follow SALES-DECK-SPEC.md; the copy is loaded from Builder's SALES-DECK-COPY.md as it lands.
+// Slide shape: { title, body: [string | { list: [string] }], notes: string }. The deck renders everything with textContent.
+const T = ['Your role', 'What we sell in one sentence', 'The problem', 'How it works', 'Channels', 'Three response modes', 'Follow-through', 'Safety and consent', 'Sell the outcome, not the service', 'ICPs', 'Finding and qualifying', 'The free proof', 'Pricing ladder', 'Higher-ticket options', 'The sales path', 'Discovery questions', 'Objections and answers', 'Never say', 'After the yes', 'Your first week', 'Glossary', 'Live demo walk-through'];
+export default T.map((title) => ({ title, body: ['Slide copy pending.'], notes: 'Speaker notes pending.' }));

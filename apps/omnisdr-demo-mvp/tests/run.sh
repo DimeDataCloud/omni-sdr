@@ -9,6 +9,9 @@ bash tests/start.sh --var IP_CAP:50 --var DAILY_CAP:80 --var DEV_PASSCODE:test-p
 bash tests/stop.sh
 bash tests/start.sh --var IP_CAP:5 --var DAILY_CAP:8 --var DEV_PASSCODE:test-passcode --var TURNSTILE_SITEKEY: && node tests/hardening.js || rc=1
 bash tests/stop.sh
+# Sales deck gate (SALES_PASSCODE is a test value; the real one lives only in the Worker secret).
+bash tests/start.sh --var IP_CAP:50 --var DAILY_CAP:80 --var DEV_PASSCODE:test-passcode --var SALES_PASSCODE:test-sales --var TURNSTILE_SITEKEY: && node tests/sales.js || rc=1
+bash tests/stop.sh
 # Fail-closed check: site key set, secret deliberately absent -> session start must refuse.
 bash tests/start.sh --var DEV_PASSCODE:test-passcode --var TURNSTILE_SITEKEY:1x00000000000000000000AA && node tests/turnstile-failclosed.js || rc=1
 bash tests/stop.sh
