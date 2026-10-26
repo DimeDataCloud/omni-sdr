@@ -18,14 +18,14 @@
   "body": [
    {
     "list": [
-     "Every lead answered in minutes, at any hour.",
-     "Carried to a booking or a payment.",
+     "We aim to answer every lead within minutes, at any hour. We measure it.",
+     "Designed to carry it to a booking, with payment options later.",
      "A person takes over the moment it matters.",
      "Proof of how fast, in the owner's own numbers."
     ]
    }
   ],
-  "notes": "Say: \"This is the sentence. Say it until it is boring. The owner does not want AI. The owner wants the lead answered before the competitor picks up, and a booked job on the calendar.\"\nSay: we sell the outcome: a lead that gets an answer, then a booking. We do not lead with the tool or the setup.\nSay: the target first reply is five minutes, set per business at onboarding. It is a target we measure and report, not a guarantee.\nAsk the rep: \"Say the sentence back to me without the word AI.\" If he can, move on."
+  "notes": "Say: \"This is the sentence. Say it until it is boring. The owner does not want AI. The owner wants the lead answered before the competitor gets to it, and a booked job on the calendar. That is what we aim for, and we measure it.\"\nSay: we sell the outcome: a lead that gets an answer, then a booking. We do not lead with the tool or the setup.\nSay: the target first reply is five minutes, set per business at onboarding. It is a target we measure and report, not a guarantee.\nAsk the rep: \"Say the sentence back to me without the word AI.\" If he can, move on."
  },
  {
   "title": "The problem",
@@ -34,7 +34,7 @@
     "list": [
      "Owners pay for leads: ads, directories, web forms.",
      "Then the lead waits. The owner is on a job, on the mat, or asleep.",
-     "Whoever answers first usually gets the job.",
+     "A lead that waits may call the next business. We time how long yours waits.",
      "How long does YOUR lead wait? We time it."
     ]
    }
@@ -46,15 +46,16 @@
   "body": [
    {
     "list": [
-     "1. A lead arrives from any channel.",
-     "2. It becomes one lead record. Duplicates are merged. Consent is checked.",
-     "3. First reply goes out inside the response window.",
-     "4. Follow-up continues until booked, replied, or opted out.",
-     "5. A person takes over when it matters. Booking or payment closes it. A report shows the speed."
+     "1. A lead arrives from a channel. (channel adapters: designed)",
+     "2. It becomes one lead record. Duplicates are merged. Consent is checked. (built, under audit, not live)",
+     "3. The design aims for a first reply inside the response window. (designed)",
+     "4. Follow-up is designed to continue until booked, replied, handed to a person, or opted out. (designed)",
+     "5. A person takes over when it matters. Booking or payment closes it. A report shows the speed. (partly built, rest designed)"
     ]
-   }
+   },
+   "Status: nothing on this slide is live for a client."
   ],
-  "notes": "Status: the console, the database with a separate space per client, approvals, inbox, handoffs, meetings and the email path are built. The lead record pipeline (S2L-1 and S2L-1b) is built and under audit, not live. Channel adapters are designed. See slide 5.\nSay, plainly, for a skeptical owner:\n- \"A lead can arrive as a form, an ad form, an email, a text, a DM, a call. We turn every one into the same kind of record, so the system treats them the same way. The glossary calls this a lead event.\"\n- \"Before we send anything, we check if we already have this person (so nobody gets two texts) and whether we have a valid reason to contact them (the consent basis). No reason, no message.\"\n- \"The first reply goes out inside the response window. The default is five minutes. We set it per business.\"\n- \"Then a follow-up ladder runs: for example text, then email, then a call attempt. It stops when the person books, replies in a way that needs a human, opts out, or hits a daily cap. Nothing loops forever.\"\n- \"Anytime the lead asks for a human, or the topic is an emergency, a big job, a complaint, or a price only a person may quote, the owner or staff gets an alert with the whole thread and a suggested next move.\"\n- \"Last, the lead ends as booked, paid, handed to a person, opted out, or closed. Results shows how fast the first reply was, per channel.\"\nAsk the rep: \"Walk me through what happens to a web form lead at 11:40 pm.\" Expected: record created, duplicate and consent check, text and email within seconds, owner alerted, callback attempt if no reply, booking if the lead says yes. Status: each step depends on the adapters on slide 5."
+  "notes": "Status: the console, the database with a separate space per client, approvals, inbox, handoffs, meetings and the email path are built. The lead record pipeline (S2L-1 and S2L-1b) is built and under audit, not live. Channel adapters are designed. See slide 5.\nSay, plainly, for a skeptical owner:\n- \"A lead can arrive as a form, an ad form, an email, a text, a DM, a call. We turn every one into the same kind of record, so the system treats them the same way. The glossary calls this a lead event.\"\n- \"Before we send anything, we check if we already have this person (so nobody gets two texts) and whether we have a valid reason to contact them (the consent basis). No reason, no message.\"\n- \"The first reply goes out inside the response window. The default is five minutes. We set it per business.\"\n- \"The design is a follow-up ladder: for example text, then email, then a call attempt. It stops when the person books, replies in a way that needs a human, is handed to a person, opts out, or hits a daily cap. Nothing loops forever.\"\n- \"Anytime the lead asks for a human, or the topic is an emergency, a big job, a complaint, or a price only a person may quote, the owner or staff gets an alert with the whole thread and a suggested next move.\"\n- \"Last, the lead ends as booked, paid, handed to a person, opted out, or closed. Results shows how fast the first reply was, per channel.\"\nAsk the rep: \"Walk me through what happens to a web form lead at 11:40 pm.\" Expected: record created, duplicate and consent check, text and email within seconds, owner alerted, callback attempt if no reply, booking if the lead says yes. Status: each step depends on the adapters on slide 5."
  },
  {
   "title": "Channels",
@@ -68,7 +69,7 @@
      "rows": [
       [
        "Web form and landing page",
-       "designed (foundation built, under audit)"
+       "designed (adapter planned as S2L-2; lead record core built, under audit)"
       ],
       [
        "Ad lead forms (Meta, Google)",
@@ -76,7 +77,7 @@
       ],
       [
        "Inbound email",
-       "built (email path), send lock on"
+       "designed (adapter planned as S2L-2); email send path built, not live, send lock on"
       ],
       [
        "List import (CSV, with consent basis)",
@@ -108,17 +109,17 @@
    "Nothing here is live for a client yet.",
    "Before you promise a channel, check the status board with Christian."
   ],
-  "notes": "Pilot scope today: web form and inbound email first response (adapters in build as S2L-2), every draft in approval mode, send lock on until Christian turns it on per source. Missed-call text-back, SMS, DMs, comments and voice are designed and need outside approvals or a provider. Describe them as \"coming, sold as add-ons when cleared\", never as available. Halo updates the Status column on walkthrough day.\nSay: \"This is the slide that keeps you honest. Each channel is a plug-in on one core. The core is the same for all of them, which is why adding a channel is cheaper than starting over.\"\nSay: \"If an owner asks 'can you do Instagram', the answer is: that channel needs Meta's approval, it is on the way, and a pilot today starts with the channels that are ready. I will tell you which ones those are before you pitch.\"\nSay: build order is the email-based adapters first (web form, inbound email, list import, ad forms), because they need no outside approval. Text, social and voice each wait on someone else's approval, and those requests start early.\nSay: the voice demo that exists runs on demo data. It is a demonstration, not a client service.\nSay: \"A channel is off until we turn it on for that client. First it records and measures only. Then it drafts messages for approval. Auto-send is a separate step.\"\nDo not say: any date for any channel marked needs approval. The wait is outside our control.\nAsk the rep: \"An owner wants texting and Instagram in the pilot. What do you say?\" Good answer names the status, offers the ready channels, and does not promise a date.\nOpen item for Halo: confirm which channels are ready for a pilot on the day of the walkthrough, and update the Status column before the deck is shown."
+  "notes": "Pilot scope: the first pilot channels will be web forms and inbound email, once those adapters (S2L-2, planned, not built) are built and audited. Until then the rep sells the free proof and the plan, and promises no start date and no live channel. When pilots start, every draft is in approval mode and the send lock stays on until Christian turns it on per source. Missed-call text-back, SMS, DMs, comments and voice are designed and need outside approvals or a provider. Describe them as \"coming, sold as add-ons when cleared\", never as available.\nPLACEHOLDER (Halo fills on walkthrough day): the Status column above is the status as of 2026-10-26. Halo updates it before the deck is shown.\nSay: \"This is the slide that keeps you honest. Each channel is a plug-in on one core. The core is the same for all of them, which is why adding a channel is cheaper than starting over.\"\nSay: \"If an owner asks 'can you do Instagram', the answer is: that channel needs Meta's approval, it is designed and waiting on that approval, and it is added when cleared. The first pilot channels are web forms and email once they are built and audited. Right now I can run your free check.\"\nSay: build order is the email-based adapters first (web form, inbound email, list import, ad forms), because they need no outside approval. Text, social and voice each wait on someone else's approval, and those requests start early.\nSay: the voice demo that exists runs on demo data. It is a demonstration, not a client service.\nSay: \"A channel is off until we turn it on for that client. First it records and measures only. Then it drafts messages for approval. Auto-send is a separate step.\"\nDo not say: any date for any channel marked needs approval. The wait is outside our control.\nAsk the rep: \"An owner wants texting and Instagram in the pilot. What do you say?\" Good answer names the status, offers the ready channels, and does not promise a date."
  },
  {
   "title": "Three response modes",
   "body": [
    {
     "list": [
-     "Text: first reply in minutes, missed-call text-back, follow-up until they book. (designed, needs approval)",
+     "Text: aims for a first reply in minutes, missed-call text-back, follow-up until they book. (designed, needs approval)",
      "Social conversion: a comment opens a DM, the DM books the job. (designed, needs approval)",
      "Voice receptionist: answers or calls back, books, texts the owner a summary. (designed, needs approval)",
-     "Email and web forms feed all three. (email built, forms designed)"
+     "Email and web forms feed all three. (email send path built, not live; email intake and forms designed)"
     ]
    }
   ],
@@ -129,12 +130,13 @@
   "body": [
    {
     "list": [
-     "A person can step in at any point, on any channel.",
-     "Booking with real open slots, confirmation, reminders, and no-show handling.",
-     "Payment options the owner turns on: pay link, deposit, quote then invoice, or pay later (the default).",
-     "The owner's own payment account. The money never passes through us."
+     "A person can step in at any point, on any channel. (Handoffs page built; alerts and resume-to-agent designed)",
+     "Booking with real open slots, confirmation, reminders, and no-show handling. (designed; Meetings page built)",
+     "Payment options the owner turns on: pay link, deposit, quote then invoice, or pay later (the default). (designed, needs approval, no code yet)",
+     "The owner's own payment account, so the money does not pass through us. (designed)"
     ]
-   }
+   },
+   "Status: nothing on this slide is live for a client."
   ],
   "notes": "Status: Handoffs and Meetings pages are built. Alerts, warm transfer, resume-to-agent, calendar slots, reminders and no-show handling are designed. Payments are designed and need approval (a payment provider design and the client's own account; no code yet).\nSay: \"The agent does not stop at 'interested'. It carries the lead to a finished outcome. When a person has the thread, the agent goes silent on it. A button gives it back.\"\nSay: \"On payments, the default is pay later or on site. Pay-now links, deposits and quote-then-invoice are opt-in, per client. Card details never touch us. Anything over a limit the client sets, or anything not on their list, needs a person to approve it. Refunds and disputes are human only.\"\nSay: do not promise payments in a pilot. It is a later module.\nAsk the rep: \"An owner says 'I only want it to book, not take money.' Is that a problem?\" Expected: no, that is the default."
  },
@@ -143,15 +145,16 @@
   "body": [
    {
     "list": [
-     "Every channel starts off. The owner approves it first.",
-     "Week one is approval mode: every draft waits for a yes.",
-     "A send lock stays on until we release it.",
-     "Every contact needs a consent basis. No basis, no message.",
-     "Opt-outs and bounces block that person everywhere. Daily caps. Quiet hours."
+     "Every channel starts off. The owner approves it first. (design)",
+     "Week one is approval mode: every draft waits for a yes. (console approvals built)",
+     "A send lock stays on until we release it. (built for email sends)",
+     "Every outbound touch needs a recorded consent basis. No basis, no first touch. (lead record core built, under audit)",
+     "Opt-outs and bounces are honored: built for email, designed for other channels. Daily send caps: built for email, in audit. Quiet hours: designed."
     ]
-   }
+   },
+   "Status: nothing on this slide is live for a client."
   ],
-  "notes": "Say: \"This is why it is not spam. It is targeted and qualified, it asks permission first, and it has brakes.\"\n- \"Approval mode: for the first week the owner or we approve what goes out. They see every message before the lead does.\"\n- \"Send lock: nothing sends until we flip it on, per client and per channel.\"\n- \"Suppression: if someone opts out, bounces, or complains, that contact is blocked on every channel.\"\n- \"Caps: a daily limit per client, and quiet hours. No blasting.\"\n- \"Consent basis on every lead record. A form with consent language, a call they made to the business, a list the owner has a right to contact. We hand them the consent line to add to their forms.\"\nRep one-liner for nervous owners: \"It only replies to people who already reached out to you, it stops the moment they say stop, and for the first week you approve every message before it goes.\"\nDo not say: that it is legally guaranteed compliant. Say it is built to follow consent and opt-out rules and that the owner approves everything first.\nAsk the rep: \"An owner asks 'will this get me sued?' What do you say, and what do you not say?\" Good answer uses the one-liner and avoids any legal promise."
+  "notes": "Say: \"This is why it is not spam. It is targeted and qualified, it asks permission first, and it has brakes.\"\n- \"Approval mode: for the first week the owner or we approve what goes out. They see every message before the lead does.\"\n- \"Send lock: nothing sends until we flip it on, per client and per channel.\"\n- \"Suppression: if someone opts out, bounces, or complains, that contact is blocked. That is built for email today. Blocking across every channel is designed.\"\n- \"Caps: a daily limit per client on email sends is built and in audit. Quiet hours are designed, not built. The design is no blasting.\"\n- \"Consent basis on every lead record. A form with consent language, a call they made to the business, a list the owner has a right to contact. We hand them the consent line to add to their forms.\"\nRep one-liner for nervous owners: \"It only contacts people you have a valid reason to contact: they filled in a form, they called, or you have the right to contact them. A lead with no recorded reason gets no first message. Every message carries a stop option, and in week one you approve every message before it goes.\"\nDo not say: that it is legally guaranteed compliant. Say it is built to follow consent and opt-out rules and that the owner approves everything first.\nAsk the rep: \"An owner asks 'will this get me sued?' What do you say, and what do you not say?\" Good answer uses the one-liner and avoids any legal promise."
  },
  {
   "title": "Sell the outcome, not the service",
@@ -165,19 +168,19 @@
      "rows": [
       [
        "AI texting platform",
-       "Every lead gets an answer before they call your competitor."
+       "We aim to answer every lead before they call your competitor, and we time it."
       ],
       [
        "Automation",
-       "You wake up to booked jobs and a short list of people to call."
+       "We aim for booked jobs on your calendar and a short list of people to call."
       ],
       [
        "AI receptionist",
-       "Nobody hits voicemail at 2 a.m."
+       "Designed to catch the call you cannot take (voice is designed, needs approval)."
       ],
       [
        "Lead nurturing sequence",
-       "We stay on every lead until they book or say stop."
+       "We follow up until they book, reply, ask for a person, opt out, or hit a daily limit. (designed)"
       ],
       [
        "CRM integration",
@@ -189,11 +192,11 @@
       ],
       [
        "24/7 coverage",
-       "Your phone and forms are covered while you are on the job."
+       "Designed to answer your forms and email while you are on the job. Phone and text come as add-ons when cleared."
       ],
       [
        "Pilot program",
-       "Thirty days, one problem fixed, measured in booked jobs."
+       "Thirty days, measured in booked jobs, with a report at day 14."
       ],
       [
        "Our system is fast",
@@ -209,13 +212,13 @@
    "Outcome language per ICP:",
    {
     "list": [
-     "Generator dealers: \"When the power goes out and a homeowner calls three dealers, you are the one that picks up.\"",
-     "Martial arts schools: \"A parent messages while you are teaching. They get an answer, and a trial class on the calendar, before they message the next school.\"",
-     "Remodelers: \"Every estimate you wrote gets a follow-up. Every lead you paid for gets a reply.\""
+     "Generator dealers: \"When the power goes out and a homeowner calls three dealers, we aim for you to be the one that answers.\" (phone and text come as add-ons when cleared)",
+     "Martial arts schools: \"A parent messages while you are teaching. We aim to get them an answer, and a trial class on the calendar, before they message the next school.\"",
+     "Remodelers: \"We are designed to follow up on every estimate you wrote, and to aim for a reply to every lead you paid for.\""
     ]
    }
   ],
-  "notes": "Say: \"The owner does not shop for technology. They shop for fewer lost jobs. Lead with the job, the calendar and the phone.\"\nSay: the right-hand column is a starting point. Use the owner's words once you have heard them.\nSay: \"never say our setup hours\". Setup is about two hours of our time. The owner does not need that number and it does not describe their value.\nSay: any number in the right-hand column comes from the prospect's own audit, not from us.\nAsk the rep: \"Pick three rows and say them in your own words.\" Fix any row where he sounds like a software vendor."
+  "notes": "Say: \"The owner does not shop for technology. They shop for fewer lost jobs. Lead with the job and the calendar.\"\nSay: the right-hand column is a starting point. Use the owner's words once you have heard them.\nSay: \"never say our setup hours\". Setup is about two hours of our time. The owner does not need that number and it does not describe their value.\nSay: any number in the right-hand column comes from the prospect's own audit, not from us.\nAsk the rep: \"Pick three rows and say them in your own words.\" Fix any row where he sounds like a software vendor."
  },
  {
   "title": "Who we sell to",
@@ -230,7 +233,7 @@
     ]
    }
   ],
-  "notes": "Say: \"These are the three niches the Blueprint picked. In each one the miss costs far more than the pilot, the owner is the bottleneck, and they can say yes in one conversation.\"\nSay: the sharpened filter, in plain words: the best target is an owner already paying for lead flow, through ads, directories, outreach or web forms, whose first reply is slow or manual. The leads already arrive. The reply is the weak part. The audit proves it by timing their own form or ad lead.\nNiche notes:\n- Generator dealers. Phone first. Calls come at bad hours, especially around outages. Lead with missed calls and form response. Low local count, so winners go beyond the home metro early.\n- Martial arts schools. Instagram is their storefront. Lead with trial-class bookings, comment to DM and form response. Lower monthly prices in this niche, so watch the fit on very small schools.\n- Remodelers. Pay for leads and write estimates that go quiet. Lead with lead reply speed and estimate follow-up. Outcome pricing is the draft fit here (slide 13).\nSkip list (Blueprint and Full-Context disqualifiers): franchise headquarters controls phones or vendors, a team already covers nights, owner unreachable, typical job very small, demands a custom build, wants licensed advice in the script, wants a free trial. Crowded markets such as HVAC and plumbing answering, med spas and hearing clinics are on the avoid list.\nSay: market sizes and job values in the Blueprint are planning assumptions. Do not quote them to a prospect. Ask the owner for their own average job value.\nAsk the rep: \"A martial arts school with no ads, no forms, and four students. Do we call?\" Expected: no, the filter fails."
+  "notes": "Say: \"These are the three niches the Blueprint picked. In each one the Blueprint reasons that a missed lead can cost more than the pilot (check that against the owner's own job value), the owner is the bottleneck, and they can say yes in one conversation.\"\nSay: the sharpened filter, in plain words: the best target is an owner already paying for lead flow, through ads, directories, outreach or web forms, whose first reply is slow or manual. The leads already arrive. The reply is the weak part. The audit proves it by timing their own form or ad lead.\nNiche notes:\n- Generator dealers. Phone first. Calls come at bad hours, especially around outages. Lead with missed calls and form response. Low local count, so winners go beyond the home metro early.\n- Martial arts schools. Instagram is their storefront. Lead with trial-class bookings, comment to DM and form response. Lower monthly prices in this niche, so watch the fit on very small schools.\n- Remodelers. Pay for leads and write estimates that go quiet. Lead with lead reply speed and estimate follow-up. Outcome pricing is the draft fit here (slide 13).\nSkip list (Blueprint and Full-Context disqualifiers): franchise headquarters controls phones or vendors, a team already covers nights, owner unreachable, typical job very small, demands a custom build, wants licensed advice in the script, wants a free trial. Crowded markets such as HVAC and plumbing answering, med spas and hearing clinics are on the avoid list.\nSay: market sizes and job values in the Blueprint are planning assumptions. Do not quote them to a prospect. Ask the owner for their own average job value.\nAsk the rep: \"A martial arts school with no ads, no forms, and four students. Do we call?\" Expected: no, the filter fails."
  },
  {
   "title": "Finding and qualifying",
@@ -279,7 +282,7 @@
     }
    }
   ],
-  "notes": "Say: \"You are looking for proof of spend and proof of slowness. If you see both before you call, the call is easy.\"\nWhere to look, in practice (all free, public, and allowed):\n- Ad libraries for the business name: are they running ads?\n- Their website: a form, a phone number, a chat widget, a booking link. Note what happens when you do not hit it.\n- Google reviews and Maps: look for lines like \"could never get through\" or \"no one called back\".\n- Instagram and Facebook pages: a trial offer, a quote post, and whether comments sit unanswered.\n- Local owner groups and associations, to find owners, not to pitch in public threads.\nDo not do: submit a prospect's form or call their line yourself outside the audit process on slide 12. The audit is run by us, once, with a plan.\nSay: the qualifying questions are a conversation, not a form. Question 4 is the key: it opens the leak without us claiming a number.\nSay: if question 5 is \"my partner decides\", ask for the partner on the results call.\nAsk the rep: \"Name three signals you can check in ten minutes before calling a dealer.\" Check that he names ads, a form, and a slow or unanswered channel."
+  "notes": "Say: \"You are looking for proof of spend and proof of slowness. If you see both before you call, the call is easy.\"\nWhere to look, in practice (public sources only):\n- Ad libraries for the business name: are they running ads?\n- Their website: a form, a phone number, a chat widget, a booking link. Look, do not submit. The one form submission happens in the audit.\n- Google reviews and Maps: look for lines like \"could never get through\" or \"no one called back\".\n- Instagram and Facebook pages: a trial offer, a quote post, and whether comments sit unanswered.\n- Local owner groups and associations, to find owners, not to pitch in public threads.\nDo not do: submit a prospect's form or call their line yourself outside the audit process on slide 12. The audit is run by us, once, with a plan.\nSay: the qualifying questions are a conversation, not a form. Question 4 is the key: it opens the leak without us claiming a number.\nSay: if question 5 is \"my partner decides\", ask for the partner on the results call.\nAsk the rep: \"Name three signals you can check in ten minutes before calling a dealer.\" Check that he names ads, a form, and a slow or unanswered channel."
  },
  {
   "title": "The free proof",
@@ -314,7 +317,7 @@
       [
        "1",
        "Pilot: one system, 30 days, results report at day 14",
-       "$499 flat (DRAFT)"
+       "$499 (DRAFT)"
       ],
       [
        "2",
@@ -331,7 +334,7 @@
    },
    "All figures are DRAFT. Final price is set at go-live. Quote only Level 1 until Christian confirms."
   ],
-  "notes": "Say: \"Everything on this slide is a draft. The final price is set at go-live, from the audit results, early conversations and what it measurably costs us to serve. I will tell you when it changes.\"\nRep rule: quote the Level 1 pilot only. If an owner asks about monthly, say: \"After the pilot we look at your numbers and set a monthly plan that fits your trade.\" Do not say a number for Level 2 or 3.\nLogic, so the rep understands it: each level answers the objection to the next. The audit proves the leak. The pilot proves the fix. Recurring keeps it running. Outcome pricing ties our fee to results in niches where kept appointments are easy to count.\nThe pilot has no discounts and no free trials. Change the terms, such as the start date, never the price. Risk is limited by the size of the pilot, not by free work.\nUsage costs (voice minutes, texts) are real, so plan allowances are set after we measure them. Do not mention allowances to owners yet.\nOther levels exist in the Blueprint (reactivation sprint, playbook, white label). They are not for this rep. Do not raise them.\nAsk the rep: \"An owner asks what it costs after the pilot. What do you say?\" Expected: the draft line above, no number."
+  "notes": "Say: \"Everything on this slide is a draft. The final price is set at go-live, from the audit results, early conversations and what it measurably costs us to serve. I will tell you when it changes.\"\nRep rule: quote the Level 1 pilot only, and only as \"$499 (DRAFT, confirm with Christian before quoting)\". Never call the price flat or the same for everyone until Christian confirms it as final. If an owner asks about monthly, say: \"After the pilot we look at your numbers and set a monthly plan that fits your trade.\" Do not say a number for Level 2 or 3.\nLogic, so the rep understands it: each level answers the objection to the next. The audit proves the leak. The pilot proves the fix. Recurring keeps it running. Outcome pricing ties our fee to results in niches where kept appointments are easy to count.\nThe pilot has no discounts and no free trials. Change the terms, such as the start date, never the price. Risk is limited by the size of the pilot, not by free work.\nUsage costs (voice minutes, texts) are real, so plan allowances are set after we measure them. Do not mention allowances to owners yet.\nOther levels exist in the Blueprint (reactivation sprint, playbook, white label). They are not for this rep. Do not raise them.\nAsk the rep: \"An owner asks what it costs after the pilot. What do you say?\" Expected: the draft line above, no number."
  },
  {
   "title": "Higher-ticket option (DRAFT, under consideration, not for quoting)",
@@ -388,7 +391,7 @@
    "7. Onboard",
    "Gate: 20 conversations with fewer than 2 paid pilots means we rotate the niche."
   ],
-  "notes": "Each step in one line:\n1. First touch: short, about their business, one question. Never a pitch in the first message.\n2. Discovery: slide 16 questions. Find the leak and the decision maker.\n3. Free proof: slide 12. Our work, their numbers.\n4. Results call: 20 minutes. Show the times. Do the math with their job value.\n5. Proposal: the Level 1 pilot, $499 flat, 30 days.\n6. Sign: pilot agreement, consent language agreed, payment first.\n7. Onboard: slide 19.\nTargets (planning assumptions from the Blueprint, never measured, so targets to test and not promises): about 20 conversations per 100 outreach attempts. One niche gets one cycle of 100 attempts. The gate: after 20 real conversations, fewer than 2 paid pilots means the niche rotates. We track attempts, conversations, audits done, results calls held and pilots signed.\nSay: \"We rotate on facts. If it is not working in a niche, we change niche. We do not discount to force it.\"\nOpen item for Christian: the pilot start-date policy until go-live (manual-assist pilot, or a waitlist with a fixed start date) is undecided. Give owners no start date until it is.\nAsk the rep: \"Where do most deals die, and what do you do about it?\" Use the answer to tune the order."
+  "notes": "Each step in one line:\n1. First touch: short, about their business, one question. Never a pitch in the first message.\n2. Discovery: slide 16 questions. Find the leak and the decision maker.\n3. Free proof: slide 12. Our work, their numbers.\n4. Results call: 20 minutes. Show the times. Do the math with their job value.\n5. Proposal: the Level 1 pilot, 30 days, $499 (DRAFT, confirm with Christian before quoting).\n6. Sign: pilot agreement, consent language agreed, payment first.\n7. Onboard: slide 19.\nTargets (planning assumptions from the Blueprint, never measured, so targets to test and not promises): about 20 conversations per 100 outreach attempts. One niche gets one cycle of 100 attempts. The gate: after 20 real conversations, fewer than 2 paid pilots means the niche rotates. We track attempts, conversations, audits done, results calls held and pilots signed.\nSay: \"We rotate on facts. If it is not working in a niche, we change niche. We do not discount to force it.\"\nUntil the first adapters (web form and inbound email, S2L-2) are built and audited, and go-live is set, the rep sells the free proof and the plan. Promise no start date and no live channel. A pilot starts after go-live with a human in the loop, and the client is told so.\nPLACEHOLDER (Christian): the pilot start-date policy (manual-assist pilot, or a waitlist with a fixed start date) is undecided. Give owners no start date until it is set.\nAsk the rep: \"Where do most deals die, and what do you do about it?\" Use the answer to tune the order."
  },
  {
   "title": "Discovery questions",
@@ -410,7 +413,7 @@
       ],
       [
        "How fast does the first reply go out, honestly?",
-       "Their own view of speed. Often slower than they think."
+       "Their own view of speed. Compare it with the audit."
       ],
       [
        "Who replies today: owner, staff, a tool?",
@@ -440,14 +443,14 @@
     }
    }
   ],
-  "notes": "Say: \"Ask, then be quiet. Write down their exact words. You will use those words on the results call.\"\nOpening script: \"I help local service businesses answer every lead fast, at any hour. Before I tell you anything, I would like to understand how it works for you today. Can I ask a few questions?\"\nRed flags: no ads, no forms and few leads; a team already covers nights; the owner cannot be reached; the typical job is very small; wants a custom build or licensed advice in the script; wants a free trial. Two or more: thank them and move on.\nGreen flags: pays for leads; answers his own phone; says \"I miss calls on jobs\"; reviews mention slow replies.\nDo not quote the system's speed in numbers until we have measured theirs.\nAsk the rep: \"An owner says we answer everything within a few minutes. What does that tell you, and what is your next question?\" Expected: ask how they know, and offer the response-time test."
+  "notes": "Say: \"Ask, then be quiet. Write down their exact words. You will use those words on the results call.\"\nOpening script: \"I help local service businesses aim to answer every lead fast, at any hour. Before I tell you anything, I would like to understand how it works for you today. Can I ask a few questions?\"\nRed flags: no ads, no forms and few leads; a team already covers nights; the owner cannot be reached; the typical job is very small; wants a custom build or licensed advice in the script; wants a free trial. Two or more: thank them and move on.\nGreen flags: pays for leads; answers his own phone; says \"I miss calls on jobs\"; reviews mention slow replies.\nDo not quote the system's speed in numbers until we have measured theirs.\nAsk the rep: \"An owner says we answer everything within a few minutes. What does that tell you, and what is your next question?\" Expected: ask how they know, and offer the response-time test."
  },
  {
   "title": "Objections and answers",
   "body": [
    "Six objections, one answer each. Full scripts are in the notes."
   ],
-  "notes": "Method: agree with the concern, answer in two sentences, bring it back to their own numbers, ask one question. Never argue.\n\n1. \"$499 is a lot.\"\n\"Fair question. The pilot is priced against one job, not against software. What is a typical job worth to you? [listen] So if this saves even one lead a month you would not otherwise have gotten, the pilot has paid for itself. We measure it in booked jobs and show you at day 14.\"\n2. \"We already have a CRM or software that does this.\"\n\"Good, keep it. We do not replace it. We sit in front of it and handle the first reply, the follow-up and the booking. A CRM stores leads. It does not answer them at 9 pm. Can I time your form so we both see what actually happens?\"\n3. \"AI feels cheap. My customers want a person.\"\n\"They do, and they get one. The first reply is fast so nobody is left waiting, and a person takes over the moment the lead asks, the job is big, or it is a complaint. For the first week you approve every message before it goes. Would you rather a lead wait six hours for a person, or hear back in minutes and then reach a person?\"\n4. \"We answer fast enough.\"\n\"Great, then the free check will show it. We time your own form and your own line and give you the numbers. If you are fast, you will know. If there is a gap at night or on a job, you will see that too. Who covers after hours today?\"\n5. \"I worry about spam.\"\n\"Same concern we have. It only replies to people who already reached out to you. Every message carries a stop option, anyone who says stop is blocked everywhere, there are daily limits and quiet hours, and for the first week you approve each message. No blasting, no bought lists.\"\n6. \"What if it says something wrong?\"\n\"It only works from a playbook we build with you: your services, your hours, what it may say and what it may not. Prices and special cases go to a person. For the first week nothing goes out without your approval, and you can take over any conversation at any time. We review the week together.\"\n\nAlso useful:\n- \"Send me info.\" Reply: \"Info does not book jobs. Let me run the free check first. It takes me one call and one form, and you will see your own numbers.\"\n- \"I am too small.\" Reply: \"Small is who this fits. You are the bottleneck, and one booked job changes your month.\"\nNever use in an answer: a statistic, a competitor's price, a guarantee, a discount.\nAsk the rep: \"Give me objection 4 in your own words and I will play the owner.\" Role-play two rounds."
+  "notes": "Method: agree with the concern, answer in two sentences, bring it back to their own numbers, ask one question. Never argue.\n\n1. \"$499 is a lot.\"\n\"Fair question. The pilot price is a draft, and it is set against one job, not against software. What is a typical job worth to you? [listen] If a typical job is worth more than the pilot, one extra booked job covers it. We measure booked jobs and show you at day 14.\"\n2. \"We already have a CRM or software that does this.\"\n\"Good, keep it. We do not replace it. We sit in front of it and handle the first reply, the follow-up and the booking. A CRM stores leads. It does not answer them at 9 pm. Can I time your form so we both see what actually happens?\"\n3. \"AI feels cheap. My customers want a person.\"\n\"They do, and they get one. We aim for a fast first reply so nobody is left waiting, and a person takes over the moment the lead asks, the job is big, or it is a complaint. For the first week you approve every message before it goes. Would you rather a lead wait six hours for a person, or hear back in minutes and then reach a person?\"\n4. \"We answer fast enough.\"\n\"Great, then the free check will show it. We time your own form and your own line and give you the numbers. If you are fast, you will know. If there is a gap at night or on a job, you will see that too. Who covers after hours today?\"\n5. \"I worry about spam.\"\n\"Same concern we have. Every message needs a recorded reason to contact that person, and a lead with none gets no first message. Every message carries a stop option and stop requests are honored. There are daily limits, and in week one you approve each message. No blasting, no bought lists.\"\n6. \"What if it says something wrong?\"\n\"It only works from a playbook we build with you: your services, your hours, what it may say and what it may not. Prices and special cases go to a person. For the first week nothing goes out without your approval, and you can take over any conversation at any time. We review the week together.\"\n\nAlso useful:\n- \"Send me info.\" Reply: \"Info does not book jobs. Let me run the free check first. It takes me one call and one form, and you will see your own numbers.\"\n- \"I am too small.\" Reply: \"Small is who this fits. You are the bottleneck, and one booked job changes your month.\"\nNever use in an answer: a statistic, a competitor's price, a guarantee, a discount.\nAsk the rep: \"Give me objection 4 in your own words and I will play the owner.\" Role-play two rounds."
  },
  {
   "title": "Never say",
@@ -463,7 +466,7 @@
     ]
    }
   ],
-  "notes": "Say: \"These six rules protect you and us. If a prospect pushes, the answer is always the same: we measure it, we show you at day 14, and you decide from your own numbers.\"\nSwaps:\n- \"We guarantee more bookings\" becomes \"We measure booked jobs and show you at day 14.\"\n- \"Studies show fast replies win far more leads\" becomes \"We will time your own leads.\" Do not repeat a vendor multiplier, even if the owner has seen one.\n- \"We do Instagram and texting\" becomes \"Those channels need approval from the platform or carrier. They are coming, and they are added when cleared. Here is what is ready now.\"\n- \"I can do it for less\" becomes \"The pilot is $499, flat. It is the same for everyone.\"\n- \"Try it free for a week\" becomes \"The free proof is the free part. The pilot is the proof you pay for.\"\n- \"We are cheaper than X\" becomes \"We price against one job, not against software.\"\n- \"It is fully compliant\" becomes \"It is built around consent and opt-out, and you approve every message in week one.\"\n- \"We recovered $X for you\" becomes \"Estimated value, using your own job average.\"\nAsk the rep: \"Which of these is hardest for you to hold?\" Work on that one."
+  "notes": "Say: \"These six rules protect you and us. If a prospect pushes, the answer is always the same: we measure it, we show you at day 14, and you decide from your own numbers.\"\nSwaps:\n- \"We guarantee more bookings\" becomes \"We measure booked jobs and show you at day 14.\"\n- \"Studies show fast replies win far more leads\" becomes \"We will time your own leads.\" Do not repeat a vendor multiplier, even if the owner has seen one.\n- \"We do Instagram and texting\" becomes \"Those channels need approval from the platform or carrier. They are coming, and they are added when cleared. Here is what is ready now.\"\n- \"I can do it for less\" becomes \"The draft pilot price is $499. I do not discount. Let me confirm the final price with Christian.\"\n- \"Try it free for a week\" becomes \"The free proof is the free part. The pilot is the proof you pay for.\"\n- \"We are cheaper than X\" becomes \"We price against one job, not against software.\"\n- \"It is fully compliant\" becomes \"It is built around consent and opt-out, and you approve every message in week one.\"\n- \"We recovered $X for you\" becomes \"Estimated value, using your own job average.\"\nAsk the rep: \"Which of these is hardest for you to hold?\" Work on that one."
  },
  {
   "title": "After the yes",
@@ -472,13 +475,13 @@
     "list": [
      "A short intake form from the owner (about 10 minutes).",
      "A 45-minute setup call: pick the first module, build the playbook, connect the channels, add the consent line.",
-     "We load it, test every channel, and check the handoff.",
+     "We load it, test every connected channel, and check the handoff.",
      "Week one runs in approval mode.",
      "Day 14: interim report. Day 30: results review."
     ]
    }
   ],
-  "notes": "What the owner provides: a mobile number for alerts, access to the website or form, access to any phone setup, a calendar link, five common questions and answers, a signed pilot agreement, the consent line added to forms, and a primary and backup person for handoffs.\nTimeline: Day 0 intake and setup call. Day 1 go-live in approval mode, on the channels that are ready. Day 3, a 15-minute check-in. Day 7, trusted channels move to auto-send, only if Christian has turned that on for the source. Day 14, interim report. Day 30, results review and the recurring conversation.\nGo-live checklist, all must pass: a test lead on each channel gets a reply inside the window; opt-out works; the owner alert arrives; handoff works; Results shows the test.\nInternal only: our target is under two hours of our own time to set up a client. Never quote this to an owner and never describe the pilot as hours of work. Say \"live in days\".\nToday the pilot starts with web form and inbound email first response, every draft in approval mode, send lock on until Christian turns it on per source. Anything else is coming and sold as an add-on when cleared. The owner is told so in writing.\nReport content: leads in, median and slowest first reply per channel, replies, bookings, estimated value (labelled as an estimate).\nAsk the rep: \"An owner wants to go live tomorrow. What must be true first?\" Expected: signed agreement, consent line on forms, access granted, test passed, and Christian has released the send lock."
+  "notes": "What the owner provides: a mobile number for alerts, access to the website or form, access to any phone setup, a calendar link, five common questions and answers, a signed pilot agreement, the consent line added to forms, and a primary and backup person for handoffs.\nPlanned timeline once a start date is set (none is promised today): intake and setup call; go-live in approval mode on the channels that are ready; day 3, a 15-minute check-in; day 7, trusted channels move to auto-send, only if Christian has turned that on for the source; day 14, interim report; day 30, results review and the recurring conversation.\nGo-live checklist, all must pass: a test lead on each channel gets a reply inside the window; opt-out works; the owner alert arrives; handoff works; Results shows the test.\nInternal only: our target is under two hours of our own time to set up a client. Never quote this to an owner and never describe the pilot as hours of work. Do not say how fast it goes live, because no start date is promised.\nThe first pilot channels will be web forms and inbound email, once those adapters (S2L-2) are built and audited. Every draft runs in approval mode and the send lock stays on until Christian turns it on per source. Anything else is coming and sold as an add-on when cleared. No module is sellable until its adapter exists and go-live is set. A pilot starts after go-live with a human in the loop, and the owner is told so in writing.\nReport content: leads in, median and slowest first reply per channel, replies, bookings, estimated value (labelled as an estimate).\nAsk the rep: \"An owner wants to go live tomorrow. What must be true first?\" Expected: signed agreement, consent line on forms, access granted, test passed, and Christian has released the send lock."
  },
  {
   "title": "Your first week",
@@ -493,7 +496,7 @@
     ]
    }
   ],
-  "notes": "Suggested day: 15 minutes on yesterday's numbers; outreach blocks; calls and discovery; audits using the slide 12 plan; results calls; end of day update of the log and anything to flag.\nNumbers to log every day: attempts, conversations, audits run, results calls held, pilots proposed, pilots signed, the exact words of each objection, and the niche of each.\nWho to call for what:\n- Price, scope, anything not on these slides: Christian.\n- Whether a channel is available: the status board, with Christian, before you promise anything.\n- Build or setup problems: Christian, who routes them.\nPlaceholder: Christian adds phone, hours and any shared tracker before the walkthrough. Builder has not filled this in.\nSay: \"By Friday I want your log and the three objections you heard most.\"\nAsk the rep: \"What do you need from me before you start?\" Capture it."
+  "notes": "Suggested day: 15 minutes on yesterday's numbers; outreach blocks; calls and discovery; audits using the slide 12 plan; results calls; end of day update of the log and anything to flag.\nNumbers to log every day: attempts, conversations, audits run, results calls held, pilots proposed, pilots signed, the exact words of each objection, and the niche of each.\nWho to call for what:\n- Price, scope, anything not on these slides: Christian.\n- Whether a channel is available: the status board, with Christian, before you promise anything.\n- Build or setup problems: Christian, who routes them.\nPLACEHOLDER (Christian fills before the walkthrough): phone, hours and any shared tracker. Builder has not filled this in.\nSay: \"By Friday I want your log and the three objections you heard most.\"\nAsk the rep: \"What do you need from me before you start?\" Capture it."
  },
  {
   "title": "Glossary",
@@ -523,7 +526,7 @@
       ],
       [
        "Suppression",
-       "A do-not-contact list. Opt-outs, bounces and complaints are blocked on every channel."
+       "A do-not-contact list. Opt-outs, bounces and complaints are blocked. Built for email, designed for other channels."
       ],
       [
        "Handoff",
@@ -556,13 +559,13 @@
   "body": [
    {
     "list": [
-     "demo.omnisdr.com: try it yourself.",
-     "It shows how a business answers a lead.",
+     "demo.omnisdr.com asks for the password, then a chooser: Try me or Sales.",
+     "Try me (/tryme) is the demo. It shows how a business answers a lead.",
      "It is a demonstration on sample data, not a client service.",
-     "It has daily limits."
+     "The demo has its own daily limits."
     ]
    }
   ],
-  "notes": "Address: the demo is at demo.omnisdr.com and is moving to demo.omnisdr.com/tryme. The old link will redirect. The sales deck sits at /sales. Check the live address before you show a prospect.\nHow to run it in front of a prospect:\n1. Open it on your own screen first, the same day. Never share a screen into something you have not tested that day.\n2. Pick the sample business closest to the prospect's trade.\n3. Start a session, play the lead, and let the prospect watch the reply.\n4. Point at three things: how quickly it replies, how it asks the qualifying questions, and where it hands off to a person.\n5. Then go straight back to their own numbers from the audit.\nLimits (code defaults, deployed values not rechecked): about 10 sessions a day across the site, 2 per visitor, and a session length of about 3 minutes. If the demo says it is paused or at its limit, say so, move on, and use the slides. Never try to work around a limit.\nVoice in the demo: the live-voice part is switched off on every deployed copy. Confirm with Christian on the day what the demo shows. Do not promise that the owner's system will sound like the demo.\nSay: \"The demo shows the idea. Your pilot is built from your own services and your own rules.\"\nDo not say that the demo is a client's real data or a live result.\nAsk the rep: \"If the demo is paused when you are with a prospect, what do you do?\" Expected: stay calm, use the slides and the audit."
+  "notes": "Address: demo.omnisdr.com shows a password entry screen. After login there is a chooser with Try me and Sales. The demo itself is at /tryme and has its own caps, and the sales deck is at /sales. The password is Christian's to give out. Check the live behavior the same day before you show a prospect.\nHow to run it in front of a prospect:\n1. Open it on your own screen first, the same day. Never share a screen into something you have not tested that day.\n2. Pick the sample business closest to the prospect's trade.\n3. Start a session, play the lead, and let the prospect watch the reply.\n4. Point at three things: how quickly it replies, how it asks the qualifying questions, and where it hands off to a person.\n5. Then go straight back to their own numbers from the audit.\nLimits (code defaults, deployed values not rechecked): about 10 sessions a day across the site, 2 per visitor, and a session length of about 3 minutes. If the demo says it is paused or at its limit, say so, move on, and use the slides. Never try to work around a limit.\nVoice in the demo: the repo default keeps live voice off, but I have not verified the deployed copies. Confirm with Christian on the day what the demo shows. Do not promise that the owner's system will sound like the demo.\nSay: \"The demo shows the idea. Your pilot is built from your own services and your own rules.\"\nDo not say that the demo is a client's real data or a live result.\nAsk the rep: \"If the demo is paused when you are with a prospect, what do you do?\" Expected: stay calm, use the slides and the audit."
  }
 ]
