@@ -78,7 +78,7 @@ BEGIN
     EXECUTE format('CREATE POLICY identity_all ON %I TO identity_owner USING (true) WITH CHECK (true)', t);
     EXECUTE format('CREATE POLICY closer_scope ON %I AS RESTRICTIVE TO app_rw, gate_svc, sender_svc, inbox_svc
                     USING (NOT app_is_closer(org_id)) WITH CHECK (true)', t);
-    EXECUTE format('GRANT ALL ON %I TO ops', t);
+    EXECUTE format('GRANT SELECT, DELETE ON %I TO ops', t);
     EXECUTE format('GRANT SELECT ON %I TO guard_owner', t);
     EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO identity_owner', t);
   END LOOP;
