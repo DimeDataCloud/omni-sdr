@@ -159,12 +159,15 @@ test('a client cannot insert a pre-cleared or pre-held contact: hold columns are
 test('bounce rows do not spread to the person, a manual row on a linked address does', async () => {
   const db = await freshDb();
   const t = await seedTenant(db, 'alpha');
+  // a and b share a profile. d shares it too and is the one whose address bounces, so a and b start unsuppressed: the final
+  // assertion can only pass if the manual row itself reached a through the closure (it fails without suppression_close_person).
   const a = await addContact(db, t, { name: 'Jane Doe', email: 'jane@work.test', slug: 'in/jane-doe' });
   const b = await addContact(db, t, { name: 'Jane D', email: 'jane@home.test', slug: 'in/jane-doe' });
-  await db.query(`INSERT INTO suppression (scope_org_id, value_hash, kind, reason) VALUES ($1, value_hash('jane@work.test'), 'email', 'bounce')`, [t.org]);
+  const d = await addContact(db, t, { name: 'Jane Dee', email: 'jane@old.test', slug: 'in/jane-doe' });
+  await db.query(`INSERT INTO suppression (scope_org_id, value_hash, kind, reason) VALUES ($1, value_hash('jane@old.test'), 'email', 'bounce')`, [t.org]);
+  assert.equal(await suppressed(db, d), true, 'the bounced address itself is blocked');
   assert.equal(await suppressed(db, b), false, 'a bounce is about one address');
-  await db.query(`INSERT INTO suppression (scope_org_id, value_hash, kind, reason) VALUES ($1, value_hash('jane@work.test'), 'email', 'manual') ON CONFLICT DO NOTHING`, [t.org]);
-  // The bounce row already holds the key, so a manual opt-out for the same address is a new decision: use a different address.
+  assert.equal(await suppressed(db, a), false, 'a bounce does not reach the others on the profile');
   await db.query(`INSERT INTO suppression (scope_org_id, value_hash, kind, reason) VALUES ($1, value_hash('jane@home.test'), 'email', 'manual')`, [t.org]);
   assert.equal(await suppressed(db, a), true, 'the manual row on the linked address reaches the whole person');
 });
