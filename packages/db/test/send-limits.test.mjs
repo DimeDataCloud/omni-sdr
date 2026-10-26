@@ -209,3 +209,17 @@ test('the recipient fallback only sees mail actually sent, and only in the last 
   await db.query(`UPDATE messages SET sent_at = now() - interval '29 days'`);
   assert.equal(await event(db, 'e3', 'complained', false, 'pat@alpha.test'), 'recorded');
 });
+
+test('suppression lives in its own rows: deleting the message (and so its events) cannot lift an opt-out or a bounce', async () => {
+  const db = await freshDb();
+  const t = await seedTenant(db, 'alpha');
+  await sentMessage(db, t, 'cf-keep');
+  assert.equal(await event(db, 'cf-keep', 'bounced', true), 'recorded');
+  assert.deepEqual(await suppressed(db, t), ['bounce']);
+  assert.equal((await q(db, `SELECT 1 FROM mail_events WHERE provider_message_id = 'cf-keep'`)).length, 1);
+  await db.query(`DELETE FROM inbound_messages WHERE message_id IN (SELECT id FROM messages WHERE provider_message_id = 'cf-keep')`);
+  await db.query(`DELETE FROM messages WHERE provider_message_id = 'cf-keep'`);
+  assert.equal((await q(db, `SELECT 1 FROM mail_events WHERE provider_message_id = 'cf-keep'`)).length, 0, 'the event rows cascade');
+  assert.deepEqual(await suppressed(db, t), ['bounce'], 'the suppression row stays');
+  assert.match(await refused(send(db, t, await approvedDraft(db, t))) ?? '', /suppressed/, 'and the next send is still refused');
+});
