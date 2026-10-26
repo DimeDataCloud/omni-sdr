@@ -76,3 +76,26 @@ test('import: a profile link the database cannot canonicalise is a 400 on that r
     assert.deepEqual([bad.status, bad.body.details?.field], [400, 'contacts.0.linkedinUrl'], url);
   }
 });
+
+test('import: a transient error from record_identity on a duplicate row propagates and is retried, not swallowed (ADV P2-1)', async () => {
+  const ws = api.demo.workspaces[0];
+  const [p] = await api.q(`INSERT INTO contacts (org_id, workspace_id, name, linkedin_slug) VALUES ($1, $2, 'Ida Frost', 'in/ida-frost') RETURNING id`, [api.demo.org, ws]);
+  await api.q(`SELECT _suppress_person($1, $2, 'manual', true)`, [p.id, api.demo.org]);
+  const [e] = await api.q(`INSERT INTO contacts (org_id, workspace_id, name, email, email_status) VALUES ($1, $2, 'I Frost', 'ida@imp.example', 'unknown') RETURNING id`, [api.demo.org, ws]);
+  // The first identity insert fails once with a deadlock, as a real lock conflict would; every later one is untouched.
+  await api.q(`CREATE SEQUENCE adv_once`); // a sequence survives the rollback that a table row would not
+  await api.q(`CREATE FUNCTION adv_once_fail() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER AS $$
+    BEGIN IF nextval('adv_once') = 1 THEN RAISE EXCEPTION 'simulated deadlock' USING ERRCODE = '40P01'; END IF; RETURN NEW; END $$`);
+  await api.q(`CREATE TRIGGER adv_once_trg BEFORE INSERT ON contact_identities FOR EACH ROW EXECUTE FUNCTION adv_once_fail()`);
+  try {
+    const r = await imp([{ name: 'I Frost', email: 'ida@imp.example', linkedinUrl: 'https://www.linkedin.com/in/ida-frost' }]);
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    assert.equal((await api.q(`SELECT last_value::int AS n FROM adv_once`))[0].n >= 2, true, 'the failure was raised once and the retry reached the trigger again');
+    assert.deepEqual(r.body.held.map((x) => x.index), [0], 'the retry linked the contact and held it');
+    assert.equal((await api.q(`SELECT person_suppressed($1) AS s`, [e.id]))[0].s, true, 'the existing contact is not left sendable');
+  } finally {
+    await api.q(`DROP TRIGGER adv_once_trg ON contact_identities`);
+    await api.q(`DROP FUNCTION adv_once_fail()`);
+    await api.q(`DROP SEQUENCE adv_once`);
+  }
+});

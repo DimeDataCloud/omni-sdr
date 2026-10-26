@@ -314,6 +314,8 @@ CREATE TRIGGER identities_close_person AFTER INSERT ON contact_identities
 
 -- An opt-out in flight (suppression row, closure) holds the org lock exclusively until commit, so a send waits for it.
 -- Every WRITER takes the org key exclusive and only the guard and the hand-off take it shared: no transaction upgrades (N-1).
+-- That removes the lock-upgrade deadlock only. A contact row lock against the org lock can still deadlock (40P01); the retry in
+-- packages/db/src/context.mjs is what covers it.
 -- Row-level, because a statement trigger does not see the org. Definer, so the advisory REVOKE (part 9) cannot break it.
 CREATE FUNCTION suppression_org_lock() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN

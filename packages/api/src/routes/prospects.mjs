@@ -80,10 +80,14 @@ export function registerProspects(r) {
           if (profile && check?.email) {
             const existing = (await tx.query(`SELECT id FROM contacts WHERE workspace_id = $1 AND email = $2`, [m.workspaceId, check.email])).rows[0];
             if (existing) {
-              // A slug the identity table refuses must not sink the batch: the row stays skipped, unlinked.
+              // A slug the identity table refuses (22023) must not sink the batch: the row stays skipped, unlinked. Anything else
+              // (a deadlock, a serialization failure, a timeout) propagates so withTenant can retry the whole import (ADV P2-1).
               await tx.query('SAVEPOINT import_link');
               try { await tx.query(`SELECT record_identity($1, $2, 'import')`, [existing.id, profile]); await tx.query('RELEASE SAVEPOINT import_link'); }
-              catch { await tx.query('ROLLBACK TO SAVEPOINT import_link'); }
+              catch (e) {
+                if (e?.code !== '22023') throw e;
+                await tx.query('ROLLBACK TO SAVEPOINT import_link');
+              }
               if ((await tx.query(`SELECT person_suppressed($1) AS held`, [existing.id])).rows[0].held) held.push({ index: i, reason: 'existing contact matches an opted-out person' });
             }
           }
