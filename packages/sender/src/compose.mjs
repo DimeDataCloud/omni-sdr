@@ -25,7 +25,8 @@ function wrap76(b64) {
 
 /**
  * @param m { from, fromName?, to, replyTo, subject, body, postalAddress, unsubscribeUrl, inReplyTo? }
- * @returns { raw: string, footer: string }
+ * @returns { raw: string, footer: string, parts } parts is the same message as structured fields for REST providers
+ *   (Cloudflare Email Service): { from: {email, name?}, to, replyTo, subject, text, headers }
  */
 export function composeEmail(m) {
   const from = address('from', m.from);
@@ -58,5 +59,14 @@ export function composeEmail(m) {
     headers.push(`In-Reply-To: ${ref}`, `References: ${ref}`);
   }
   const raw = `${headers.join('\r\n')}\r\n\r\n${wrap76(Buffer.from(text, 'utf8').toString('base64'))}`;
-  return { raw, footer };
+  const parts = {
+    from: m.fromName ? { email: from, name: headerValue('fromName', m.fromName).replace(/"/g, '') } : { email: from },
+    to, replyTo, subject, text: text.replace(/\r\n/g, '\n'),
+    headers: {
+      'List-Unsubscribe': `<${unsubscribeUrl}>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+      ...(m.inReplyTo ? { 'In-Reply-To': headerValue('inReplyTo', m.inReplyTo), References: headerValue('inReplyTo', m.inReplyTo) } : {}),
+    },
+  };
+  return { raw, footer, parts };
 }

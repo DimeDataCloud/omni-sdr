@@ -94,6 +94,7 @@ export async function seedTenant(db, label, { cap = 5, trust = 1, heat = 1 } = {
   const message = (await as(db, 'sender_svc', { org, ws: [ws] }, () => one(db,
     `INSERT INTO messages (org_id, workspace_id, draft_id, mailbox_id, channel) VALUES ($1, $2, $3, $4, 'email') RETURNING id`,
     [org, ws, draft, mailbox]))).id;
+  await db.query(`INSERT INTO mail_events (provider_message_id, type, org_id, workspace_id, message_id, acted) VALUES ($1, 'delivered', $2, $3, $4, 'none')`, [`seed-${label}`, org, ws, message]);
   const inbound = (await one(db,
     `INSERT INTO inbound_messages (org_id, workspace_id, contact_id, message_id, channel, from_address, body, received_at, intent)
      VALUES ($1, $2, $3, $4, 'email', $5, 'Thanks, not now.', now(), 'not_interested') RETURNING id`,

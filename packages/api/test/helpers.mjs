@@ -59,16 +59,18 @@ export async function startApi({ model = fakeModel(), config = {}, seed = true }
     return { status: res.status, body: json, text, headers: res.headers };
   }
 
-  function signedInbound(payload, { secret = INBOUND_SECRET, ts = Math.floor(Date.now() / 1000) } = {}) {
+  function signedPost(path, payload, { secret = INBOUND_SECRET, ts = Math.floor(Date.now() / 1000) } = {}) {
     const raw = JSON.stringify(payload);
     const sig = createHmac('sha256', secret).update(`${ts}.`).update(raw).digest('hex');
-    return call('POST', '/internal/inbound', { as: null, raw, headers: { 'content-type': 'application/json',
+    return call('POST', path, { as: null, raw, headers: { 'content-type': 'application/json',
       'x-omni-timestamp': String(ts), 'x-omni-signature': `sha256=${sig}` } });
   }
+  const signedInbound = (payload, opts) => signedPost('/internal/inbound', payload, opts);
+  const signedMailEvent = (payload, opts) => signedPost('/internal/mail-events', payload, opts);
 
   const W = demo ? `/v1/o/${demo.org}/w/${demo.workspaces[0]}` : null;
   return {
-    db, demo, base, call, signedInbound, logs, W, model,
+    db, demo, base, call, signedInbound, signedMailEvent, logs, W, model,
     ws: (i) => `/v1/o/${demo.org}/w/${demo.workspaces[i]}`,
     q: async (sql, params) => (await db.query(sql, params)).rows,
     stop: () => new Promise((r) => server.close(r)),

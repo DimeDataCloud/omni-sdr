@@ -32,6 +32,7 @@ const EXPECTED = {
   identities_close_person: [], suppression_close_person: [], suppression_org_lock: [], contacts_name_hold: [],
   can_resolve_hold: ['rename_owner'], clear_name_hold: ['app_rw'], rename_opted_out_contact: ['app_rw'],
   contact_opted_out: ['app_rw', 'ops', 'rename_owner'], person_suppressed: ['app_rw'], message_handoff_ok: ['sender_svc'],
+  record_mail_event: ['inbox_svc'],   // 0021: provider bounce and complaint events
 };
 
 async function asProdOwner() {
