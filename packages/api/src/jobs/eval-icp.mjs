@@ -4,7 +4,7 @@
 // and at least one trait contains an expected word (when the case names any). Exit 1 below 100%.
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { vertexModel } from '../services/model.mjs';
+import { geminiApiModel } from '../services/model.mjs';
 import { cleanRows, buildIcpRequest, parseIcp } from '../services/icp.mjs';
 
 export async function runIcpEval(model, { file = new URL('../../../ai/evals/icp@1.jsonl', import.meta.url), log = console.log } = {}) {
@@ -32,6 +32,10 @@ export async function runIcpEval(model, { file = new URL('../../../ai/evals/icp@
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const env = process.env;
-  const r = await runIcpEval(vertexModel({ project: env.OMNI_VERTEX_PROJECT, models: { flash_lite: env.OMNI_MODEL_FLASH_LITE, flash: env.OMNI_MODEL_FLASH, pro: env.OMNI_MODEL_PRO } }));
+  const key = env.OMNI_GEMINI_KEY;
+  if (!key) { console.error('missing OMNI_GEMINI_KEY'); process.exit(1); }
+  // The cases are synthetic (ai/evals), so the free key is fine; the budget just has to cover one run.
+  const model = geminiApiModel({ key, perDay: Number(env.OMNI_GEMINI_PER_DAY ?? 100) || 100, models: { flash_lite: env.OMNI_MODEL_FLASH_LITE, flash: env.OMNI_MODEL_FLASH, pro: env.OMNI_MODEL_PRO } });
+  const r = await runIcpEval(model);
   process.exitCode = r.pass === r.total ? 0 : 1;
 }

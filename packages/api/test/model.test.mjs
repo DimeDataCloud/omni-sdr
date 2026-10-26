@@ -30,7 +30,7 @@ test('gemini_api: stops at its daily budget per model and starts again the next 
   assert.equal(calls, 3, 'the refused call never reached Google');
   day = '2026-10-03T00:00:01Z';
   await ask();
-  await assert.rejects(m.generate({ tier: 'flash', system: 's', messages: [], grounded: true }), /needs Vertex/);
+  await assert.rejects(m.generate({ tier: 'flash', system: 's', messages: [], grounded: true }), /grounded search is off/);
   const bad = geminiApiModel({ key: 'k', models: MODELS, fetchImpl: async () => new Response('{}', { status: 429 }) });
   await assert.rejects(bad.generate({ tier: 'flash', system: 's', messages: [] }), (e) => e instanceof ModelError && /gemini_api 429/.test(e.message));
   assert.throws(() => geminiApiModel({ models: MODELS }), /needs a key/);
@@ -44,4 +44,15 @@ test('server.mjs refuses gemini_api unless the deployment says its data is demo-
   const r = run({});
   assert.equal(r.status, 1);
   assert.match(r.stderr, /demo data only: set OMNI_DATA_IS_DEMO=1/);
+});
+
+test('server.mjs refuses the removed OMNI_MODEL=vertex instead of treating it as off, and the Vertex adapter is gone', async () => {
+  const server = new URL('../src/server.mjs', import.meta.url).href;
+  const r = spawnSync(process.execPath, ['-e', `import(${JSON.stringify(server)}).then((m) => m.main?.())`], {
+    env: { PATH: process.env.PATH, DATABASE_URL: 'postgres://nobody@127.0.0.1:1/none', OMNI_MODEL: 'vertex' }, encoding: 'utf8', timeout: 20000 });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /OMNI_MODEL=vertex is not supported/);
+  const mod = await import('../src/services/model.mjs');
+  assert.equal(mod.vertexModel, undefined);
+  assert.equal(mod.metadataToken, undefined);
 });

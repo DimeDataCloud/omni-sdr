@@ -12,12 +12,12 @@
 //                           2 ONLY when every request must pass Cloudflare or a load balancer first: while the *.run.app URL
 //                           is reachable directly, 2 lets a caller pick its own rate-limit bucket with one forged entry
 //                           (claude-local's #33 audit: 60 spoofed calls never limited, vs 31 at 1). Unset: the socket address
-//   OMNI_MODEL=off|vertex   default off; vertex needs OMNI_VERTEX_PROJECT and OMNI_MODEL_{FLASH_LITE,FLASH,PRO} [VERIFY IDs]
+//   OMNI_MODEL=off|gemini_api   default off; gemini_api needs OMNI_GEMINI_KEY, OMNI_DATA_IS_DEMO=1 and OMNI_MODEL_{FLASH_LITE,FLASH,PRO} [VERIFY IDs]
 import { createServer } from 'node:http';
 import { createApp } from './app.mjs';
 import { pgPool } from './pool.mjs';
 import { firebaseVerifier } from './auth.mjs';
-import { offModel, vertexModel, geminiApiModel } from './services/model.mjs';
+import { offModel, geminiApiModel } from './services/model.mjs';
 import { offPlaces, googlePlaces } from './services/places.mjs';
 import { offVerifier } from './services/verify.mjs';
 import { zeroBounceVerifier } from './services/zerobounce.mjs';
@@ -37,13 +37,16 @@ export async function main() {
     console.error('OMNI_MODEL=gemini_api is for demo data only: set OMNI_DATA_IS_DEMO=1 on a deployment that holds no real prospect or customer data');
     process.exit(1);
   }
+  // A leftover OMNI_MODEL=vertex must stop the start, not quietly turn the model off.
+  if (env.OMNI_MODEL && !['off', 'gemini_api'].includes(env.OMNI_MODEL)) {
+    console.error(`OMNI_MODEL=${env.OMNI_MODEL} is not supported: use off or gemini_api (Vertex was removed)`);
+    process.exit(1);
+  }
   const pool = await pgPool({ connectionString: need('DATABASE_URL'), max: Number(env.OMNI_DB_POOL ?? 10) });
   const models = () => ({ flash_lite: need('OMNI_MODEL_FLASH_LITE'), flash: need('OMNI_MODEL_FLASH'), pro: need('OMNI_MODEL_PRO') });
-  const model = env.OMNI_MODEL === 'vertex'
-    ? vertexModel({ project: need('OMNI_VERTEX_PROJECT'), location: env.OMNI_VERTEX_LOCATION ?? 'us-central1', models: models() })
-    : env.OMNI_MODEL === 'gemini_api'
-      ? geminiApiModel({ key: need('OMNI_GEMINI_KEY'), models: models(), perDay: Number(env.OMNI_GEMINI_PER_DAY ?? 20) || 20 })
-      : offModel();
+  const model = env.OMNI_MODEL === 'gemini_api'
+    ? geminiApiModel({ key: need('OMNI_GEMINI_KEY'), models: models(), perDay: Number(env.OMNI_GEMINI_PER_DAY ?? 20) || 20 })
+    : offModel();
   // Vendor verification ships off: OMNI_VERIFY=zerobounce reads the key by name from OMNI_SENDER_SECRETS.zeroBounceKey
   // (Secret Manager `omni-sender-secrets`). Asked for and missing is a refusal to start, not a silent 'off'.
   const verifier = env.OMNI_VERIFY === 'zerobounce' ? zeroBounceVerifier({ key: senderSecret('zeroBounceKey') }) : offVerifier();
