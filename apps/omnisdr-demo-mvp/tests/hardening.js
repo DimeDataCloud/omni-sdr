@@ -73,7 +73,7 @@ const post = (u, b, h = {}) => fetch(BASE + u, { method: 'POST', headers: { ...J
   ok('/tryme/ and /tryme/x are not pages', (await nf('/tryme/x')).status === 404);
   ok('/api/lead still answers on POST', (await post('/api/lead', { tenant: 'riverbend', name: 'Sam' })).status === 200);
   ok('/api/dev/stats still 401 without cookie', (await nf('/api/dev/stats')).status === 401);
-  ok('/api/dev/login still 401 on a wrong passcode', (await post('/api/dev/login', { passcode: 'wrong' }, { 'cf-connecting-ip': '66.6.6.6' })).status === 401);
+  ok('/api/dev/login still 401 on a wrong passcode', (await post('/api/dev/login', { passcode: 'wrong' }, { 'cf-connecting-ip': '67.7.7.7' })).status === 401);
   let f = 0; for (const [s, n, d] of R) { if (s === 'FAIL') f++; console.log(s, n, d ? '— ' + d : ''); }
   console.log(`\n${R.length - f}/${R.length} passed`); process.exit(f ? 1 : 0);
 })().catch(e => { console.error('CRASH', e); process.exit(2); });
