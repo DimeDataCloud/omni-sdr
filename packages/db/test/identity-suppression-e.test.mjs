@@ -156,3 +156,31 @@ test('57: an upsert that sets the name of an opted-out contact is refused; a con
   await upsert('tess@x.test', 'Theresa Tide');
   assert.equal((await one(db, `SELECT name FROM contacts WHERE id = $1`, [b])).name, 'Theresa Tide');
 });
+
+test('26/27: through the real send_guard, a shared-line holder still gets an email; the opted-out holder gets nothing; the channel-less reply-draft check is conservative', async () => {
+  const db = await freshDb();
+  const t = await seedTenant(db, 'alpha');
+  const ctx = ctxOf(t);
+  // The seed makes t.contact the origin of a placeholder phone row; a person who is an origin anywhere is never exempt, so clear it.
+  await db.query(`DELETE FROM suppression_origins WHERE value_hash = $1`, [`origin-alpha`]);
+  // t.contact holds +16155550100. A is a stranger on the same office line who texts STOP.
+  const a = await mk(db, t, t.ws, { name: 'Line Mate', email: 'mate@x.test', phone: '(615) 555-0100' });
+  await optOut(db, t, a);
+  const approved = async () => {
+    const id = await as(db, 'app_rw', ctx, async () => (await one(db,
+      `INSERT INTO drafts (org_id, workspace_id, enrollment_id, channel, subject, body) VALUES ($1, $2, $3, 'email', 'Quick note', 'Your booking page has no online scheduling.') RETURNING id`,
+      [t.org, t.ws, t.enrollment])).id);
+    await as(db, 'gate_svc', ctx, () => db.query(`UPDATE drafts SET gate_passed = true, gate_body_sha = draft_sha(subject, body), gate_version = 'v1', gated_at = now(), status = 'review' WHERE id = $1`, [id]));
+    await as(db, 'app_rw', ctx, () => db.query(`UPDATE drafts SET status = 'approved', approved_by = $2, approved_at = now() WHERE id = $1`, [id, t.user]));
+    return id;
+  };
+  const go = (d) => as(db, 'sender_svc', ctx, () => db.query(`INSERT INTO messages (org_id, workspace_id, draft_id, mailbox_id, channel) VALUES ($1, $2, $3, $4, 'email')`, [t.org, t.ws, d, t.mailbox]));
+  assert.equal(await refused(go(await approved())), null, 'a different person on the line is emailed');
+  assert.equal(await suppressed(db, t.contact, 'sms'), true);
+  const ask = (id) => as(db, 'app_rw', ctx, () => one(db, `SELECT app_contact_suppressed($1) AS s`, [id])).then((r) => r.s);
+  assert.equal(await ask(t.contact), true, 'the reply-draft check has no channel, so it takes the conservative answer for a shared line');
+  assert.equal(await ask(a), true);
+  // Control: when the opt-out cannot be attributed, the other holder is refused on every channel.
+  await db.query(`DELETE FROM suppression_origins`);
+  assert.equal(await suppressed(db, t.contact, 'email'), true);
+});
