@@ -313,6 +313,7 @@ CREATE TRIGGER identities_close_person AFTER INSERT ON contact_identities
   REFERENCING NEW TABLE AS new_rows FOR EACH STATEMENT EXECUTE FUNCTION identities_close_person();
 
 -- An opt-out in flight (suppression row, closure) holds the org lock exclusively until commit, so a send waits for it.
+-- Every WRITER takes the org key exclusive and only the guard and the hand-off take it shared: no transaction upgrades (N-1).
 -- Row-level, because a statement trigger does not see the org. Definer, so the advisory REVOKE (part 9) cannot break it.
 CREATE FUNCTION suppression_org_lock() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
@@ -378,8 +379,8 @@ CREATE FUNCTION _suppress_person(p_contact uuid, p_org uuid, p_reason text, p_or
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE c contacts%ROWTYPE; nh text; has_email boolean; has_profile boolean;
 BEGIN
-  -- The seed and the order-2 hold race a same-name contact create or rename (contacts_name_hold takes this lock shared first):
-  -- whichever commits second then reads the other's committed rows on its next statement.
+  -- The seed and the order-2 hold race a same-name contact create or rename (contacts_name_hold takes this same lock, also
+  -- exclusive, so no transaction ever upgrades it): whichever commits second then reads the other's committed rows.
   PERFORM pg_advisory_xact_lock(org_lock_key(p_org));
   SELECT * INTO c FROM contacts WHERE id = p_contact AND org_id = p_org;
   IF NOT FOUND THEN RAISE EXCEPTION '_suppress_person: contact not found' USING ERRCODE = 'P0001'; END IF;
@@ -452,6 +453,10 @@ END $$;
 
 -- record_identity: the one case a trigger cannot see (a paste with BOTH a profile and an address, where the thread's contact
 -- and the address contact differ). LinkedIn only, caller's org and workspace only, the slug in its lower-case `in/<slug>` form.
+-- Granted to app_rw too (an import row skipped as a duplicate keeps its profile link). Known, accepted (ADV N-6): the slug is free,
+-- so a member can link an own contact to a profile that another workspace of the SAME org has opted out, which suppresses that
+-- own contact (an over-block) and lets the member then ask whether that profile is suppressed. It only ever adds identities
+-- and never reaches another org; refusing a cross-workspace slug would break the legitimate same-person-in-two-workspaces case.
 CREATE FUNCTION record_identity(p_contact uuid, p_slug text, p_source text) RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE c contacts%ROWTYPE;
@@ -463,6 +468,29 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'record_identity: contact not in this workspace' USING ERRCODE = 'P0001'; END IF;
   INSERT INTO contact_identities (org_id, workspace_id, contact_id, kind, value_hash, source)
   VALUES (c.org_id, c.workspace_id, c.id, 'linkedin', linkedin_hash(p_slug), p_source)
+  ON CONFLICT DO NOTHING;
+END $$;
+
+-- import_suppress_held: an import row refused because its profile belongs to an opted-out person is rolled back, and with it the
+-- suppression of the new address and phone that the row brought (ADV N-3). They belong to that person, so write them to the
+-- org's suppression after the rollback. Only when the profile is already opted out in the caller's org (a name-only match proves
+-- nothing about the address and is not suppressed); the reason is 'import_held'. The phone has no contact to be an origin of, so
+-- like a legacy line it blocks every holder: a held row's phone is the person's, not a shared line the importer vouches for.
+CREATE FUNCTION import_suppress_held(p_slug text, p_email text, p_phone text) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE o uuid := app_org();
+BEGIN
+  IF o IS NULL OR p_slug IS NULL OR p_slug !~ '^in/[a-z0-9_%-]{2,100}$' THEN
+    RAISE EXCEPTION 'import_suppress_held: refused' USING ERRCODE = 'P0001';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM suppression s WHERE s.scope_org_id = o AND s.value_hash = linkedin_hash(p_slug) AND s.reason <> 'bounce') THEN
+    RETURN;
+  END IF;
+  INSERT INTO suppression (scope_org_id, value_hash, kind, reason)
+  SELECT o, v.h, v.k, 'import_held'
+  FROM (VALUES ('email', CASE WHEN btrim(coalesce(p_email, '')) <> '' THEN value_hash(p_email) END),
+               ('phone', value_hash(canon_phone(p_phone)))) AS v(k, h)
+  WHERE v.h IS NOT NULL
   ON CONFLICT DO NOTHING;
 END $$;
 
@@ -480,10 +508,13 @@ BEGIN
     NEW.hold_cleared_at := OLD.hold_cleared_at; NEW.hold_clear_reason := OLD.hold_clear_reason;
     IF OLD.hold_reason IS NOT NULL THEN RETURN NEW; END IF;
   END IF;
+  -- EXCLUSIVE, never shared (ADV N-1): the opt-out writers (_suppress_person, the suppression row trigger) take this same key
+  -- exclusive later in the same transaction, and a shared lock upgraded to exclusive deadlocks two such transactions (40P01).
+  -- Taken before the seed read, and for every name of 2+ tokens even when the org has no seed yet: the first seed (and its salt)
+  -- may be written by a transaction that has not committed. A second transaction then waits and reads the committed seed.
+  IF name_tokens(NEW.name) >= 2 THEN PERFORM pg_advisory_xact_lock(org_lock_key(NEW.org_id)); END IF;
   h := name_seed_hash(NEW.org_id, NEW.name);
   IF h IS NULL THEN RETURN NEW; END IF;
-  -- Shared: an opt-out writing a seed holds it exclusive until commit, so the seed read below sees every committed seed.
-  PERFORM pg_advisory_xact_lock_shared(org_lock_key(NEW.org_id));
   own := ARRAY(SELECT value_hash(NEW.email) WHERE btrim(coalesce(NEW.email, '')) <> ''
                UNION SELECT value_hash(canon_phone(NEW.phone)) WHERE canon_phone(NEW.phone) IS NOT NULL
                UNION SELECT value_hash('linkedin:' || NEW.linkedin_slug) WHERE NEW.linkedin_slug IS NOT NULL
@@ -524,7 +555,9 @@ END $$;
 CREATE FUNCTION contact_opted_out(p_contact uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS
 $$ SELECT EXISTS (
      SELECT 1 FROM contacts c JOIN suppression s ON s.scope_org_id = c.org_id AND s.reason <> 'bounce'
-     WHERE c.id = p_contact AND (app_org() IS NULL OR c.org_id = app_org())
+     WHERE c.id = p_contact
+       -- no tenant context: only a session that has not done SET ROLE, or ops (the rename block runs as the caller), may ask
+       AND (CASE WHEN app_org() IS NULL THEN current_setting('role') IN ('none', 'ops') ELSE c.org_id = app_org() END)
        AND (s.value_hash IN (SELECT value_hash FROM contact_identities i WHERE i.contact_id = c.id)
                                  OR s.value_hash IN (value_hash(c.email), value_hash(c.phone)))) $$;
 
@@ -561,13 +594,12 @@ END $$;
 -- raw phone or canonical phone hash is suppressed; (c) an uncleared name hold. A PHONE hit blocks every channel, unless the
 -- check is for email and the line is only SHARED: the hash has at least one origin, this contact is not an origin of any
 -- hash, and it is not in an origin's person. A row with no origin blocks every holder on every channel for good.
-CREATE FUNCTION person_suppressed(p_contact uuid, p_channel text DEFAULT NULL) RETURNS boolean
+CREATE FUNCTION _person_suppressed(p_contact uuid, p_channel text DEFAULT NULL) RETURNS boolean
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
 DECLARE c contacts%ROWTYPE; h text; shared boolean;
 BEGIN
-  -- A caller with a tenant context sees its own org only (a foreign id answers false, the same as an unknown one). Without a
-  -- context the caller is a definer or the migrator, never a tenant connection.
-  SELECT * INTO c FROM contacts WHERE id = p_contact AND (app_org() IS NULL OR org_id = app_org());
+  -- The unfiltered core: no tenant grant, called by the guard, the hand-off and the tenant wrapper below, which bound the org.
+  SELECT * INTO c FROM contacts WHERE id = p_contact;
   IF NOT FOUND THEN RETURN false; END IF;
   IF c.hold_reason IS NOT NULL AND c.hold_cleared_at IS NULL THEN RETURN true; END IF;
 
@@ -599,6 +631,20 @@ BEGIN
   RETURN false;
 END $$;
 
+-- The tenant-facing question (ADV P3-1, N-5). With a tenant context it answers for its own org only: a foreign or unknown id is
+-- false. With no context it FAILS CLOSED for any session that has done SET ROLE (every tenant, service and ops connection does,
+-- context.mjs); only a session that has not (a definer chain, the migrator, a test) gets the unfiltered answer.
+CREATE FUNCTION person_suppressed(p_contact uuid, p_channel text DEFAULT NULL) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF app_org() IS NULL THEN
+    IF current_setting('role') <> 'none' THEN RETURN false; END IF;
+  ELSIF NOT EXISTS (SELECT 1 FROM contacts WHERE id = p_contact AND org_id = app_org()) THEN
+    RETURN false;
+  END IF;
+  RETURN _person_suppressed(p_contact, p_channel);
+END $$;
+
 -- The sender's last look before the provider call. It derives the contact and channel from the message itself (the sender
 -- cannot name another id), looks the message up in the caller's org only, takes the org lock shared as its own FIRST
 -- statement (so a later statement gets a fresh snapshot that sees an opt-out committed while it waited, hence VOLATILE), and
@@ -614,7 +660,7 @@ BEGIN
     FROM messages m JOIN drafts d ON d.id = m.draft_id JOIN enrollments e ON e.id = d.enrollment_id
    WHERE m.id = p_message AND m.org_id = v_org;
   IF v_contact IS NULL THEN RETURN false; END IF;
-  RETURN NOT person_suppressed(v_contact, v_channel);
+  RETURN NOT _person_suppressed(v_contact, v_channel);
 END $$;
 
 GRANT SELECT ON messages TO guard_owner;
@@ -623,14 +669,14 @@ CREATE POLICY guard_all ON messages TO guard_owner USING (true) WITH CHECK (true
 -- ─── ownership and execute grants ────────────────────────────────────────────────────────────────────────────────
 -- ACLs first, ownership last: once the function belongs to identity_owner the (non-superuser) migrator can no longer REVOKE or GRANT on it (0008a).
 REVOKE EXECUTE ON FUNCTION name_seed_hash(uuid, text, boolean), org_salts_immutable(), _suppress_person(uuid, uuid, text, boolean),
-  suppress_person(uuid, text), record_identity(uuid, text, text), contacts_name_hold(), can_resolve_hold(uuid, uuid),
+  suppress_person(uuid, text), record_identity(uuid, text, text), import_suppress_held(text, text, text), contacts_name_hold(), can_resolve_hold(uuid, uuid),
   clear_name_hold(uuid, text), contact_opted_out(uuid), rename_opted_out_contact(uuid, text, text),
-  person_suppressed(uuid, text), message_handoff_ok(uuid) FROM PUBLIC;
+  _person_suppressed(uuid, text), person_suppressed(uuid, text), message_handoff_ok(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION name_seed_hash(uuid, text, boolean) TO identity_owner;
 GRANT EXECUTE ON FUNCTION _suppress_person(uuid, uuid, text, boolean) TO identity_owner;
 GRANT EXECUTE ON FUNCTION suppress_person(uuid, text), record_identity(uuid, text, text) TO inbox_svc;
 -- An import row that is skipped as a duplicate still carries its profile link (record_identity checks the caller's org and workspace).
-GRANT EXECUTE ON FUNCTION record_identity(uuid, text, text) TO app_rw;
+GRANT EXECUTE ON FUNCTION record_identity(uuid, text, text), import_suppress_held(text, text, text) TO app_rw;
 GRANT EXECUTE ON FUNCTION clear_name_hold(uuid, text), rename_opted_out_contact(uuid, text, text) TO app_rw;
 GRANT EXECUTE ON FUNCTION can_resolve_hold(uuid, uuid) TO identity_owner, rename_owner;
 GRANT EXECUTE ON FUNCTION contact_opted_out(uuid) TO app_rw, rename_owner, ops;
@@ -644,11 +690,13 @@ ALTER FUNCTION org_salts_immutable() OWNER TO identity_owner;
 ALTER FUNCTION _suppress_person(uuid, uuid, text, boolean) OWNER TO identity_owner;
 ALTER FUNCTION suppress_person(uuid, text) OWNER TO identity_owner;
 ALTER FUNCTION record_identity(uuid, text, text) OWNER TO identity_owner;
+ALTER FUNCTION import_suppress_held(text, text, text) OWNER TO identity_owner;
 ALTER FUNCTION contacts_name_hold() OWNER TO identity_owner;
 ALTER FUNCTION can_resolve_hold(uuid, uuid) OWNER TO identity_owner;
 ALTER FUNCTION clear_name_hold(uuid, text) OWNER TO identity_owner;
 ALTER FUNCTION contact_opted_out(uuid) OWNER TO guard_owner;
 ALTER FUNCTION rename_opted_out_contact(uuid, text, text) OWNER TO rename_owner;
+ALTER FUNCTION _person_suppressed(uuid, text) OWNER TO guard_owner;
 ALTER FUNCTION person_suppressed(uuid, text) OWNER TO guard_owner;
 ALTER FUNCTION message_handoff_ok(uuid) OWNER TO guard_owner;
 
@@ -721,7 +769,7 @@ BEGIN
   END IF;
 
   -- (0020) The person, not the address: any identity of this contact opted out, or an uncleared name hold, on any channel.
-  IF person_suppressed(c.id, NEW.channel) THEN
+  IF _person_suppressed(c.id, NEW.channel) THEN
     RAISE EXCEPTION 'send_guard: contact suppressed' USING ERRCODE = 'P0001';
   END IF;
 
@@ -762,7 +810,7 @@ END $$;
 
 -- 0017's reply-drafting check now asks the same question as the guard, over every channel, for a contact in the caller's org.
 CREATE OR REPLACE FUNCTION app_contact_suppressed(p_contact uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS
-$$ SELECT EXISTS (SELECT 1 FROM contacts c WHERE c.id = p_contact AND c.org_id = app_org()) AND person_suppressed(p_contact, NULL) $$;
+$$ SELECT EXISTS (SELECT 1 FROM contacts c WHERE c.id = p_contact AND c.org_id = app_org()) AND _person_suppressed(p_contact, NULL) $$;
 
 RESET ROLE;
 
@@ -848,7 +896,11 @@ BEGIN
   FOR r IN SELECT i.org_id, i.contact_id FROM inbound_messages i
             WHERE i.contact_id IS NOT NULL AND i.intent = 'unsubscribe'
            UNION
-           SELECT e.org_id, e.contact_id FROM enrollments e WHERE e.stop_reason IN ('linkedin:unsubscribe', 'unsubscribe')
+           -- A decider-driven opt-out leaves `intent` alone: only the decision's applied list and the stop reason record it (ADV N-2).
+           SELECT i.org_id, i.contact_id FROM inbound_messages i
+            WHERE i.contact_id IS NOT NULL AND jsonb_typeof(i.decision->'applied') = 'array' AND i.decision->'applied' @> '["suppress"]'::jsonb
+           UNION
+           SELECT e.org_id, e.contact_id FROM enrollments e WHERE e.stop_reason IN ('linkedin:unsubscribe', 'unsubscribe', 'reply:model_stop')
            UNION
            SELECT u.org_id, u.contact_id FROM unsubscribe_tokens u WHERE u.used_at IS NOT NULL LOOP
     PERFORM _suppress_person(r.contact_id, r.org_id, 'backfill', false);
