@@ -181,7 +181,7 @@ BEGIN
   s := regexp_replace(s, '/+$', '');
   LOOP
     IF s ~ '%(00|2f|3f|23)' THEN RAISE EXCEPTION 'linkedin slug refused: reserved escape' USING ERRCODE = '22023'; END IF;
-    nxt := s;
+    nxt := regexp_replace(s, '%25(?=[0-9a-f]{2})', '%', 'g');  -- a double-encoded escape unwraps one layer per pass
     FOR m IN SELECT DISTINCT (regexp_matches(s, '%([0-9a-f]{2})', 'g'))[1] LOOP
       ch := chr(('x' || m)::bit(8)::int);
       IF ch ~ '^[A-Za-z0-9._~-]$' THEN nxt := replace(nxt, '%' || m, ch); END IF;
