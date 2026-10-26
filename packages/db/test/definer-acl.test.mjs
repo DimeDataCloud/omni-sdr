@@ -27,7 +27,7 @@ const EXPECTED = {
   app_contact_suppressed: ['app_rw'],   // 0017: no reply drafted to someone who opted out
   send_guard: [], send_guard_enrollment: [], handoffs_sync: [],  // trigger-only
   // 0020: identity-keyed suppression. Triggers and internals have no caller; the rest are named here.
-  _suppress_person: ['unsub_owner'], suppress_person: ['inbox_svc'], record_identity: ['app_rw', 'inbox_svc'],
+  _suppress_person: ['unsub_owner'], suppress_person: ['inbox_svc'], record_identity: ['app_rw', 'inbox_svc'], import_suppress_held: ['app_rw'], _person_suppressed: [],
   close_component: [], name_seed_hash: [], org_salts_immutable: [], contacts_fill_identities: [], conversations_fill_identity: [],
   identities_close_person: [], suppression_close_person: [], suppression_org_lock: [], contacts_name_hold: [],
   can_resolve_hold: ['rename_owner'], clear_name_hold: ['app_rw'], rename_opted_out_contact: ['app_rw'],
