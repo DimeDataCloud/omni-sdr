@@ -1,0 +1,360 @@
+[
+ {
+  "title": "Your role",
+  "body": [
+   {
+    "list": [
+     "You own the conversation with the owner, from first touch to signed pilot.",
+     "Success: owners see their own leak, say yes to the Level 1 pilot, and keep it past day 30.",
+     "You do not build, you do not promise features, you do not discount.",
+     "If it is not live, you do not sell it as live."
+    ]
+   }
+  ],
+  "notes": "Say: \"This job is simple to describe and hard to do well. You find owners who are already paying for leads and losing them to slow answers. You show them the leak with their own numbers. You get a yes on the pilot. That is it. The build is ours. The promises are limited to what is on the status slides.\"\nSay: \"Three things you never do. You never promise a feature that is not live. You never offer a discount or a free trial. You never quote a price other than the Level 1 pilot until I confirm the rest.\"\nSay: pay terms for the role are settled between you and me separately. Do not improvise them on this slide.\nAsk the rep: \"In your own words, what is the one thing you would never say to an owner on a first call?\" Listen for a guarantee, a free trial, or a feature that is not live."
+ },
+ {
+  "title": "What we sell in one sentence",
+  "body": [
+   {
+    "list": [
+     "Every lead answered in minutes, at any hour.",
+     "Carried to a booking or a payment.",
+     "A person takes over the moment it matters.",
+     "Proof of how fast, in the owner's own numbers."
+    ]
+   }
+  ],
+  "notes": "Say: \"This is the sentence. Say it until it is boring. The owner does not want AI. The owner wants the lead answered before the competitor picks up, and a booked job on the calendar.\"\nSay: we sell the outcome: a lead that gets an answer, then a booking. We do not lead with the tool or the setup.\nSay: the target first reply is five minutes, set per business at onboarding. It is a target we measure and report, not a guarantee.\nAsk the rep: \"Say the sentence back to me without the word AI.\" If he can, move on."
+ },
+ {
+  "title": "The problem",
+  "body": [
+   {
+    "list": [
+     "Owners pay for leads: ads, directories, web forms.",
+     "Then the lead waits. The owner is on a job, on the mat, or asleep.",
+     "Whoever answers first usually gets the job.",
+     "How long does YOUR lead wait? We time it."
+    ]
+   }
+  ],
+  "notes": "Say: \"The owner already did the hard, expensive part. They paid to get the lead. The money is lost in the gap between the lead arriving and a human answering.\"\nSay: \"Speed decides who wins the job\" is the argument. Do not add a statistic to it. Vendor blogs quote big multipliers. They are not ours to repeat, and some measure a different thing than sales. The only number we use is the prospect's own audit number, from the free proof on slide 12.\nSay: the strongest line in the whole deck is the owner's own response time, measured by us, shown to them.\nAsk the rep: \"If an owner says speed does not matter in their trade, what do you ask next?\" Good answer: \"When you shop for a plumber at 9 pm, who do you call back?\" or \"Show me your last ten leads and when each got a reply.\""
+ },
+ {
+  "title": "How it works",
+  "body": [
+   {
+    "list": [
+     "1. A lead arrives from any channel.",
+     "2. It becomes one lead record. Duplicates are merged. Consent is checked.",
+     "3. First reply goes out inside the response window.",
+     "4. Follow-up continues until booked, replied, or opted out.",
+     "5. A person takes over when it matters. Booking or payment closes it. A report shows the speed."
+    ]
+   }
+  ],
+  "notes": "Status: the console, the database with a separate space per client, approvals, inbox, handoffs, meetings and the email path are built. The lead record pipeline (S2L-1 and S2L-1b) is built and under audit, not live. Channel adapters are designed. See slide 5.\nSay, plainly, for a skeptical owner:\n- \"A lead can arrive as a form, an ad form, an email, a text, a DM, a call. We turn every one into the same kind of record, so the system treats them the same way. The glossary calls this a lead event.\"\n- \"Before we send anything, we check if we already have this person (so nobody gets two texts) and whether we have a valid reason to contact them (the consent basis). No reason, no message.\"\n- \"The first reply goes out inside the response window. The default is five minutes. We set it per business.\"\n- \"Then a follow-up ladder runs: for example text, then email, then a call attempt. It stops when the person books, replies in a way that needs a human, opts out, or hits a daily cap. Nothing loops forever.\"\n- \"Anytime the lead asks for a human, or the topic is an emergency, a big job, a complaint, or a price only a person may quote, the owner or staff gets an alert with the whole thread and a suggested next move.\"\n- \"Last, the lead ends as booked, paid, handed to a person, opted out, or closed. Results shows how fast the first reply was, per channel.\"\nAsk the rep: \"Walk me through what happens to a web form lead at 11:40 pm.\" Expected: record created, duplicate and consent check, text and email within seconds, owner alerted, callback attempt if no reply, booking if the lead says yes. Status: each step depends on the adapters on slide 5."
+ },
+ {
+  "title": "Channels",
+  "body": [
+   {
+    "table": {
+     "head": [
+      "Channel",
+      "Status"
+     ],
+     "rows": [
+      [
+       "Web form and landing page",
+       "designed (foundation built, under audit)"
+      ],
+      [
+       "Ad lead forms (Meta, Google)",
+       "designed"
+      ],
+      [
+       "Inbound email",
+       "built (email path), send lock on"
+      ],
+      [
+       "List import (CSV, with consent basis)",
+       "designed"
+      ],
+      [
+       "Social DMs",
+       "designed, needs approval (Meta app review)"
+      ],
+      [
+       "Social comments",
+       "designed, needs approval (Meta app review)"
+      ],
+      [
+       "Text and missed-call text-back",
+       "designed, needs approval (A2P 10DLC and a provider)"
+      ],
+      [
+       "Voice receptionist",
+       "designed, needs approval (voice provider decision)"
+      ],
+      [
+       "CRM and booking triggers",
+       "designed"
+      ]
+     ]
+    }
+   },
+   "Nothing here is live for a client yet."
+  ],
+  "notes": "Say: \"This is the slide that keeps you honest. Each channel is a plug-in on one core. The core is the same for all of them, which is why adding a channel is cheaper than starting over.\"\nSay: \"If an owner asks 'can you do Instagram', the answer is: that channel needs Meta's approval, it is on the way, and a pilot today starts with the channels that are ready. I will tell you which ones those are before you pitch.\"\nSay: build order is the email-based adapters first (web form, inbound email, list import, ad forms), because they need no outside approval. Text, social and voice each wait on someone else's approval, and those requests start early.\nSay: the voice demo that exists runs on demo data. It is a demonstration, not a client service.\nSay: \"A channel is off until we turn it on for that client. First it records and measures only. Then it drafts messages for approval. Auto-send is a separate step.\"\nDo not say: any date for any channel marked needs approval. The wait is outside our control.\nAsk the rep: \"An owner wants texting and Instagram in the pilot. What do you say?\" Good answer names the status, offers the ready channels, and does not promise a date.\nOpen item for Halo: confirm which channels are ready for a pilot on the day of the walkthrough, and update the Status column before the deck is shown."
+ },
+ {
+  "title": "Three response modes",
+  "body": [
+   {
+    "list": [
+     "Text: first reply in minutes, missed-call text-back, follow-up until they book. (designed, needs approval)",
+     "Social conversion: a comment opens a DM, the DM books the job. (designed, needs approval)",
+     "Voice receptionist: answers or calls back, books, texts the owner a summary. (designed, needs approval)",
+     "Email and web forms feed all three. (email built, forms designed)"
+    ]
+   }
+  ],
+  "notes": "Say: \"Three ways to answer, one brain behind them. Text is the workhorse. Social conversion is for owners who live on Instagram, like martial arts schools: someone comments a keyword, gets a public 'sent you a DM' and a private message that qualifies and books. Voice is the receptionist that answers when nobody can, books, and texts the owner a summary.\"\nSay: automated social messages say they are automated. Voice announces recording where the law requires it. That is built into the design, not an afterthought.\nSay: pick the lead mode by niche. Owners buying ads: form response time. Owners who miss calls on job sites: missed-call text-back. Schools and creators: comment to DM.\nSay: until a channel clears its outside approval, a pilot uses what is ready and the owner is told so in writing.\nAsk the rep: \"Which mode would you open with for a generator dealer? A martial arts school?\" Expected: dealer, missed calls and form response; school, comment to DM and form response."
+ },
+ {
+  "title": "Follow-through",
+  "body": [
+   {
+    "list": [
+     "A person can step in at any point, on any channel.",
+     "Booking with real open slots, confirmation, reminders, and no-show handling.",
+     "Payment options the owner turns on: pay link, deposit, quote then invoice, or pay later (the default).",
+     "The owner's own payment account. The money never passes through us."
+    ]
+   }
+  ],
+  "notes": "Status: Handoffs and Meetings pages are built. Alerts, warm transfer, resume-to-agent, calendar slots, reminders and no-show handling are designed. Payments are designed and need approval (a payment provider design and the client's own account; no code yet).\nSay: \"The agent does not stop at 'interested'. It carries the lead to a finished outcome. When a person has the thread, the agent goes silent on it. A button gives it back.\"\nSay: \"On payments, the default is pay later or on site. Pay-now links, deposits and quote-then-invoice are opt-in, per client. Card details never touch us. Anything over a limit the client sets, or anything not on their list, needs a person to approve it. Refunds and disputes are human only.\"\nSay: do not promise payments in a pilot. It is a later module.\nAsk the rep: \"An owner says 'I only want it to book, not take money.' Is that a problem?\" Expected: no, that is the default."
+ },
+ {
+  "title": "Safety and consent",
+  "body": [
+   {
+    "list": [
+     "Every channel starts off. The owner approves it first.",
+     "Week one is approval mode: every draft waits for a yes.",
+     "A send lock stays on until we release it.",
+     "Every contact needs a consent basis. No basis, no message.",
+     "Opt-outs and bounces block that person everywhere. Daily caps. Quiet hours."
+    ]
+   }
+  ],
+  "notes": "Say: \"This is why it is not spam. It is targeted and qualified, it asks permission first, and it has brakes.\"\n- \"Approval mode: for the first week the owner or we approve what goes out. They see every message before the lead does.\"\n- \"Send lock: nothing sends until we flip it on, per client and per channel.\"\n- \"Suppression: if someone opts out, bounces, or complains, that contact is blocked on every channel.\"\n- \"Caps: a daily limit per client, and quiet hours. No blasting.\"\n- \"Consent basis on every lead record. A form with consent language, a call they made to the business, a list the owner has a right to contact. We hand them the consent line to add to their forms.\"\nRep one-liner for nervous owners: \"It only replies to people who already reached out to you, it stops the moment they say stop, and for the first week you approve every message before it goes.\"\nDo not say: that it is legally guaranteed compliant. Say it is built to follow consent and opt-out rules and that the owner approves everything first.\nAsk the rep: \"An owner asks 'will this get me sued?' What do you say, and what do you not say?\" Good answer uses the one-liner and avoids any legal promise."
+ },
+ {
+  "title": "Sell the outcome, not the service",
+  "body": [
+   {
+    "table": {
+     "head": [
+      "We do not say",
+      "We say"
+     ],
+     "rows": [
+      [
+       "AI texting platform",
+       "Every lead gets an answer before they call your competitor."
+      ],
+      [
+       "Automation",
+       "You wake up to booked jobs and a short list of people to call."
+      ],
+      [
+       "AI receptionist",
+       "Nobody hits voicemail at 2 a.m."
+      ],
+      [
+       "Lead nurturing sequence",
+       "We stay on every lead until they book or say stop."
+      ],
+      [
+       "CRM integration",
+       "It works alongside what you already use. You do not switch anything."
+      ],
+      [
+       "Chatbot",
+       "A real answer, in the same channel they used, with you one tap away."
+      ],
+      [
+       "24/7 coverage",
+       "Your phone and forms are covered while you are on the job."
+      ],
+      [
+       "Pilot program",
+       "Thirty days, one problem fixed, measured in booked jobs."
+      ],
+      [
+       "Our system is fast",
+       "We timed your form last Tuesday: it took (their number)."
+      ],
+      [
+       "Dashboard and analytics",
+       "A weekly page: how fast, how many booked, what it is worth (an estimate)."
+      ]
+     ]
+    }
+   },
+   "Outcome language per ICP:",
+   {
+    "list": [
+     "Generator dealers: \"When the power goes out and a homeowner calls three dealers, you are the one that picks up.\"",
+     "Martial arts schools: \"A parent messages while you are teaching. They get an answer, and a trial class on the calendar, before they message the next school.\"",
+     "Remodelers: \"Every estimate you wrote gets a follow-up. Every lead you paid for gets a reply.\""
+    ]
+   }
+  ],
+  "notes": "Say: \"The owner does not shop for technology. They shop for fewer lost jobs. Lead with the job, the calendar and the phone.\"\nSay: the right-hand column is a starting point. Use the owner's words once you have heard them.\nSay: \"never say our setup hours\". Setup is about two hours of our time. The owner does not need that number and it does not describe their value.\nSay: any number in the right-hand column comes from the prospect's own audit, not from us.\nAsk the rep: \"Pick three rows and say them in your own words.\" Fix any row where he sounds like a software vendor."
+ },
+ {
+  "title": "Who we sell to",
+  "body": [
+   {
+    "list": [
+     "Generator dealers",
+     "Martial arts schools",
+     "Remodelers (aging in place, one-day bath)",
+     "The filter inside every niche: the owner already runs ads, outreach, or web forms, and has no speed to lead in place.",
+     "Skip: crowded answering niches, franchises, anyone who wants a free trial."
+    ]
+   }
+  ],
+  "notes": "Say: \"These are the three niches the Blueprint picked. In each one the miss costs far more than the pilot, the owner is the bottleneck, and they can say yes in one conversation.\"\nSay: the sharpened filter, in plain words: the best target is an owner already paying for lead flow, through ads, directories, outreach or web forms, whose first reply is slow or manual. The leads already arrive. The reply is the weak part. The audit proves it by timing their own form or ad lead.\nNiche notes:\n- Generator dealers. Phone first. Calls come at bad hours, especially around outages. Lead with missed calls and form response. Low local count, so winners go beyond the home metro early.\n- Martial arts schools. Instagram is their storefront. Lead with trial-class bookings, comment to DM and form response. Lower monthly prices in this niche, so watch the fit on very small schools.\n- Remodelers. Pay for leads and write estimates that go quiet. Lead with lead reply speed and estimate follow-up. Outcome pricing is the draft fit here (slide 13).\nSkip list (Blueprint and Full-Context disqualifiers): franchise headquarters controls phones or vendors, a team already covers nights, owner unreachable, typical job very small, demands a custom build, wants licensed advice in the script, wants a free trial. Crowded markets such as HVAC and plumbing answering, med spas and hearing clinics are on the avoid list.\nSay: market sizes and job values in the Blueprint are planning assumptions. Do not quote them to a prospect. Ask the owner for their own average job value.\nAsk the rep: \"A martial arts school with no ads, no forms, and four students. Do we call?\" Expected: no, the filter fails."
+ },
+ {
+  "title": "Finding and qualifying",
+  "body": [
+   {
+    "list": [
+     "Signals: running ads, a lead form on the site, a \"get a quote\" button, reviews that mention slow replies, a voicemail greeting.",
+     "Where: ad libraries, the business's site and socials, Google Maps and reviews, local owner groups.",
+     "Five questions to qualify (below)."
+    ]
+   },
+   {
+    "table": {
+     "head": [
+      "#",
+      "Question",
+      "A good answer sounds like"
+     ],
+     "rows": [
+      [
+       "1",
+       "Where do your leads come from today?",
+       "Ads, directories, forms, calls. More than one source."
+      ],
+      [
+       "2",
+       "Who answers them, and when?",
+       "The owner, on the job or after hours. No one at night."
+      ],
+      [
+       "3",
+       "What is a typical job worth to you?",
+       "A number high enough that one lost lead hurts."
+      ],
+      [
+       "4",
+       "How many leads slip each month, roughly?",
+       "An honest guess, or \"I do not know\". Both work."
+      ],
+      [
+       "5",
+       "If we showed you the real number, who decides?",
+       "The person on the call."
+      ]
+     ]
+    }
+   }
+  ],
+  "notes": "Say: \"You are looking for proof of spend and proof of slowness. If you see both before you call, the call is easy.\"\nWhere to look, in practice (all free, public, and allowed):\n- Ad libraries for the business name: are they running ads?\n- Their website: a form, a phone number, a chat widget, a booking link. Note what happens when you do not hit it.\n- Google reviews and Maps: look for lines like \"could never get through\" or \"no one called back\".\n- Instagram and Facebook pages: a trial offer, a quote post, and whether comments sit unanswered.\n- Local owner groups and associations, to find owners, not to pitch in public threads.\nDo not do: submit a prospect's form or call their line yourself outside the audit process on slide 12. The audit is run by us, once, with a plan.\nSay: the qualifying questions are a conversation, not a form. Question 4 is the key: it opens the leak without us claiming a number.\nSay: if question 5 is \"my partner decides\", ask for the partner on the results call.\nAsk the rep: \"Name three signals you can check in ten minutes before calling a dealer.\" Check that he names ads, a form, and a slow or unanswered channel."
+ },
+ {
+  "title": "The free proof",
+  "body": [
+   "Slide copy pending."
+  ],
+  "notes": "Speaker notes pending."
+ },
+ {
+  "title": "Pricing ladder",
+  "body": [
+   "Slide copy pending."
+  ],
+  "notes": "Speaker notes pending."
+ },
+ {
+  "title": "Higher-ticket options",
+  "body": [
+   "Slide copy pending."
+  ],
+  "notes": "Speaker notes pending."
+ },
+ {
+  "title": "The sales path",
+  "body": [
+   "Slide copy pending."
+  ],
+  "notes": "Speaker notes pending."
+ },
+ {
+  "title": "Discovery questions",
+  "body": [
+   "Slide copy pending."
+  ],
+  "notes": "Speaker notes pending."
+ },
+ {
+  "title": "Objections and answers",
+  "body": [
+   "Slide copy pending."
+  ],
+  "notes": "Speaker notes pending."
+ },
+ {
+  "title": "Never say",
+  "body": [
+   "Slide copy pending."
+  ],
+  "notes": "Speaker notes pending."
+ },
+ {
+  "title": "After the yes",
+  "body": [
+   "Slide copy pending."
+  ],
+  "notes": "Speaker notes pending."
+ },
+ {
+  "title": "Your first week",
+  "body": [
+   "Slide copy pending."
+  ],
+  "notes": "Speaker notes pending."
+ },
+ {
+  "title": "Glossary",
+  "body": [
+   "Slide copy pending."
+  ],
+  "notes": "Speaker notes pending."
+ },
+ {
+  "title": "Live demo walk-through",
+  "body": [
+   "Slide copy pending."
+  ],
+  "notes": "Speaker notes pending."
+ }
+]

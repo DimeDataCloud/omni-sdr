@@ -5,7 +5,7 @@
 .slide{flex:1;padding:32px}.slide h1{font-size:32px;line-height:40px;margin:0 0 16px}.slide p{font-size:18px;line-height:28px;margin:0 0 12px}.slide ul{font-size:18px;line-height:28px;padding-left:22px;margin:0 0 12px}
 .nav{display:flex;align-items:center;gap:12px}.nav .grow{flex:1}.prog{height:6px;border-radius:99px;background:var(--line);overflow:hidden}.prog i{display:block;height:100%;background:var(--ink)}
 .notes{padding:16px;border:1px dashed var(--control);border-radius:12px;background:var(--surface)}.notes h2{margin:0 0 6px}.notes p{margin:0 0 8px;white-space:pre-wrap}
-.printall{display:none}
+.slide table{font-size:16px;line-height:24px;margin:0 0 12px}.printall{display:none}
 @media print{body{background:#fff;color:#000}.deck{display:none}.printall{display:block}.ps{break-inside:avoid;page-break-after:always;padding:24px 0}.ps h1{font-size:26px}.ps p,.ps li{font-size:14px;line-height:22px}.ps .pn{border-top:1px solid #999;margin-top:12px;padding-top:8px;color:#333}}
 </style></head><body>
 <div class="deck" id="deck">
@@ -21,7 +21,7 @@
 (function(){'use strict';
 var S=JSON.parse(document.getElementById('sd').textContent),i=0,$=function(x){return document.getElementById(x)};
 function el(t,x){var n=document.createElement(t);if(x!=null)n.textContent=x;return n}
-function fill(host,s,h){host.appendChild(el(h,s.title));s.body.forEach(function(b){if(typeof b==='string'){host.appendChild(el('p',b))}else if(b&&b.list){var u=el('ul');b.list.forEach(function(x){u.appendChild(el('li',x))});host.appendChild(u)}})}
+function fill(host,s,h){host.appendChild(el(h,s.title));s.body.forEach(function(b){if(typeof b==='string'){host.appendChild(el('p',b))}else if(b&&b.table){var t=el('table'),hd=el('thead'),hr=el('tr');b.table.head.forEach(function(c){hr.appendChild(el('th',c))});hd.appendChild(hr);t.appendChild(hd);var tb=el('tbody');b.table.rows.forEach(function(r){var tr=el('tr');r.forEach(function(c){tr.appendChild(el('td',c))});tb.appendChild(tr)});t.appendChild(tb);host.appendChild(t)}else if(b&&b.list){var u=el('ul');b.list.forEach(function(x){u.appendChild(el('li',x))});host.appendChild(u)}})}
 function go(n){i=Math.max(0,Math.min(S.length-1,n));var s=S[i],m=$('slide');m.textContent='';fill(m,s,'h1');
 $('nt').textContent='';String(s.notes||'').split('\n').forEach(function(l){$('nt').appendChild(el('p',l))});
 $('ct').textContent=(i+1)+' of '+S.length;$('pgi').style.width=((i+1)/S.length*100)+'%';$('bb').disabled=i===0;$('bx').disabled=i===S.length-1;
