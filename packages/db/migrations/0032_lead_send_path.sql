@@ -104,8 +104,7 @@ BEGIN
   END IF;
   RETURN NEW;
 END $$;
-CREATE TRIGGER lead_drafts_approver_binding BEFORE INSERT OR UPDATE ON lead_drafts
-  FOR EACH ROW EXECUTE FUNCTION lead_drafts_approver_binding();
+-- (the trigger itself is created after RESET ROLE: guard_owner has no TRIGGER privilege on lead_drafts, and should not)
 
 -- One body for both shapes. Text is 0021's with the lead shape added; every 0021 message is kept word for word.
 CREATE OR REPLACE FUNCTION send_guard() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
@@ -269,7 +268,13 @@ BEGIN
   RETURN NOT _person_suppressed(v_contact, v_channel);
 END $$;
 
-REVOKE EXECUTE ON FUNCTION lead_approver_ok(uuid, uuid, uuid), lead_send_blocker(uuid, text), lead_drafts_approver_binding() FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION lead_approver_ok(uuid, uuid, uuid), lead_send_blocker(uuid, text) FROM PUBLIC;
+RESET ROLE;
+
+CREATE TRIGGER lead_drafts_approver_binding BEFORE INSERT OR UPDATE ON lead_drafts
+  FOR EACH ROW EXECUTE FUNCTION lead_drafts_approver_binding();
+SET ROLE guard_owner;
+REVOKE EXECUTE ON FUNCTION lead_drafts_approver_binding() FROM PUBLIC;
 RESET ROLE;
 
 -- ─── unsub_owner: a complaint or a bounce on a lead message must suppress the contact ────────────────────────────
