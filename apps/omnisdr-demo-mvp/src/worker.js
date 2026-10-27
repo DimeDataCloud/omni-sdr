@@ -7,6 +7,7 @@ import salesDeckHtml from './sales-deck.html';
 import SLIDES from './sales-slides.js';
 import { TENANTS, DEFAULT_TENANT } from './tenant.js';
 import { buildInstruction, bookSlotTool } from './engine-instruction.js';
+import { handleRep } from './rep/index.js';
 
 /* ---------- helpers ---------- */
 const enc = new TextEncoder();
@@ -251,6 +252,7 @@ export default {
     if (req.method === 'HEAD') { const r = await this.fetch(new Request(req, { method: 'GET' }), env); return new Response(null, { status: r.status, headers: r.headers }); }
     try {
       const u = new URL(req.url), p = u.pathname, m = req.method;
+      if (p === '/rep' || p.startsWith('/rep/')) return handleRep(req, env); // rep portal: own auth (Access JWT + reps row), own CSP; see src/rep/index.js
       if (m === 'GET' && p === '/tryme') return (!triedGated(env) || (await salesAuthed(req, env))) ? page(demoHtml, env) : toEntry();
       if (m === 'GET' && p === '/tryme/dev') return (await salesAuthed(req, env)) ? page(devHtml, env) : toEntry();
       if (m === 'GET' && p === '/dev') return new Response(null, { status: 302, headers: { location: '/tryme/dev' + u.search, 'cache-control': 'no-store', 'x-robots-tag': 'noindex' } });
