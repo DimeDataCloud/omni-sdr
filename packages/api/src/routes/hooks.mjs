@@ -5,7 +5,8 @@ import { randomBytes, createHash } from 'node:crypto';
 import { T, camel, audit } from './index.mjs';
 import { v, parse } from '../validate.mjs';
 import { badRequest, notFound, HttpError } from '../errors.mjs';
-import { ingestForm } from '../services/inbox.mjs';
+import { ingestFormLead } from '../leads/web-form.mjs';
+import { LeadError } from '../leads/core.mjs';
 
 const sha = (s) => createHash('sha256').update(s, 'utf8').digest('hex');
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -52,8 +53,16 @@ export function registerHooks(r) {
       page: v.optional(v.string({ max: 200 })),
       externalId: v.optional(v.string({ min: 1, max: 200 })),
     }), json);
-    const out = await ingestForm(ctx.client, { id: ctx.params.id.toLowerCase(), tokenHash: sha(tok) },
-      { body: msg.message, email: msg.email, name: msg.name, phone: msg.phone, page: msg.page, externalId: msg.externalId, receivedAt: ctx.now() });
+    // One transaction: the message and its lead event land together or not at all (S2L-2b). A submission the lead contract refuses
+    // is the caller's to fix: 400 with the reason (LeadError text never echoes the submitted values), not a 500.
+    let out;
+    try {
+      out = await ingestFormLead(ctx.client, { id: ctx.params.id.toLowerCase(), tokenHash: sha(tok) },
+        { body: msg.message, email: msg.email, name: msg.name, phone: msg.phone, page: msg.page, externalId: msg.externalId, receivedAt: ctx.now() });
+    } catch (err) {
+      if (err instanceof LeadError) throw badRequest(err.message);
+      throw err;
+    }
     if (out.outcome === 'unknown_hook') throw notFound('not found');
     return { status: out.outcome === 'duplicate' ? 200 : 202, body: { received: true } };
   });

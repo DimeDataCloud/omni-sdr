@@ -67,12 +67,17 @@ export const externalIdIdentityProblem = (id) => (valueLooksLikeIdentity(id) ? '
 /**
  * The id to store for a source's own id: itself, unless it could look like an address or a number (the identity CHECK refuses
  * those), in which case a stable hash of it (`h:` + 32 hex), so a retry still dedupes and nothing identifying is stored.
- * Returns null for no id. Use ONE result for every row that must share the key (inbound_messages and lead_events).
+ * Returns null for no id; throws LeadError for anything but a string (an object would be stored as "[object Object]").
+ * Reserved shapes are hashed too: a source's own id that starts with `h:` or `sub-` (the two forms THIS code generates) is
+ * hashed, so a caller can never claim, or collide with, a hashed or server-generated id. Every stored `h:` id is therefore a hash.
+ * Use ONE result for every row that must share the key (inbound_messages and lead_events).
  */
 export function safeExternalId(id) {
+  if (id != null && typeof id !== 'string') throw new LeadError('externalId must be a string');
   const s = String(id ?? '').trim();
   if (!s) return null;
-  return externalIdIdentityProblem(s) || s.length > 200 ? `h:${createHash('sha256').update(s, 'utf8').digest('hex').slice(0, 32)}` : s;
+  const reserved = /^(h:|sub-)/i.test(s);
+  return externalIdIdentityProblem(s) || reserved || s.length > 200 ? `h:${createHash('sha256').update(s, 'utf8').digest('hex').slice(0, 32)}` : s;
 }
 
 function scanPayload(v) {

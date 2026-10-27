@@ -48,7 +48,7 @@ export async function ingestFormLead(client, hook, msg, opts = {}) {
   // ONE id for both rows (0022: the two dedupe keys cannot disagree): the form's own, else a server-generated submission id;
   // hashed if it could look like an address. Fixed before the transaction, so a deadlock retry reuses it.
   const externalId = safeExternalId(msg.externalId) ?? `sub-${randomUUID()}`;
-  const lead = await verifiedLead(webFormAdapter, { hookVerified: true, ...msg, externalId });
+  const lead = await verifiedLead(webFormAdapter, { ...msg, externalId, hookVerified: true });
   const scope = { orgId: hit.org_id, workspaceId: hit.workspace_id };
   return withService(client, { ...scope, role: 'inbox_svc' }, async (tx) => {
     const form = await ingestForm(client, hook, { ...msg, externalId }, { ...opts, tx, hit });
