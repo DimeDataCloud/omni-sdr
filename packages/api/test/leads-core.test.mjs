@@ -119,7 +119,7 @@ test('time to first touch end to end through the core', async () => {
     assert.equal(await markFirstTouch(db, ctx, lead.leadEventId, { channel: 'email', by: 'agent', messageId }), 'recorded');
   }
   const [row] = await ttftBySource(db, { ...ctx, userId }, ago(60), new Date(Date.now() + 60000));
-  assert.deepEqual([row.source, row.channel, row.n, row.touched, row.within_window], ['web_form', 'form', 3, 3, 2]);
+  assert.deepEqual([row.source, row.channel, row.n, row.touched, row.within_window], ['web_form', 'form', 3, 3, 1]);   // 0028: default window 2 minutes, so only the 1-minute touch (was 2 at 5 minutes)
   assert.ok(Math.abs(row.median_s - 180) < 5, `median ${row.median_s}`);
 });
 

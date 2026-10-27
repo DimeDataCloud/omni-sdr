@@ -3,8 +3,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { mkdtemp, copyFile, readdir } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { PGlite } from '@electric-sql/pglite';
+import { migrate } from '../src/migrate.mjs';
 import { freshDb, seedTenant, approvedDraft, as, one, q, refused } from './helpers.mjs';
 
+const MIGRATIONS = new URL('../migrations/', import.meta.url);
 const REC = `SELECT * FROM record_lead_event($1, $2, $3, $4, $5, $6, $7, $8, $9)`;
 const rec = (db, t, o = {}) => as(db, 'inbox_svc', { org: t.org, ws: [t.ws] }, () => one(db, REC, [
   o.org ?? t.org, o.ws ?? t.ws, o.source ?? 'web_form', o.channel ?? 'form', o.ext ?? 'ext-1', 'contact' in o ? o.contact : t.contact,
@@ -161,7 +167,7 @@ test('time to first touch: median, p90, untouched leads left out of the percenti
   const web = rows.find((r) => r.source === 'web_form');
   assert.equal(web.median_s, 240);                       // 2, 4, 8 minutes: the untouched lead is not in the percentile
   assert.equal(Math.round(web.p90_s), 432);              // 4 min + 0.8 * (8 - 4) min = 7.2 min
-  assert.equal(web.within_window, 2, 'default window 5 min: the 2- and 4-minute touches');
+  assert.equal(web.within_window, 1, 'default window 2 min (0028): only the 2-minute touch');
 });
 
 test('within_window follows response_window_minutes (a non-default window changes the count)', async () => {
@@ -173,12 +179,33 @@ test('within_window follows response_window_minutes (a non-default window change
   }
   const within = () => as(db, 'app_rw', { org: t.org, ws: [t.ws] }, async () =>
     (await one(db, `SELECT within_window AS w FROM ttft_by_source($1, $2)`, [minutes(-60), new Date(Date.now() + 60000).toISOString()])).w);
-  assert.equal(await within(), 2, 'default 5 minutes: the 2 and 4 minute touches');
+  assert.equal(await within(), 1, 'default 2 minutes (0028): only the 2 minute touch');
+  await db.query(`UPDATE workspaces SET response_window_minutes = 5 WHERE id = $1`, [t.ws]);
+  assert.equal(await within(), 2, '5 minutes (the old default, now an explicit choice): the 2 and 4 minute touches');
   await db.query(`UPDATE workspaces SET response_window_minutes = 3 WHERE id = $1`, [t.ws]);
   assert.equal(await within(), 1, '3 minutes: only the 2 minute touch');
   await db.query(`UPDATE workspaces SET response_window_minutes = 10 WHERE id = $1`, [t.ws]);
   assert.equal(await within(), 3, '10 minutes: all three');
   assert.ok(await refused(db.query(`UPDATE workspaces SET response_window_minutes = 0 WHERE id = $1`, [t.ws])), 'the window is 1 to 1440');
+});
+
+test('0028: on a database populated at 0027, a window left at 5 moves to 2, any other choice is kept, and new rows default to 2', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'mig27-'));
+  for (const f of (await readdir(MIGRATIONS)).filter((n) => n.endsWith('.sql') && n < '0028').sort()) await copyFile(new URL(f, MIGRATIONS), join(dir, f));
+  const db = new PGlite();
+  await migrate(db, dir);
+  const org = (await one(db, `INSERT INTO orgs (name) VALUES ('window') RETURNING id`)).id;
+  const ws = async (name, minutes) => (await one(db, `INSERT INTO workspaces (org_id, name${minutes == null ? '' : ', response_window_minutes'}) VALUES ($1, $2${minutes == null ? '' : ', $3'}) RETURNING id`,
+    minutes == null ? [org, name] : [org, name, minutes])).id;
+  const [five, ten, one1] = [await ws('at-five', 5), await ws('at-ten', 10), await ws('at-one', 1)];
+  assert.equal((await one(db, `SELECT response_window_minutes AS m FROM workspaces WHERE id = $1`, [await ws('default-before', null)])).m, 5, 'before 0028 the default is 5');
+  const ran = await migrate(db);   // the real directory: only 0028 is left
+  assert.deepEqual(ran.ran, ['0028_response_window_default_2.sql']);
+  const win = async (id) => (await one(db, `SELECT response_window_minutes AS m FROM workspaces WHERE id = $1`, [id])).m;
+  assert.equal(await win(five), 2, 'a row at 5 moved with the default');
+  assert.equal(await win(ten), 10, 'a window someone set to 10 is left alone');
+  assert.equal(await win(one1), 1, 'and so is 1');
+  assert.equal(await win(await ws('default-after', null)), 2, 'a new row defaults to 2');
 });
 
 // ─── 0023 (S2L-1b) ───────────────────────────────────────────────────────────────────────────────────────────────
