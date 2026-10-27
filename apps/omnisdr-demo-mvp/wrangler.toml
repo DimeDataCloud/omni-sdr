@@ -21,9 +21,9 @@ KILL = "0"
 TRYME_GATED = "on"
 ENGINE_B = "0"
 TURNSTILE_SITEKEY = "0x4AAAAAAFkPgjzo9EQJoOUI"
-# Rep portal sign-in (Cloudflare Access on demo.omnisdr.com/rep*). Empty means /rep refuses everyone: fail closed until set.
-ACCESS_TEAM = ""
-ACCESS_AUD = ""
+# Rep portal sign-in: Cloudflare Access app "OmniSDR Rep Portal" on demo.omnisdr.com/rep. Public values (team host, app audience). Empty = /rep refuses everyone.
+ACCESS_TEAM = "silent-term-57bd.cloudflareaccess.com"
+ACCESS_AUD = "9375962490a471108155da370fe104fb8ae42385a1cd644509ec8c4556a74f3d"
 
 # Rep portal records. Schema: migrations/rep/*.sql, applied by Halo at deploy. The owner's admin email is the
 # REP_ADMIN_EMAIL secret, never a var: this repo is public.
