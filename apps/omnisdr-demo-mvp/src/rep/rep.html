@@ -224,7 +224,8 @@ const screens = {
       <section class="card stack"><h2>Opener</h2><p class="script">${esc(K.opener)}</p><h2>Objections</h2><p class="muted">${esc(K.method)}</p><div>${K.objections.map((o) => `<details><summary>${esc(o.heard)}</summary><p>${esc(o.answer)}</p></details>`).join('')}</div></section>
       <section class="card stack"><h2>Never say</h2><ul>${K.never.map((n) => `<li>${esc(n)}</li>`).join('')}</ul><div class="tbl"><table><thead><tr><th>Instead of</th><th>Say</th></tr></thead><tbody>${K.swaps.map((s) => `<tr><td>${esc(s.instead)}</td><td>${esc(s.say)}</td></tr>`).join('')}</tbody></table></div></section>
       <section class="card stack"><h2>Demo</h2><ol>${K.demoSteps.map((s) => `<li>${esc(s)}</li>`).join('')}</ol><p class="note">${esc(K.demoLimits)}</p><a class="btn" href="/tryme" target="_blank" rel="noopener">Open the live demo</a>
-        <h2>Your pay</h2><p>${esc(K.pay.note)}</p></section></div>`;
+        <h2>Your pay</h2><p>${esc(K.pay.note)}</p>
+        <div class="tbl"><table><thead><tr><th>Plan</th><th>Allowance</th><th>You and the developer, each</th></tr></thead><tbody>${(K.pay.table || []).map((r) => `<tr><td>${esc(r.plan)}</td><td>${esc(r.allowance)}</td><td>${esc(r.each)}</td></tr>`).join('')}</tbody></table></div></section></div>`;
   },
 
   async team() {
