@@ -155,6 +155,9 @@ async function salesLogin(req, env, b) {
 }
 
 const triedGated = (env) => !['off', '0', 'false', 'no'].includes(String(env.TRYME_GATED ?? '').trim().toLowerCase());
+// Branded 404 for browsers (Accept: text/html); API and script callers keep the JSON 404.
+const NOT_FOUND_HTML = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="robots" content="noindex, nofollow"><meta name="theme-color" content="#F7F5F0"><title>Page not found · OmniSDR</title><style nonce="__NONCE__">__CSS__</style></head><body><div class="wrap"><header class="top"><div class="brand">__LOGO__<b>OmniSDR</b></div></header><main class="card"><h1>That page is not here.</h1><p class="muted">Check the address, or start from the front door.</p><p><a class="btn" href="/">Go to the front door</a></p></main></div></body></html>';
+const notFoundPage = (env) => { const r = page(NOT_FOUND_HTML, env); return new Response(r.body, { status: 404, headers: r.headers }); };
 const toEntry = () => new Response(null, { status: 302, headers: { location: '/', 'cache-control': 'no-store', 'x-robots-tag': 'noindex' } });
 const LOGIN_PANEL = '<div class="card"><h1>Hello</h1><p class="sub u-mb12">Enter the passcode to come in.</p><form id="lf"><label for="pc">Passcode</label><input id="pc" type="password" autocomplete="current-password" required><div id="le" class="err u-mt12" role="alert" hidden></div><button class="btn u-full-mt18" type="submit">Open</button></form></div>';
 const PORTAL_PANEL = '<div class="card"><h1>Where to?</h1><div class="choices"><a class="choice" href="/tryme"><b>Try me</b><span>Run the live demo.</span></a><a class="choice" href="/sales"><b>Sales</b><span>Open the sales deck.</span></a></div><div class="out-row"><button class="btn ghost" id="so" type="button">Sign out</button></div></div>';
@@ -288,6 +291,7 @@ export default {
         }
         if (p === '/api/dev/tenants') return json({ ok: true, tenants: TENANTS });
       }
+      if (m === 'GET' && !p.startsWith('/api/') && (req.headers.get('accept') || '').includes('text/html')) return notFoundPage(env);
       return json({ ok: false, message: 'Not found' }, 404);
     } catch (e) {
       if (e instanceof TooLarge) return json({ ok: false, message: 'Request too large' }, 413);
