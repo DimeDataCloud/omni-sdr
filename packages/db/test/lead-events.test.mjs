@@ -230,7 +230,10 @@ test('S2L-1b: no DELETE and no TRUNCATE for any role, the table owner (the migra
   assert.equal(owner.o, owner.me, 'this session is the table owner, as the migrator is');
   assert.match(await refused(db.query(`DELETE FROM lead_events WHERE id = $1`, [id])) ?? 'ran', /never deleted/);
   assert.match(await refused(db.query(`DELETE FROM lead_events`)) ?? 'ran', /never deleted/);
-  assert.match(await refused(db.query(`TRUNCATE lead_events`)) ?? 'ran', /never deleted/);
+  // 0031: lead_drafts references lead_events, so a bare TRUNCATE is now refused by Postgres before the trigger runs. Truncating both
+  // together is allowed by Postgres, so this still proves lead_events_no_truncate is what stops it.
+  assert.match(await refused(db.query(`TRUNCATE lead_events, lead_drafts`)) ?? 'ran', /never deleted/);
+  assert.match(await refused(db.query(`TRUNCATE lead_events`)) ?? 'ran', /foreign key|never deleted/);
   assert.equal((await q(db, `SELECT 1 FROM lead_events WHERE id = $1`, [id])).length, 1, 'the row is still there');
   // LIMIT, stated: a superuser can DISABLE TRIGGER or DROP TABLE. SQL cannot promise otherwise; the guard is the roles and the triggers.
   // Whether the production migrator is a superuser is a deployment fact to confirm before go-live.
