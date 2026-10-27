@@ -19,6 +19,7 @@ COPY --from=deps /app/packages/api/node_modules packages/api/node_modules
 COPY --from=deps /app/packages/db/node_modules packages/db/node_modules
 COPY packages/api/package.json packages/api/
 COPY packages/api/src packages/api/src
+# dev.mjs (unsigned dev tokens) and seed-demo.mjs never enter the image: see Dockerfile.dockerignore (B-11).
 COPY packages/ai/src packages/ai/src
 COPY packages/ai/prompts packages/ai/prompts
 COPY packages/ai/evals packages/ai/evals

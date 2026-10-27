@@ -10,6 +10,7 @@ import { withTenant, withoutTenant } from '../../db/src/context.mjs';
 import { can } from '../../db/src/permissions.mjs';
 import { HttpError, toHttp, forbidden, notFound, badRequest } from './errors.mjs';
 import { AuthError } from './auth.mjs';
+import { accessToken } from './access.mjs';
 import { withClient } from './pool.mjs';
 import { registerAll } from './routes/index.mjs';
 
@@ -29,13 +30,24 @@ function limiter() {
   };
 }
 
+// Deny by default (B-11): only these exact method+path pairs may skip the Access JWT. A route that asks for
+// auth 'none' or 'internal' but isn't listed here is registered as a user route, so a new route is closed until
+// someone lists it on purpose. 'internal' routes keep their HMAC check as well; a JWT never replaces it.
+export const PUBLIC_ROUTES = new Set([
+  'GET /v1/health', 'GET /healthz', 'GET /u/:token', 'POST /u/:token',
+  'POST /internal/inbound', 'POST /internal/mail-events',
+]);
+// POST /v1/hooks/:id (inbound form webhooks) is deliberately NOT listed: hooks route closed until a later card;
+// reopening needs one allowlist entry plus an Access Bypass policy by exact path.
+
 function compile(path) {
   const names = [];
   const re = new RegExp('^' + path.replace(/:([a-zA-Z]+)/g, (_, n) => { names.push(n); return '([^/]+)'; }) + '/?$');
   return { re, names };
 }
 
-export function createApp({ pool, verifyToken, config = {}, model = null, now = () => new Date(), log = () => {} }) {
+// tokenFrom reads the credential off the request: the Access header in production; only dev.mjs and tests pass another.
+export function createApp({ pool, verifyToken, tokenFrom = accessToken, extraRoutes = null, publicRoutes = PUBLIC_ROUTES, config = {}, model = null, now = () => new Date(), log = () => {} }) {
   const cfg = {
     corsOrigins: [], appUrl: 'https://app.omnisdr.com', unsubscribeBase: 'https://app.omnisdr.com',
     replyDomain: 'reply.omnisdr.com', inboundSecret: null, trustProxy: false, ...config,
@@ -43,10 +55,13 @@ export function createApp({ pool, verifyToken, config = {}, model = null, now = 
   const routes = [];
   const add = (method) => (path, opts, handler) => {
     if (typeof opts === 'function') { handler = opts; opts = {}; }
-    routes.push({ method, path, ...compile(path), opts: { auth: 'user', ...opts }, handler });
+    const o = { auth: 'user', ...opts };
+    if (o.auth !== 'user' && !publicRoutes.has(`${method} ${path}`)) o.auth = 'user';
+    routes.push({ method, path, ...compile(path), opts: o, handler });
   };
   const r = { get: add('GET'), post: add('POST'), patch: add('PATCH'), put: add('PUT'), delete: add('DELETE') };
   registerAll(r);
+  extraRoutes?.(r);
 
   const allow = limiter();
   const userCache = new Map();   // idp uid → { id, email, at }
@@ -170,10 +185,10 @@ export function createApp({ pool, verifyToken, config = {}, model = null, now = 
 
       let identity = null;
       if (rt.opts.auth === 'user') {
-        const m = /^Bearer (.+)$/.exec(req.headers.authorization ?? '');
-        if (!m) throw new AuthError('no bearer token');
+        const tok = tokenFrom(req);
+        if (!tok) throw new AuthError('no credential');
         try {
-          identity = await verifyToken(m[1]);
+          identity = await verifyToken(tok);
         } catch (err) {
           if (!allow(`authfail:${ip}`, 30, 60000, nowMs)) throw new HttpError(429, 'rate_limited', 'too many requests');
           throw err;
