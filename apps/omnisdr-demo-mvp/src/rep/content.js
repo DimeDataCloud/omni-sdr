@@ -30,6 +30,31 @@ export const PAY = {
 };
 export const TAX_NOTE = "Prices are before sales tax. Tax is added to the client's bill.";
 
+// Rep guide "Pricing" chapter (v5). Who may quote what.
+export const PRICING_GUIDE = {
+  lede: 'Every price is a draft until Christian sets the final price at go-live. Confirm with Christian before quoting any number.',
+  quote: [
+    { level: 0, rule: 'Yes. Offer it on every first touch.' },
+    { level: 1, rule: 'Yes, as "$499 plus tax (draft, I will confirm with Christian)".' },
+    { level: 2, rule: 'Not yet. Say: "After the pilot we look at your numbers and set a monthly plan that fits your trade."' },
+    { level: 3, rule: 'Not yet. Do not say a number.' },
+    { level: 4, rule: "No. Send the owner's needs to Christian; he quotes it." },
+  ],
+  rule: "You never offer a discount or a free trial. Change terms, never the price. The only discount is on an agency quote, approved by Christian in writing. Sales tax goes on the owner's bill.",
+  say: '"We price against one job, not against software. What is a typical job worth to you?"',
+};
+
+// Christian 2026-10-27: the path to a yes, six steps (decisions/log).
+export const PATH = [
+  { title: 'First touch: book the demo', body: 'Short, about their business, one question. The only goal is a time on the calendar for the demo. Never a pitch in the first message.' },
+  { title: 'Audit and demo prep', body: 'Research the business from public sources: website, Google reviews and Maps, ads, socials. Note every number you can find: hours, lead sources, review count, slow-reply complaints. Run the free check: call their line once and submit their form once at a busy time, and time the reply. Set up the demo with their trade and services.' },
+  { title: 'Demo and free proof', body: 'Show their own numbers first: what a caller heard and how long a lead waited. Then run the demo so they watch a lead get answered. Ask what a lost job is worth and do the math with their number, labelled as an estimate.' },
+  { title: 'Same call: discovery, proposal, sign prep', body: 'Stay on the call. Find who decides and where leads come from. Offer the Level 1 pilot, $499 plus tax, 30 days. If yes, confirm the details you need to send the agreement and invoice.' },
+  { title: 'Scope and invoice', body: 'Write down what the pilot covers for this business, then send the pilot agreement and the invoice. Payment comes first. Consent language is agreed before anything goes live.' },
+  { title: 'Onboard', body: 'Fill the onboarding tab with the owner, then a 45-minute setup call, every channel tested, and week one in approval mode.' },
+];
+export const PATH_GATE = 'The gate: after 20 real conversations in a niche, fewer than 2 paid pilots means we move to another niche. We rotate on facts, never by discounting.';
+
 export const OBJECTIONS = [
   { id: 'price', heard: '"$499 is a lot."', answer: 'Fair question. The pilot price is a draft, and it is set against one job, not against software. What is a typical job worth to you? [listen] If a typical job is worth more than the pilot, one extra booked job covers it. We measure booked jobs and show you at day 14.' },
   { id: 'crm', heard: '"We already have a CRM or software that does this."', answer: 'Good, keep it. We do not replace it. We sit in front of it and handle the first reply, the follow-up and the booking. A CRM stores leads. It does not answer them at 9 pm. Can I time your form so we both see what actually happens?' },

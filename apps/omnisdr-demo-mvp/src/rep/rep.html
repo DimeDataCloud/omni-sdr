@@ -23,6 +23,7 @@ a.lnk,button.lnk{color:var(--ink);font-weight:600;background:none;border:0;paddi
 .fields{display:grid;gap:0 16px}@media(min-width:700px){.fields{grid-template-columns:1fr 1fr}}.fields .full{grid-column:1/-1}
 dialog{border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--text);width:min(560px,calc(100% - 32px));padding:20px}dialog::backdrop{background:rgba(0,0,0,.4)}
 .timeline li{display:block}.timeline small{color:var(--muted)}
+ol.path{margin:0;padding-left:22px;display:grid;gap:10px}ol.path li b{display:block}ol.path li span{display:block;max-width:72ch}
 </style></head>
 <body><div class="wrap">
 <header class="top"><div class="brand">__LOGO__<b>OmniSDR · Rep</b></div><span class="muted" id="who"></span></header>
@@ -217,10 +218,13 @@ const screens = {
   },
 
   async playbook() {
-    view.innerHTML = `<h1>Playbook</h1><p class="sub">What we sell, what to say, and what never to say.</p><div class="grid two">
-      <section class="card stack"><h2>Quote</h2>${K.prices.isFinal ? '' : '<p class="note">Every price here is DRAFT until Christian sets it final. Never quote a number that is not on this list.</p>'}
-        <div class="tbl"><table><thead><tr><th>Level</th><th>What</th><th>Price</th></tr></thead><tbody>${K.prices.levels.map((l) => `<tr><td>${l.level}. ${esc(l.label)}</td><td>${esc(l.what)}</td><td>${l.amountCents === 0 ? 'Free' : l.amountCents != null ? money(l.amountCents) : 'Priced by Christian'}</td></tr>`).join('')}</tbody></table></div>
-        <p class="muted">${esc(K.taxNote)}</p></section>
+    const G = K.pricingGuide, quoteRule = (lv) => (G.quote.find((q) => q.level === lv) || {}).rule || '';
+    view.innerHTML = `<h1>Playbook</h1><p class="sub">The path to a yes, the pricing guide, what to say, and what never to say.</p>
+      <section class="card stack"><h2>The path to a yes</h2><ol class="path">${K.path.map((s) => `<li><b>${esc(s.title)}</b><span class="muted">${esc(s.body)}</span></li>`).join('')}</ol><p class="note">${esc(K.pathGate)}</p></section>
+      <div class="grid two">
+      <section class="card stack"><h2>Pricing guide</h2><p class="note">${esc(G.lede)}</p>
+        <div class="tbl"><table><thead><tr><th>Level</th><th>What</th><th>Price (draft)</th><th>Can you quote it?</th></tr></thead><tbody>${K.prices.levels.map((l) => `<tr><td>${l.level}. ${esc(l.label)}</td><td>${esc(l.what)}</td><td>${l.amountCents === 0 ? 'Free' : l.amountCents != null ? money(l.amountCents) + (l.unit === 'one_time' ? ' plus tax' : '') : l.level === 4 ? '$999 a month and up' : 'Not quoted yet'}</td><td>${esc(quoteRule(l.level))}</td></tr>`).join('')}</tbody></table></div>
+        <p><b>The rule.</b> ${esc(G.rule)}</p><p><b>Say this.</b> ${esc(G.say)}</p><p class="muted">${esc(K.taxNote)}</p></section>
       <section class="card stack"><h2>Opener</h2><p class="script">${esc(K.opener)}</p><h2>Objections</h2><p class="muted">${esc(K.method)}</p><div>${K.objections.map((o) => `<details><summary>${esc(o.heard)}</summary><p>${esc(o.answer)}</p></details>`).join('')}</div></section>
       <section class="card stack"><h2>Never say</h2><ul>${K.never.map((n) => `<li>${esc(n)}</li>`).join('')}</ul><div class="tbl"><table><thead><tr><th>Instead of</th><th>Say</th></tr></thead><tbody>${K.swaps.map((s) => `<tr><td>${esc(s.instead)}</td><td>${esc(s.say)}</td></tr>`).join('')}</tbody></table></div></section>
       <section class="card stack"><h2>Demo</h2><ol>${K.demoSteps.map((s) => `<li>${esc(s)}</li>`).join('')}</ol><p class="note">${esc(K.demoLimits)}</p><a class="btn" href="/tryme" target="_blank" rel="noopener">Open the live demo</a>

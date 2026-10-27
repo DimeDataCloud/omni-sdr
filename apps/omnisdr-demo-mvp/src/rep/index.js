@@ -135,7 +135,7 @@ async function api(req, env, me, path, m) {
   const s = scope(me);
 
   if (m === 'GET' && path === '/me') return { email: me.email, name: me.name, role: me.role };
-  if (m === 'GET' && path === '/content') return { prices: C.PRICES, pay: C.PAY, taxNote: C.TAX_NOTE, objections: C.OBJECTIONS, method: C.OBJECTION_METHOD, never: C.NEVER_SAY, swaps: C.SWAPS, opener: C.OPENER, demoSteps: C.DEMO_STEPS, demoLimits: C.DEMO_LIMITS, onboarding: C.ONBOARDING_FIELDS, stages: STAGES, outcomes: OUTCOMES };
+  if (m === 'GET' && path === '/content') return { prices: C.PRICES, pay: C.PAY, taxNote: C.TAX_NOTE, pricingGuide: C.PRICING_GUIDE, path: C.PATH, pathGate: C.PATH_GATE, objections: C.OBJECTIONS, method: C.OBJECTION_METHOD, never: C.NEVER_SAY, swaps: C.SWAPS, opener: C.OPENER, demoSteps: C.DEMO_STEPS, demoLimits: C.DEMO_LIMITS, onboarding: C.ONBOARDING_FIELDS, stages: STAGES, outcomes: OUTCOMES };
 
   if (m === 'GET' && path === '/today') {
     await runRules(env, me);
