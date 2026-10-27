@@ -36,7 +36,7 @@ const clean = async (db, label) => {
   await db.exec('ALTER TABLE lead_events ENABLE TRIGGER lead_events_no_delete');
   return t;
 };
-const minutes = (m) => new Date(Date.now() - 3600000 + m * 60000).toISOString();   // an hour ago, plus m minutes
+const minutes = (m, base = Date.now()) => new Date(base - 3600000 + m * 60000).toISOString();   // an hour ago, plus m minutes. Pass one `base` when two stamps must differ by an exact span: two Date.now() calls can straddle a millisecond tick.
 
 test('intake is idempotent on (workspace, source, external_id); another source with the same id is a separate lead', async () => {
   const db = await freshDb();
@@ -148,11 +148,12 @@ test('time to first touch: median, p90, untouched leads left out of the percenti
   const db = await freshDb();
   const a = await clean(db, 'alpha');
   const b = await clean(db, 'bravo');
+  const base = Date.now();   // one clock reading for every stamp below, so a touch exactly 2 minutes after receipt is exactly 2 minutes (V-29 P2-1)
   const insert = (t, ext, source, channel, mins, touchMins) => db.query(
     `INSERT INTO lead_events (org_id, workspace_id, contact_id, source, channel, external_id, consent_basis, received_at, first_touch_at, first_touch_channel, first_touch_by)
      VALUES ($1, $2, $3, $4, $5, $6, 'express_form', $7, $8, $9, $10)`,
-    [t.org, t.ws, t.contact, source, channel, ext, minutes(mins),
-      touchMins == null ? null : minutes(mins + touchMins), touchMins == null ? null : 'email', touchMins == null ? null : 'agent']);
+    [t.org, t.ws, t.contact, source, channel, ext, minutes(mins, base),
+      touchMins == null ? null : minutes(mins + touchMins, base), touchMins == null ? null : 'email', touchMins == null ? null : 'agent']);
   // alpha web_form: touched after 2, 4, 8 minutes, one never touched. alpha ad_lead: one touched after 1 minute.
   await insert(a, 'w1', 'web_form', 'form', 0, 2);
   await insert(a, 'w2', 'web_form', 'form', 10, 4);
@@ -173,9 +174,10 @@ test('time to first touch: median, p90, untouched leads left out of the percenti
 test('within_window follows response_window_minutes (a non-default window changes the count)', async () => {
   const db = await freshDb();
   const t = await clean(db, 'alpha');
+  const base = Date.now();   // one reading: the 2-minute touch is exactly 2 minutes after receipt, on the window's edge (<=)
   for (const [ext, touch] of [['w1', 2], ['w2', 4], ['w3', 8]]) {
     await db.query(`INSERT INTO lead_events (org_id, workspace_id, contact_id, source, channel, external_id, consent_basis, received_at, first_touch_at, first_touch_channel, first_touch_by)
-      VALUES ($1, $2, $3, 'web_form', 'form', $4, 'express_form', $5, $6, 'email', 'agent')`, [t.org, t.ws, t.contact, ext, minutes(0), minutes(touch)]);
+      VALUES ($1, $2, $3, 'web_form', 'form', $4, 'express_form', $5, $6, 'email', 'agent')`, [t.org, t.ws, t.contact, ext, minutes(0, base), minutes(touch, base)]);
   }
   const within = () => as(db, 'app_rw', { org: t.org, ws: [t.ws] }, async () =>
     (await one(db, `SELECT within_window AS w FROM ttft_by_source($1, $2)`, [minutes(-60), new Date(Date.now() + 60000).toISOString()])).w);
@@ -200,12 +202,43 @@ test('0028: on a database populated at 0027, a window left at 5 moves to 2, any 
   const [five, ten, one1] = [await ws('at-five', 5), await ws('at-ten', 10), await ws('at-one', 1)];
   assert.equal((await one(db, `SELECT response_window_minutes AS m FROM workspaces WHERE id = $1`, [await ws('default-before', null)])).m, 5, 'before 0028 the default is 5');
   const ran = await migrate(db);   // the real directory: only 0028 is left
-  assert.deepEqual(ran.ran, ['0028_response_window_default_2.sql']);
+  // Everything from 0028 on runs now (later migrations may exist); 0028 is the first of them.
+  assert.equal(ran.ran[0], '0028_response_window_default_2.sql');
+  assert.ok(ran.ran.every((f) => f >= '0028'), ran.ran.join(', '));
   const win = async (id) => (await one(db, `SELECT response_window_minutes AS m FROM workspaces WHERE id = $1`, [id])).m;
   assert.equal(await win(five), 2, 'a row at 5 moved with the default');
   assert.equal(await win(ten), 10, 'a window someone set to 10 is left alone');
   assert.equal(await win(one1), 1, 'and so is 1');
   assert.equal(await win(await ws('default-after', null)), 2, 'a new row defaults to 2');
+});
+
+test('0028: a migrator that owns workspaces but is subject to row level security fails loudly and changes nothing (V-29 P3-1)', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'mig27b-'));
+  for (const f of (await readdir(MIGRATIONS)).filter((n) => n.endsWith('.sql') && n < '0028').sort()) await copyFile(new URL(f, MIGRATIONS), join(dir, f));
+  const db = new PGlite();
+  await migrate(db, dir);
+  const org = (await one(db, `INSERT INTO orgs (name) VALUES ('rls-owner') RETURNING id`)).id;
+  await db.query(`INSERT INTO workspaces (org_id, name, response_window_minutes) VALUES ($1, 'at-five', 5)`, [org]);
+  await db.exec(`CREATE ROLE mig_plain NOLOGIN; ALTER TABLE workspaces OWNER TO mig_plain`);   // owner, no SUPERUSER, no BYPASSRLS, FORCE RLS still on
+  const sql = readFileSync(new URL('0028_response_window_default_2.sql', MIGRATIONS), 'utf8');
+  await db.exec('SET ROLE mig_plain');
+  let err = null;
+  try { await db.exec(`BEGIN;
+${sql}
+COMMIT;`); } catch (e) { err = e; }
+  await db.exec('ROLLBACK').catch(() => {});
+  await db.exec('RESET ROLE');
+  assert.ok(err, 'the migration must not succeed silently for a role that RLS filters');
+  assert.match(err.message, /row-level security|row level security|still at a 5 minute window/i, err.message);
+  assert.equal((await one(db, `SELECT response_window_minutes AS m FROM workspaces WHERE name = 'at-five'`)).m, 5, 'the row is untouched');
+  assert.match((await one(db, `SELECT column_default AS d FROM information_schema.columns WHERE table_name = 'workspaces' AND column_name = 'response_window_minutes'`)).d, /^5$/, 'and the default did not change either (rolled back)');
+  // The same migration as a role that bypasses RLS runs clean.
+  await db.exec('ALTER ROLE mig_plain BYPASSRLS; SET ROLE mig_plain');
+  await db.exec(`BEGIN;
+${sql}
+COMMIT;`);
+  await db.exec('RESET ROLE');
+  assert.equal((await one(db, `SELECT response_window_minutes AS m FROM workspaces WHERE name = 'at-five'`)).m, 2);
 });
 
 // ─── 0023 (S2L-1b) ───────────────────────────────────────────────────────────────────────────────────────────────
