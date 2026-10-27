@@ -21,6 +21,7 @@ import { firebaseVerifier } from './auth.mjs';
 import { offModel, geminiApiModel } from './services/model.mjs';
 import { offPlaces, googlePlaces } from './services/places.mjs';
 import { offVerifier } from './services/verify.mjs';
+import { formDailyCap } from './services/inbox.mjs';
 import { zeroBounceVerifier } from './services/zerobounce.mjs';
 
 const env = process.env;
@@ -63,7 +64,7 @@ export async function main() {
       unsubscribeBase: need('OMNI_UNSUBSCRIBE_BASE'),
       inboundSecret: env.OMNI_INBOUND_SECRET || null,
       // Most website-form submissions a workspace may record per 24 hours (429 over it). Unset: 500.
-      formDailyCap: Number(env.OMNI_FORM_DAILY_CAP) >= 1 ? Math.floor(Number(env.OMNI_FORM_DAILY_CAP)) : undefined,
+      formDailyCap: formDailyCap(env.OMNI_FORM_DAILY_CAP),
       places,
       // Free checks always run; the vendor check only with OMNI_VERIFY=zerobounce (above).
       verifier,

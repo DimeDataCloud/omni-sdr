@@ -2,6 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startApi } from './helpers.mjs';
+import { formDailyCap } from '../src/services/inbox.mjs';
 
 async function withHook() {
   const api = await startApi();
@@ -120,5 +121,55 @@ test('hooks: a NUL character is a 400, not a 500, in any text field, and writes 
     }
     assert.deepEqual(await written(), before);
     assert.equal((await post({ message: 'a normal one', externalId: 'nul-ok' })).status, 202, 'and normal input still works');
+  } finally { await api.stop(); }
+});
+
+// ─── S2L-2e: an opt-out is never dropped, and the cap setting is clamped ────────────────────────────────────────────
+
+test('hooks: past the cap an opt-out that names an address is still recorded and the person suppressed; everything else stays 429', async () => {
+  const { api, post, written } = await withCappedHook(2);
+  try {
+    assert.equal((await post({ message: 'first one', email: 'a1@lead.example', externalId: 'oo-1' })).status, 202);
+    assert.equal((await post({ message: 'second one', email: 'a2@lead.example', externalId: 'oo-2' })).status, 202);
+    assert.equal((await post({ message: 'third one', email: 'a3@lead.example', externalId: 'oo-3' })).status, 429, 'the cap is reached');
+    const before = await written();
+    const drafts = () => api.q(`SELECT count(*)::int AS n FROM reply_drafts`).then((r) => r[0].n);
+    const draftsBefore = await drafts();
+
+    const out = await post({ message: 'Please unsubscribe me, remove me from your list.', email: 'gone@lead.example', externalId: 'oo-4' });
+    assert.equal(out.status, 202, JSON.stringify(out.body));
+    const row = (await api.q(`SELECT intent, decision FROM inbound_messages WHERE channel = 'form' AND external_id = 'oo-4'`))[0];
+    assert.equal(row.intent, 'unsubscribe');
+    assert.equal(row.decision.skipped, 'form_daily_cap', 'recorded as decided: no model pass will pick it up');
+    assert.equal((await api.q(`SELECT count(*)::int AS n FROM suppression WHERE value_hash = value_hash('gone@lead.example') AND reason = 'form_unsubscribe'`))[0].n, 1, 'the person is suppressed');
+    assert.deepEqual(await written(), { msgs: before.msgs + 1, leads: before.leads }, 'one message row (counted once), no lead event');
+    assert.equal(await drafts(), draftsBefore, 'no reply is drafted');
+
+    // a retry of the same opt-out is a duplicate, not a second row
+    assert.equal((await post({ message: 'Please unsubscribe me, remove me from your list.', email: 'gone@lead.example', externalId: 'oo-4' })).status, 200);
+    assert.equal((await written()).msgs, before.msgs + 1);
+
+    // everything else past the cap is still refused and writes nothing
+    const after = await written();
+    assert.equal((await post({ message: 'a normal enquiry', email: 'late@lead.example', externalId: 'oo-5' })).status, 429);
+    assert.equal((await post({ message: 'unsubscribe me please' , externalId: 'oo-6' })).status, 429, 'an opt-out with no address has no one to suppress');
+    assert.equal((await post({ message: 'a normal enquiry' })).status, 429);
+    assert.deepEqual(await written(), after);
+    assert.equal((await api.q(`SELECT 1 FROM contacts WHERE email = 'late@lead.example'`)).length, 0);
+  } finally { await api.stop(); }
+});
+
+test('formDailyCap: only a finite integer of at least 1 is used; Infinity, 1e309, 0, negatives and junk fall back to 500', () => {
+  for (const [input, want] of [
+    [undefined, 500], [null, 500], ['', 500], ['  ', 500], ['junk', 500], ['Infinity', 500], ['-Infinity', 500], ['1e309', 500], [Infinity, 500],
+    [NaN, 500], ['NaN', 500], [0, 500], ['0', 500], [-5, 500], ['-5', 500], [0.5, 500], ['0.9', 500], [1e300, 500], ['9007199254740993', 500],
+    [1, 1], ['1', 1], [2.9, 2], ['50', 50], [' 120 ', 120], ['1e3', 1000], [Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER],
+  ]) assert.equal(formDailyCap(input), want, `${String(input)} -> ${want}`);
+});
+
+test('hooks: a cap of 0 in the config does not refuse everything: it is the default (500)', async () => {
+  const { api, post } = await withCappedHook(0);
+  try {
+    assert.equal((await post({ message: 'a normal enquiry', email: 'ok@lead.example', externalId: 'zero-1' })).status, 202);
   } finally { await api.stop(); }
 });

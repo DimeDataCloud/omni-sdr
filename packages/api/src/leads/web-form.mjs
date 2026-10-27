@@ -10,7 +10,7 @@
 // is the engine a later card connects. Nothing sends.
 import { randomUUID } from 'node:crypto';
 import { withoutTenant, withService } from '../../../db/src/context.mjs';
-import { ingestForm, FORM_DAILY_CAP } from '../services/inbox.mjs';
+import { ingestForm, formDailyCap, classifyReply } from '../services/inbox.mjs';
 import { verifiedLead, recordLeadIn, safeExternalId, payloadIdentityProblem } from './core.mjs';
 
 /** The adapter on the S2L-1 contract. `raw` is the submission after the hook token was proved ({ hookVerified, ... }). */
@@ -53,7 +53,7 @@ export async function ingestFormLead(client, hook, msg, opts = {}) {
   const externalId = safeExternalId(msg.externalId) ?? `sub-${randomUUID()}`;
   const lead = await verifiedLead(webFormAdapter, { ...msg, externalId, hookVerified: true });
   const scope = { orgId: hit.org_id, workspaceId: hit.workspace_id };
-  const cap = opts.dailyCap ?? FORM_DAILY_CAP;
+  const cap = formDailyCap(opts.dailyCap);
   return withService(client, { ...scope, role: 'inbox_svc' }, async (tx) => {
     // No lock: 0020 revokes the advisory-lock functions from PUBLIC on purpose (a tenant-facing role must not hold them), so
     // requests in flight at the same moment can each see cap - 1 and overshoot by at most the number in flight. It is an abuse limit,
@@ -64,7 +64,17 @@ export async function ingestFormLead(client, hook, msg, opts = {}) {
       // A retry of a submission already recorded is still a duplicate (200), not a 429.
       const dup = (await tx.query(`SELECT id FROM inbound_messages WHERE workspace_id = $1 AND channel = 'form' AND external_id = $2`,
         [hit.workspace_id, externalId])).rows[0];
-      return dup ? { outcome: 'duplicate', id: dup.id } : { outcome: 'rate_limited', cap };
+      if (dup) return { outcome: 'duplicate', id: dup.id };
+      // An opt-out is never dropped (decisions log): one that names an address is recorded and the person suppressed, with no model
+      // pass, no reply and no lead event (ingestForm marks a capped message decided; the count taken above is passed on, not repeated).
+      // Without an address there is no one to suppress, so it stays a 429. The rules verdict is the same one ingestForm reaches.
+      const email = msg.email ? String(msg.email).trim().toLowerCase() : null;
+      const classify = opts.classify ?? classifyReply;
+      if (email && classify({ subject: '', body: msg.body ?? '', from: email }).intent === 'unsubscribe') {
+        const form = await ingestForm(client, hook, { ...msg, externalId }, { ...opts, dailyCap: cap, recent, tx, hit });
+        return form.outcome === 'recorded' ? { ...form, capped: true } : form;
+      }
+      return { outcome: 'rate_limited', cap };
     }
     const form = await ingestForm(client, hook, { ...msg, externalId }, { ...opts, tx, hit });
     if (form.outcome !== 'recorded') return form;
