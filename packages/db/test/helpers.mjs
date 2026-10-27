@@ -70,6 +70,9 @@ export async function seedTenant(db, label, { cap = 5, trust = 1, heat = 1 } = {
   // 0014: an inbound webhook (form). The token behind this hash is `hook-token-<label>`.
   await db.query(`INSERT INTO inbound_hooks (org_id, workspace_id, name, token_hash) VALUES ($1, $2, 'Website form', encode(sha256(convert_to($3, 'UTF8')), 'hex'))`,
     [org, ws, `hook-token-${label}`]);
+  // 0027: an inbound lead address. The token behind this hash is `lead-addr-<label>`.
+  await db.query(`INSERT INTO inbound_lead_addresses (org_id, workspace_id, name, token_hash) VALUES ($1, $2, 'Lead address', encode(sha256(convert_to($3, 'UTF8')), 'hex'))`,
+    [org, ws, `lead-addr-${label}`]);
   await db.query(`INSERT INTO unsubscribe_tokens (token_hash, org_id, workspace_id, contact_id)
     VALUES (encode(sha256(convert_to($1, 'UTF8')), 'hex'), $2, $3, $4)`, [`unsub-${label}`, org, ws, contact]);
   await db.query(`INSERT INTO invites (org_id, email_hash, role, token_hash, invited_by, expires_at)

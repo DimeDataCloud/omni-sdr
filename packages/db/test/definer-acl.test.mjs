@@ -34,6 +34,7 @@ const EXPECTED = {
   contact_opted_out: ['app_rw', 'ops', 'rename_owner'], person_suppressed: ['app_rw', 'lead_owner'], message_handoff_ok: ['sender_svc'],
   record_mail_event: ['inbox_svc'],   // 0021: provider bounce and complaint events
   // 0022: speed to lead
+  inbox_resolve_lead_address: ['inbox_svc'],   // 0027
   record_lead_event: ['inbox_svc'], lead_touch_blocker: ['app_rw', 'inbox_svc', 'sender_svc'], record_first_touch: ['inbox_svc', 'sender_svc'],
 };
 
