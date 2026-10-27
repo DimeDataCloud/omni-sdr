@@ -87,7 +87,7 @@ export async function withTenant(client, { userId, orgId, workspaceId, role = 'a
 // Worker modules (gate, sender, sequencer) act for a tenant without a signed-in user. Same
 // transaction-scoped context as withTenant, but no membership check and no app.user_id, so the
 // 0002 admin-only triggers can never pass for a service role.
-export const WORKER_ROLES = Object.freeze(['gate_svc', 'sender_svc', 'inbox_svc']);
+export const WORKER_ROLES = Object.freeze(['gate_svc', 'sender_svc', 'inbox_svc', 'alert_svc']);
 
 export async function withService(client, { orgId, workspaceId, role }, fn) {
   assertUuid(orgId, 'orgId');

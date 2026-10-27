@@ -11,6 +11,7 @@ import { can } from '../../db/src/permissions.mjs';
 import { HttpError, toHttp, forbidden, notFound, badRequest } from './errors.mjs';
 import { AuthError } from './auth.mjs';
 import { withClient } from './pool.mjs';
+import { relayAlerts } from './services/alerts.mjs';
 import { registerAll } from './routes/index.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -39,6 +40,14 @@ export function createApp({ pool, verifyToken, config = {}, model = null, now = 
   const cfg = {
     corsOrigins: [], appUrl: 'https://app.omnisdr.com', unsubscribeBase: 'https://app.omnisdr.com',
     replyDomain: 'reply.omnisdr.com', inboundSecret: null, trustProxy: false, formDailyCap: undefined, ...config,
+  };
+  // The alert relay (0030) after a lead is committed. Fired and forgotten: it must never fail or slow the intake request, so every
+  // failure is swallowed (the one-minute cron is the safety net). No transport wired: nothing to do.
+  const kickAlerts = () => {
+    if (!cfg.alertTransport) return;
+    try {
+      withClient(pool, (c) => relayAlerts(c, { transport: cfg.alertTransport, consoleBase: cfg.appUrl })).catch(() => {});
+    } catch { /* never the caller's problem */ }
   };
   const routes = [];
   const add = (method) => (path, opts, handler) => {
@@ -184,7 +193,7 @@ export function createApp({ pool, verifyToken, config = {}, model = null, now = 
         const user = identity ? await resolveUser(client, identity) : null;
         if (user && !allow(`user:${user.id}`, 600, 60000, nowMs)) throw new HttpError(429, 'rate_limited', 'too many requests');
         const ctx = {
-          req, params, body, user, client, config: cfg, model, now, ip, reqId, allow,
+          req, params, body, user, client, config: cfg, model, now, ip, reqId, allow, kickAlerts,
           query: Object.fromEntries(url.searchParams),
           tenant: (fn, { action } = {}) => {
             if (!params.org || !params.ws) throw new Error('ctx.tenant used on a route without :org/:ws');

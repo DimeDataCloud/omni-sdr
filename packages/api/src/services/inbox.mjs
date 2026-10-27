@@ -16,6 +16,20 @@ export { classifyReply, cleanReplyBody, addBusinessMinutes, SLA_MINUTES };
 
 const TERMINAL = `('stopped', 'converted', 'completed')`;
 
+/**
+ * A new lead (0030): the console's unread item and the owner-alert outbox row, in the same transaction as the message, so both
+ * exist or neither does. Once per message (UNIQUE), and the outbox row only when this call wrote the notification. Ids only.
+ */
+async function notifyNewLead(tx, { orgId, workspaceId, inboundId, at }) {
+  const n = (await tx.query(`INSERT INTO notifications (org_id, workspace_id, inbound_message_id, kind, channel, due_at)
+                             VALUES ($1, $2, $3, 'new_lead', 'in_app', $4) ON CONFLICT DO NOTHING RETURNING id`,
+    [orgId, workspaceId, inboundId, at])).rows[0];
+  if (n) {
+    await tx.query(`INSERT INTO outbox (org_id, topic, key, payload) VALUES ($1, 'notify.lead', $2, $3)`,
+      [orgId, inboundId, JSON.stringify({ workspace_id: workspaceId, inbound_id: inboundId, notification_id: n.id })]);
+  }
+}
+
 // SLA escalation (0008): the in-app step is written with the reply; push and email come from escalateSla().
 async function notifyInApp(tx, { orgId, workspaceId, inboundId, at }) {
   await tx.query(`INSERT INTO notifications (org_id, workspace_id, inbound_message_id, kind, channel, due_at)
@@ -269,6 +283,8 @@ export async function ingestForm(client, hook, msg, { classify = classifyReply, 
                       WHERE contact_id = $1 AND state NOT IN ${TERMINAL}`, [contactId, `form:${verdict.intent}`]);
     }
     if (slaDueAt) await notifyInApp(tx, { orgId: hit.org_id, workspaceId: hit.workspace_id, inboundId: id, at: msg.receivedAt });
+    // A real submission alerts the owner; a capped one (decided, skipped) and an opt-out are not leads.
+    if (!capped && verdict.intent !== 'unsubscribe') await notifyNewLead(tx, { orgId: hit.org_id, workspaceId: hit.workspace_id, inboundId: id, at: msg.receivedAt });
     await tx.query(`INSERT INTO outbox (org_id, topic, key, payload) VALUES ($1, 'inbound.received', $2, $3)`,
       [hit.org_id, id, JSON.stringify({ inbound_id: id, channel: 'form', intent: verdict.intent, sla_due_at: slaDueAt })]);
     return { outcome: 'recorded', id, conversationId: conversation.id, intent: verdict.intent, slaDueAt: slaDueAt?.toISOString() ?? null };
