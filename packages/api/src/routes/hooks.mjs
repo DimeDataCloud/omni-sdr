@@ -60,6 +60,8 @@ export function registerHooks(r) {
       { dailyCap: ctx.config.formDailyCap });
     if (out.outcome === 'unknown_hook') throw notFound('not found');
     if (out.outcome === 'rate_limited') throw new HttpError(429, 'rate_limited', 'too many submissions for this workspace today; try again later');
+    // After COMMIT (ingestFormLead has returned): tell the owner. Not awaited, never throws.
+    if (out.outcome === 'recorded' && !out.capped) ctx.kickAlerts?.();
     return { status: out.outcome === 'duplicate' ? 200 : 202, body: { received: true } };
   });
 }

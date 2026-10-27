@@ -12,6 +12,7 @@ import { HttpError, toHttp, forbidden, notFound, badRequest } from './errors.mjs
 import { AuthError } from './auth.mjs';
 import { accessToken } from './access.mjs';
 import { withClient } from './pool.mjs';
+import { relayAlerts } from './services/alerts.mjs';
 import { registerAll } from './routes/index.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -51,6 +52,18 @@ export function createApp({ pool, verifyToken, tokenFrom = accessToken, extraRou
   const cfg = {
     corsOrigins: [], appUrl: 'https://app.omnisdr.com', unsubscribeBase: 'https://app.omnisdr.com',
     replyDomain: 'reply.omnisdr.com', inboundSecret: null, trustProxy: false, formDailyCap: undefined, ...config,
+  };
+  // The alert relay (0030) after a lead is committed. Fired and forgotten: it must never fail or slow the intake request, so every
+  // failure is swallowed (the one-minute cron is the safety net). No transport wired: nothing to do.
+  // Single flight: one pass at a time per process; a kick while one runs does nothing (that pass, or the cron, takes the new row).
+  let kicking = false;
+  const kickAlerts = () => {
+    if (!cfg.alertTransport || kicking) return;
+    kicking = true;
+    try {
+      withClient(pool, (c) => relayAlerts(c, { transport: cfg.alertTransport, consoleBase: cfg.appUrl, sendTimeoutMs: cfg.alertSendTimeoutMs }))
+        .catch(() => {}).finally(() => { kicking = false; });
+    } catch { kicking = false; }
   };
   const routes = [];
   const add = (method) => (path, opts, handler) => {
@@ -199,7 +212,7 @@ export function createApp({ pool, verifyToken, tokenFrom = accessToken, extraRou
         const user = identity ? await resolveUser(client, identity) : null;
         if (user && !allow(`user:${user.id}`, 600, 60000, nowMs)) throw new HttpError(429, 'rate_limited', 'too many requests');
         const ctx = {
-          req, params, body, user, client, config: cfg, model, now, ip, reqId, allow,
+          req, params, body, user, client, config: cfg, model, now, ip, reqId, allow, kickAlerts,
           query: Object.fromEntries(url.searchParams),
           tenant: (fn, { action } = {}) => {
             if (!params.org || !params.ws) throw new Error('ctx.tenant used on a route without :org/:ws');
@@ -248,7 +261,7 @@ export function createApp({ pool, verifyToken, tokenFrom = accessToken, extraRou
     }
   }
 
-  return { handle, routes: routes.map((x) => `${x.method} ${x.path}`), config: cfg };
+  return { handle, kickAlerts, routes: routes.map((x) => `${x.method} ${x.path}`), config: cfg };
 }
 
 // Unsubscribe and invite tokens are credentials; they never reach logs.

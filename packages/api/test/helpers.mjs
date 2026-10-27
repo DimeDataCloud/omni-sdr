@@ -73,7 +73,7 @@ export async function startApi({ model = fakeModel(), config = {}, seed = true }
 
   const W = demo ? `/v1/o/${demo.org}/w/${demo.workspaces[0]}` : null;
   return {
-    db, demo, base, call, signedInbound, signedMailEvent, logs, W, model,
+    db, demo, base, call, kickAlerts: app.kickAlerts, signedPost, signedInbound, signedMailEvent, logs, W, model,
     ws: (i) => `/v1/o/${demo.org}/w/${demo.workspaces[i]}`,
     q: async (sql, params) => (await db.query(sql, params)).rows,
     stop: () => new Promise((r) => server.close(r)),
