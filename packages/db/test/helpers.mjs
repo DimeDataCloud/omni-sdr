@@ -14,12 +14,15 @@ const one = async (db, sql, params) => (await q(db, sql, params))[0];
 export async function as(db, role, ctx, fn) {
   await db.query(`SELECT set_config('app.org_id', $1, false), set_config('app.workspace_ids', $2, false)`,
     [ctx?.org ?? '', (ctx?.ws ?? []).join(',')]);
+  // ctx.user (optional) is the signed-in user (app.user_id). Left alone when absent, so a test that set it itself keeps it.
+  if (ctx && ctx.user !== undefined) await db.query(`SELECT set_config('app.user_id', $1, false)`, [ctx.user ?? '']);
   await db.exec(`SET ROLE ${role}`);
   try {
     return await fn();
   } finally {
     await db.exec('RESET ROLE');
     await db.query(`SELECT set_config('app.org_id', '', false), set_config('app.workspace_ids', '', false)`);
+    if (ctx && ctx.user !== undefined) await db.query(`SELECT set_config('app.user_id', '', false)`);
   }
 }
 

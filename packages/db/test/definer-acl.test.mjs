@@ -37,6 +37,7 @@ const EXPECTED = {
   inbox_resolve_lead_address: ['inbox_svc'],   // 0027
   record_lead_event: ['inbox_svc'], lead_touch_blocker: ['app_rw', 'inbox_svc', 'sender_svc'], record_first_touch: ['inbox_svc', 'sender_svc'],
   alert_claim: ['alert_svc'], alert_recipients: ['alert_svc'], alert_publish: ['alert_svc'],
+  lead_approver_ok: [], lead_send_blocker: [], lead_drafts_approver_binding: [],   // 0032: guard-internal, no caller
 };
 
 async function asProdOwner() {

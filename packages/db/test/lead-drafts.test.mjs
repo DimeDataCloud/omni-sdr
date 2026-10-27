@@ -1,5 +1,5 @@
 // 0031: lead_drafts keeps the draft discipline (gate columns, approval over a gate pass, edit voids both) for a lead with no
-// enrollment, is walled per tenant, and is invisible to a closer. It cannot send: messages is untouched.
+// enrollment, is walled per tenant, and is invisible to a closer. (Sending one is 0032; see lead-send.test.mjs.)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { freshDb, seedTenant, as, refused, one, q } from './helpers.mjs';
@@ -15,7 +15,7 @@ const insertDraft = (db, t, lead, body = 'Thanks, Pat. When works for a call?') 
    VALUES ($1, $2, $3, $4, 'email', 'Hello', $5) RETURNING id`, [t.org, t.ws, t.contact, lead, body]).then((r) => r.id));
 const gate = (db, t, id) => as(db, 'gate_svc', ctxOf(t), () => db.query(
   `UPDATE lead_drafts SET gate_passed = true, gate_body_sha = draft_sha(subject, body), gate_version = 'v1', gated_at = now(), status = 'review' WHERE id = $1`, [id]));
-const approve = (db, t, id) => as(db, 'app_rw', ctxOf(t), () => db.query(
+const approve = (db, t, id) => as(db, 'app_rw', { ...ctxOf(t), user: t.user }, () => db.query(
   `UPDATE lead_drafts SET status = 'approved', approved_by = $2, approved_at = now() WHERE id = $1`, [id, t.user]));
 
 test('a lead draft is approved only over a gate pass on its current text, and an approver is named', async () => {
@@ -84,14 +84,4 @@ test('a closer sees no lead drafts and writes none', async () => {
   const seen = await as(db, 'app_rw', ctxOf(t), () => q(db, `SELECT id FROM lead_drafts`));
   await db.query(`SELECT set_config('app.user_id', '', false)`);
   assert.equal(seen.length, 0, 'the closer policy hides every lead draft');
-});
-
-test('nothing can send a lead draft yet: messages has no lead_draft_id and send_guard needs an enrollment draft', async () => {
-  const db = await freshDb(); const t = await seedTenant(db, 'a');
-  const id = await insertDraft(db, t, await newLead(db, t, 'ld-6'));
-  await gate(db, t, id); await approve(db, t, id);
-  const cols = (await q(db, `SELECT column_name FROM information_schema.columns WHERE table_name = 'messages'`)).map((r) => r.column_name);
-  assert.equal(cols.includes('lead_draft_id'), false);
-  assert.ok(await refused(as(db, 'sender_svc', ctxOf(t), () => db.query(
-    `INSERT INTO messages (org_id, workspace_id, draft_id, mailbox_id, channel) VALUES ($1, $2, $3, $4, 'email')`, [t.org, t.ws, id, t.mailbox]))));
 });
