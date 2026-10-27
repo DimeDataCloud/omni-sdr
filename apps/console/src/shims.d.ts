@@ -38,4 +38,5 @@ interface ImportMetaEnv {
   readonly VITE_OMNI_API_URL?: string;
   readonly VITE_OMNI_IDP_KEY?: string;
   readonly VITE_OMNI_DEV_AS?: string;
+  readonly VITE_CLIENT_SUPPORT_EMAIL?: string;   // client portal mailto target; unset shows no link
 }

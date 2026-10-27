@@ -4,7 +4,7 @@ import type {
   Me, Settings, Members, ApprovalsList, ApprovalCard, InboxItem, Meeting, Agent, ChatMessage, Routine, Capacity,
   Analytics, Credits, Connector, Contact, ContactDetail, Role, ModelTier, DraftStatus, Id, About, AskMode, Pipeline,
   Autonomy, AgentStats, Dataset, HandoffItem, HandoffCard, HandoffDraft, HandoffReason, HandoffOutcome,
-  Playbook, PlaybookReply, PlaybookCategory, ReplyDraft, ClientRecord, ClientSummary, ClientHealth, PriceConfig, SalesDeal, CloseSaleInput, ClientStatusView, Prospect, ProspectPatch, SalesLog, SalesLogInput, ClientStatus, ChecklistItem, ChecklistState, ClientEvent, SetupConfig, SetupVersion, SetupDraft, DemoConnection, DemoReplyDraft, ConnChannel,
+  Playbook, PlaybookReply, PlaybookCategory, ReplyDraft, ClientRecord, ClientSummary, ClientHealth, PriceConfig, SalesDeal, CloseSaleInput, ClientStatusView, ClientSetupView, ClientConversation, Prospect, ProspectPatch, SalesLog, SalesLogInput, ClientStatus, ChecklistItem, ChecklistState, ClientEvent, SetupConfig, SetupVersion, SetupDraft, DemoConnection, DemoReplyDraft, ConnChannel,
   Asset, AssetKind, AssetStatus, Aspect, Edits, GenMode, Ingredient, MotionKey, Product, Project, Scene, SequenceClip, StudioCaps,
 } from './types';
 
@@ -91,6 +91,8 @@ export interface Client {
   setupAction(orgId: Id, id: Id, version: number, action: 'submit' | 'approve' | 'reject' | 'apply' | 'rollback', reason?: string): Promise<SetupVersion>;
   clientEvents(orgId: Id, id: Id, q?: { kind?: string; after?: string }): Promise<{ items: ClientEvent[]; next: string | null }>;
   clientHealth(orgId: Id): Promise<ClientHealth[]>;   // 6d rollup, not 6a: GET clients/health
+  clientSetup(s: Scope): Promise<ClientSetupView | null>;   // client portal: the live setup, read-only
+  clientConversations(s: Scope): Promise<ClientConversation[]>;   // client portal: masked, summarised; transcripts by request
   clientStatus(s: Scope): Promise<ClientStatusView | null>;   // client portal: the viewer's own workspace only, a narrow read; never the record
   // Rep portal (DESIGN-frontend-4-sales-portal): proposals for Backend, not in 6a.
   priceConfig(orgId: Id): Promise<PriceConfig>;
