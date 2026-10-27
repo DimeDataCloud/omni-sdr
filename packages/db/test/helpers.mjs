@@ -138,7 +138,11 @@ export async function seedTenant(db, label, { cap = 5, trust = 1, heat = 1 } = {
       first_touch_at, first_touch_channel, first_touch_by)
     VALUES ($1, $2, $3, 'web_form', 'form', $4, 'express_form', now() - interval '10 minutes', now() - interval '9 minutes', 'email', 'system') RETURNING id`,
     [org, ws, contact, `seed-lead-${label}`])).id;
-  return { ...t, message, inbound, conversation, playbook, lead };
+  // 0031: a reply draft for that lead, so the RLS matrix and the FK rule cover lead_drafts.
+  const leadDraft = (await one(db, `INSERT INTO lead_drafts (org_id, workspace_id, contact_id, lead_event_id, channel, subject, body)
+    VALUES ($1, $2, $3, $4, 'email', 'Thanks for reaching out', 'Thanks for your note, Pat. When is a good time to talk?') RETURNING id`,
+    [org, ws, contact, lead])).id;
+  return { ...t, message, inbound, conversation, playbook, lead, leadDraft };
 }
 
 // A new draft for the tenant's enrollment, passed through the gate and approved.
