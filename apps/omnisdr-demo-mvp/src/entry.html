@@ -33,7 +33,7 @@ function say(t){return new Promise(function(done){
  setTimeout(function(){d.className='bubble a in';d.textContent=t;log.scrollTop=1e9;done()},650)})}
 function you(t){put(el('div','bubble u',t))}
 function choices(){var r=el('div','replies');r.setAttribute('role','group');r.setAttribute('aria-label','Choose where to go');
- [['Try me','/tryme'],['Sales','/sales'],['Rep dashboard','/rep']].forEach(function(c){var b=el('button','rb',c[0]);b.type='button';b.addEventListener('click',function(){var all=r.querySelectorAll('button');for(var k=0;k<all.length;k++)all[k].disabled=true;you(c[0]);say('Opening '+c[0]+' now.').then(function(){location.assign(c[1])})});r.appendChild(b)});put(r);var f=r.firstChild;if(f)f.focus()}
+ [['Try me','/tryme'],['Rep dashboard','/rep']].forEach(function(c){var b=el('button','rb',c[0]);b.type='button';b.addEventListener('click',function(){var all=r.querySelectorAll('button');for(var k=0;k<all.length;k++)all[k].disabled=true;you(c[0]);say('Opening '+c[0]+' now.').then(function(){location.assign(c[1])})});r.appendChild(b)});put(r);var f=r.firstChild;if(f)f.focus()}
 var so=document.getElementById('so');
 if(so)so.addEventListener('click',function(){fetch('/api/sales/logout',{method:'POST',headers:{'content-type':'application/json'},body:'{}'}).then(function(){location.reload()})});
 if(mode==='portal'){say('Welcome back.').then(function(){return say('Where to?')}).then(choices);return}
