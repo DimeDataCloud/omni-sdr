@@ -376,3 +376,46 @@ test('S2L-2a: lead_owner only reads messages, drafts and enrollments; with no te
   try { assert.equal((await one(db, `SELECT record_first_touch($1, 'email', 'agent', $2) AS r`, [t.lead, t.message])).r, 'not_found'); }
   finally { await db.exec('RESET ROLE'); }
 });
+
+// ─── 0026: a temp table cannot shadow a definer's lookup ───────────────────────────────────────────────────────────
+test('0026: every SECURITY DEFINER function puts pg_temp last in its search_path', async () => {
+  const db = await freshDb();
+  const bad = await q(db, `SELECT p.oid::regprocedure::text AS fn, p.proconfig AS cfg FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                            WHERE n.nspname = 'public' AND p.prosecdef AND NOT ('search_path=public, pg_temp' = ANY (coalesce(p.proconfig, '{}')))`);
+  assert.deepEqual(bad, [], 'a definer without `SET search_path = public, pg_temp` can be shadowed by a temp table');
+});
+
+test('0026: no service role can create a temp table (TEMP is revoked from PUBLIC and each role)', async () => {
+  const db = await freshDb();
+  for (const role of ['app_rw', 'gate_svc', 'inbox_svc', 'sender_svc', 'ops']) {
+    assert.equal((await one(db, `SELECT has_database_privilege($1, current_database(), 'TEMP') AS h`, [role])).h, false, `${role} holds TEMP`);
+    await db.exec(`SET ROLE ${role}`);
+    try { assert.match(await refused(db.query(`CREATE TEMP TABLE shadow_probe (x int)`)) ?? 'ran', /permission denied/, role); }
+    finally { await db.exec('RESET ROLE'); }
+  }
+});
+
+test('0026: a temp messages/drafts/enrollments table cannot shadow the definer lookup (the V-19 repro)', async () => {
+  const db = await freshDb();
+  const t = await clean(db, 'alpha');
+  const lead = (await rec(db, t, { at: minutes(0) })).lead_event_id;
+  await markSent(db, t, { state: 'claimed' });            // the real message was never sent
+  // A session that CAN create temp tables (the superuser here; a role that still held TEMP before 0026) plants fakes that say
+  // "sent, to this contact": the definer must still read the real tables.
+  await db.exec(`CREATE TEMP TABLE messages AS SELECT * FROM public.messages`);
+  await db.exec(`UPDATE pg_temp.messages SET state = 'sent', sent_at = clock_timestamp()`);
+  await db.exec(`GRANT SELECT ON pg_temp.messages TO PUBLIC`);   // readable by the definer, as the verifier's repro had it
+  try {
+    assert.equal(await touch(db, 'sender_svc', t, lead, { message: t.message }), 'message_not_sent', 'the real (claimed) message decides');
+    await db.exec(`CREATE TEMP TABLE drafts AS SELECT * FROM public.drafts`);
+    await db.exec(`CREATE TEMP TABLE enrollments AS SELECT * FROM public.enrollments`);
+    await db.exec(`UPDATE pg_temp.enrollments SET contact_id = '00000000-0000-4000-8000-000000000000'`);
+    await db.exec(`GRANT SELECT ON pg_temp.drafts, pg_temp.enrollments TO PUBLIC`);
+    assert.equal(await touch(db, 'sender_svc', t, lead, { message: t.message }), 'message_not_sent', 'temp drafts and enrollments are ignored too');
+    assert.deepEqual(await touched(db, lead), { first_touch_at: null, first_touch_message_id: null }, 'nothing written');
+  } finally {
+    await db.exec(`DROP TABLE IF EXISTS pg_temp.messages, pg_temp.drafts, pg_temp.enrollments`);
+  }
+  await markSent(db, t, { state: 'sent' });
+  assert.equal(await touch(db, 'sender_svc', t, lead, { message: t.message }), 'recorded', 'and the honest send still works');
+});
