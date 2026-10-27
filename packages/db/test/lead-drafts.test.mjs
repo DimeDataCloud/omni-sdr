@@ -67,8 +67,9 @@ test('a tenant cannot read, write or point at another tenant\'s lead drafts', as
   // A's draft cannot answer B's lead (composite FK), nor use B's contact.
   assert.ok(await refused(as(db, 'app_rw', ctxOf(a), () => db.query(
     `INSERT INTO lead_drafts (org_id, workspace_id, contact_id, lead_event_id, channel, body) VALUES ($1, $2, $3, $4, 'email', 'x')`, [a.org, a.ws, a.contact, b.lead]))));
+  const aLead = await newLead(db, a, 'ld-5');
   assert.ok(await refused(as(db, 'app_rw', ctxOf(a), () => db.query(
-    `INSERT INTO lead_drafts (org_id, workspace_id, contact_id, lead_event_id, channel, body) VALUES ($1, $2, $3, $4, 'email', 'x')`, [a.org, a.ws, b.contact, await newLead(db, a, 'ld-5')]))));
+    `INSERT INTO lead_drafts (org_id, workspace_id, contact_id, lead_event_id, channel, body) VALUES ($1, $2, $3, $4, 'email', 'x')`, [a.org, a.ws, b.contact, aLead]))));
   // Writing under a workspace outside the caller's scope is refused by RLS.
   assert.match(await refused(as(db, 'app_rw', { org: a.org, ws: [] }, () => db.query(
     `INSERT INTO lead_drafts (org_id, workspace_id, contact_id, lead_event_id, channel, body) VALUES ($1, $2, $3, $4, 'email', 'x')`, [a.org, a.ws, a.contact, a.lead]))), /row-level security|violates/);

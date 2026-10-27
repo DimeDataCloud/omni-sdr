@@ -25,6 +25,7 @@ const touch = async (db, role, t, id, o = {}) => {
 // seedTenant adds one lead event; lead_events refuses DELETE (0023), so this test-only reset switches that trigger off for one statement, as a superuser can.
 const clean = async (db, label) => {
   const t = await seedTenant(db, label);
+  await db.query('DELETE FROM lead_drafts WHERE org_id = $1', [t.org]);   // 0031: the seeded reply draft points at that lead
   await db.exec('ALTER TABLE lead_events DISABLE TRIGGER lead_events_no_delete');
   await db.query('DELETE FROM lead_events WHERE org_id = $1', [t.org]);
   await db.exec('ALTER TABLE lead_events ENABLE TRIGGER lead_events_no_delete');
