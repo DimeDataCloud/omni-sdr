@@ -7,6 +7,7 @@
 //   OMNI_APP_URL            base for invite links (required: the old default, app.omnisdr.com, has no DNS record)
 //   OMNI_UNSUBSCRIBE_BASE   the API's public origin, for /u/<token> and hook URLs (required, same reason)
 //   OMNI_INBOUND_SECRET     HMAC key shared with the email-worker; /internal/* is 404 without it
+//   OMNI_FORM_DAILY_CAP     most website-form submissions a workspace may record per 24 hours (429 over it; default 500)
 //   OMNI_EDGE_SECRET        HMAC key shared with the api.omnisdr.com Worker, which signs the caller's IP (#52 audit)
 //   OMNI_TRUST_PROXY=<n>    the client IP is the n-th entry from the end of X-Forwarded-For. 1 behind Cloud Run (the live value).
 //                           2 ONLY when every request must pass Cloudflare or a load balancer first: while the *.run.app URL
@@ -61,6 +62,8 @@ export async function main() {
       appUrl: need('OMNI_APP_URL'),
       unsubscribeBase: need('OMNI_UNSUBSCRIBE_BASE'),
       inboundSecret: env.OMNI_INBOUND_SECRET || null,
+      // Most website-form submissions a workspace may record per 24 hours (429 over it). Unset: 500.
+      formDailyCap: Number(env.OMNI_FORM_DAILY_CAP) >= 1 ? Math.floor(Number(env.OMNI_FORM_DAILY_CAP)) : undefined,
       places,
       // Free checks always run; the vendor check only with OMNI_VERIFY=zerobounce (above).
       verifier,

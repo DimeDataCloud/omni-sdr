@@ -10,7 +10,7 @@
 // is the engine a later card connects. Nothing sends.
 import { randomUUID } from 'node:crypto';
 import { withoutTenant, withService } from '../../../db/src/context.mjs';
-import { ingestForm } from '../services/inbox.mjs';
+import { ingestForm, FORM_DAILY_CAP } from '../services/inbox.mjs';
 import { verifiedLead, recordLeadIn, safeExternalId, payloadIdentityProblem } from './core.mjs';
 
 /** The adapter on the S2L-1 contract. `raw` is the submission after the hook token was proved ({ hookVerified, ... }). */
@@ -38,8 +38,11 @@ export const webFormAdapter = Object.freeze({
  * One submission, one transaction.
  * @param hook { id, tokenHash } as for ingestForm
  * @param msg  { body, email?, name?, phone?, page?, externalId?, receivedAt: Date }
+ * @param opts  { dailyCap? } the most form submissions a workspace may record in 24 hours (default FORM_DAILY_CAP)
  * @returns ingestForm's result ({ outcome: 'recorded'|'duplicate'|'unknown_hook', id, ... }) plus, when recorded, `lead`:
  *   { outcome, leadEventId, relatedLeadEventId, touchBlocker }. A duplicate or unknown hook writes nothing more.
+ *   Over the cap: { outcome: 'rate_limited', cap } and NOTHING is written (lead_events is append-only, so the limit has to be
+ *   here, not a cleanup later); concurrent requests can overshoot by at most the number in flight. The count is per workspace (every hook of it): neither table records which hook a row came from.
  */
 export async function ingestFormLead(client, hook, msg, opts = {}) {
   const hit = await withoutTenant(client, { role: 'inbox_svc' }, async (tx) =>
@@ -50,7 +53,19 @@ export async function ingestFormLead(client, hook, msg, opts = {}) {
   const externalId = safeExternalId(msg.externalId) ?? `sub-${randomUUID()}`;
   const lead = await verifiedLead(webFormAdapter, { ...msg, externalId, hookVerified: true });
   const scope = { orgId: hit.org_id, workspaceId: hit.workspace_id };
+  const cap = opts.dailyCap ?? FORM_DAILY_CAP;
   return withService(client, { ...scope, role: 'inbox_svc' }, async (tx) => {
+    // No lock: 0020 revokes the advisory-lock functions from PUBLIC on purpose (a tenant-facing role must not hold them), so
+    // requests in flight at the same moment can each see cap - 1 and overshoot by at most the number in flight. It is an abuse limit,
+    // not a quota; the 60/min/IP limit bounds the burst. An exact cap would need a definer that takes the lock (a migration).
+    const recent = (await tx.query(`SELECT count(*)::int AS n FROM inbound_messages WHERE workspace_id = $1 AND channel = 'form'
+      AND received_at > $2::timestamptz - interval '24 hours'`, [hit.workspace_id, msg.receivedAt])).rows[0].n;
+    if (recent >= cap) {
+      // A retry of a submission already recorded is still a duplicate (200), not a 429.
+      const dup = (await tx.query(`SELECT id FROM inbound_messages WHERE workspace_id = $1 AND channel = 'form' AND external_id = $2`,
+        [hit.workspace_id, externalId])).rows[0];
+      return dup ? { outcome: 'duplicate', id: dup.id } : { outcome: 'rate_limited', cap };
+    }
     const form = await ingestForm(client, hook, { ...msg, externalId }, { ...opts, tx, hit });
     if (form.outcome !== 'recorded') return form;
     return { ...form, lead: await recordLeadIn(tx, scope, lead) };
