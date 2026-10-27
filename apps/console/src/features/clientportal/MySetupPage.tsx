@@ -36,7 +36,7 @@ export default function MySetupPage() {
             <Card className="grid gap-2 p-4">
               <p className="text-sm">Setup version {s.appliedVersion}, updated {day(s.appliedAt)}.</p>
               {s.history.length > 1 && <ul className="text-sm text-muted">{s.history.map((h) => <li key={h.version}>Version {h.version}, {day(h.appliedAt)}</li>)}</ul>}
-              {link ? <p><a className="text-sm underline" href={link}>Ask us to change this</a></p> : <p className="text-sm text-muted">To change anything, ask your account contact.</p>}
+              {link ? <p><a className="text-sm underline max-md:inline-flex max-md:min-h-11 max-md:items-center" href={link}>Ask us to change this</a></p> : <p className="text-sm text-muted">To change anything, ask your account contact.</p>}
             </Card>
           </>
         )}

@@ -36,7 +36,7 @@ function Row({ c }: { c: ClientConversation }) {
         <span className="text-sm text-muted">{c.maskedPhone ?? 'No phone on file'} · {c.channel} · {when(c.lastAt)}</span>
       </div>
       <p className="text-sm">{c.summary || 'No summary yet.'}</p>
-      {link && <p><a className="text-sm underline" href={link}>Request the transcript</a></p>}
+      {link && <p><a className="text-sm underline max-md:inline-flex max-md:min-h-11 max-md:items-center" href={link}>Request the transcript</a></p>}
     </Card>
   );
 }

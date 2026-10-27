@@ -12,9 +12,9 @@ const VIA = { email: 'by email', linkedin: 'on LinkedIn', form: 'through your fo
 /** Last four digits only: (•••) •••-0142. Null when there is no number. */
 export const maskPhone = (p: string | null): string | null => { const d = (p ?? '').replace(/\D/g, ''); return d.length >= 4 ? '(•••) •••-' + d.slice(-4) : null; };
 
-export interface InboundLike { channel: 'email' | 'linkedin' | 'form'; receivedAt: string; intent: Intent; handledAt: string | null }
+export interface InboundLike { channel: 'email' | 'linkedin' | 'form'; receivedAt: string; intent: string; handledAt: string | null }
 
 export const projectConversation = (contactId: string, name: string, phone: string | null, last: InboundLike): ClientConversation => ({
   id: contactId, name, maskedPhone: maskPhone(phone), channel: last.channel, lastAt: last.receivedAt,
-  summary: `${SAID[last.intent] ?? SAID.unclassified} ${VIA[last.channel] ?? ''}`.trim(), status: last.handledAt ? 'handled' : 'open',
+  summary: `${SAID[last.intent as Intent] ?? SAID.unclassified} ${VIA[last.channel] ?? ''}`.trim(), status: last.handledAt ? 'handled' : 'open',
 });

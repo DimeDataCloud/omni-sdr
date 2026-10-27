@@ -17,7 +17,7 @@ export default function BillingPage() {
       <PageHeader title="Billing" subtitle="Your plan and invoices." />
       <EmptyState icon={<CreditCard className="size-5" aria-hidden />} title="Billing is not connected yet"
         body="Your plan and invoices will show here once billing is connected. Nothing is charged through this page."
-        action={link ? <a className="text-sm underline" href={link}>Ask us a billing question</a> : <span className="text-sm text-muted">For billing questions, ask your account contact.</span>} />
+        action={link ? <a className="text-sm underline max-md:inline-flex max-md:min-h-11 max-md:items-center" href={link}>Ask us a billing question</a> : <span className="text-sm text-muted">For billing questions, ask your account contact.</span>} />
     </Page>
   );
 }
