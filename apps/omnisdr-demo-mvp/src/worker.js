@@ -252,7 +252,7 @@ export default {
     try {
       const u = new URL(req.url), p = u.pathname, m = req.method;
       if (m === 'GET' && p === '/tryme') return (!triedGated(env) || (await salesAuthed(req, env))) ? page(demoHtml, env) : toEntry();
-      if (m === 'GET' && p === '/tryme/dev') return page(devHtml, env);
+      if (m === 'GET' && p === '/tryme/dev') return (await salesAuthed(req, env)) ? page(devHtml, env) : toEntry();
       if (m === 'GET' && p === '/dev') return new Response(null, { status: 302, headers: { location: '/tryme/dev' + u.search, 'cache-control': 'no-store', 'x-robots-tag': 'noindex' } });
       if (m === 'GET' && p === '/') return entryPage(await salesAuthed(req, env), env);
       if (m === 'GET' && p === '/sales') return (await salesAuthed(req, env)) ? deckPage(env) : toEntry();
