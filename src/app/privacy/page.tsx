@@ -91,7 +91,6 @@ export default function PrivacyPage() {
               <li><strong>Neon:</strong> Postgres database hosting for platform data.</li>
               <li><strong>Google:</strong> Cloud Storage for waitlist signups, the Gemini API for model calls, the Places API for business lookups, and Gmail when a client connects their own mailbox.</li>
               <li><strong>ZeroBounce:</strong> email address verification before a client sends outreach.</li>
-              <li><strong>Stripe:</strong> payment processing for paid plans. Stripe handles card details; we do not store them.</li>
               <li>We may also disclose information if the law requires it.</li>
             </ul>
           </section>
@@ -113,7 +112,7 @@ export default function PrivacyPage() {
 
           <section className="space-y-3">
             <h2 className="text-xl font-bold text-[#111111]">8. Your Choices and Rights</h2>
-            <p>You can ask us to show you what we hold about you, correct it, give you a copy, or delete it, and you can opt out of further contact at any time. This applies whether you are on our waitlist, a client, or a prospect contacted for a client. Email <a href="mailto:privacy@omnisdr.com" className="font-bold underline text-[#111111]">privacy@omnisdr.com</a> or call 479-747-2076, 8 a.m. to 8 p.m. We respond to verified requests within 30 days. California, EU and UK residents have these rights by law, and we honor them for everyone.</p>
+            <p>You can ask us to show you what we hold about you, correct it, give you a copy, or delete it, and you can opt out of further contact at any time. This applies whether you are on our waitlist, a client, or a prospect contacted for a client. Email <a href="mailto:privacy@omnisdr.com" className="font-bold underline text-[#111111]">privacy@omnisdr.com</a> or call 479-747-2076, 8 a.m. to 8 p.m. Central Time. We respond to verified requests within 30 days. California, EU and UK residents have these rights by law, and we honor them for everyone.</p>
           </section>
 
           <section className="space-y-3">
@@ -125,7 +124,7 @@ export default function PrivacyPage() {
               Nashville, Tennessee 37221<br />
               Website: https://omnisdr.com<br />
               Email: privacy@omnisdr.com<br />
-              Phone: 479-747-2076, 8 a.m. to 8 p.m.
+              Phone: 479-747-2076, 8 a.m. to 8 p.m. Central Time
             </p>
           </section>
         </div>
