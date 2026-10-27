@@ -167,10 +167,13 @@ function entryPage(authed, env) { return page(entryHtml.replace('__MODE__', auth
 /* ---------- handlers ---------- */
 const publicTenant = (id) => { const t = TENANTS[id]; return { id: t.id, business: t.business, owner: t.owner, persona: t.persona, niche: t.niche, hours: t.hours, serviceZips: t.serviceZips, services: t.services, outOfScope: t.outOfScope, estimate: t.estimate, slots: t.slots, hot: t.hot, license: t.license }; };
 const pickTenant = (id) => (typeof id === 'string' && Object.hasOwn(TENANTS, id)) ? id : DEFAULT_TENANT;
+// Real booking link comes from Christian; until then one mailto, one constant.
+const BOOK_URL = 'mailto:getomnisdr@gmail.com';
+const BOOK_HOW = 'To book a live walkthrough, email ' + BOOK_URL.slice('mailto:'.length) + '.';
 const MSG = {
-  paused: 'The live demo is paused. Book a live demo with Dime Data instead.',
-  'daily-cap': "Today's demo sessions are used up. Book a live demo and we'll walk you through it.",
-  'ip-cap': 'You have used your demo sessions for today. Book a live demo for more.'
+  paused: 'The demo is paused right now. ' + BOOK_HOW,
+  'daily-cap': "Today's demo sessions are used up. Try again tomorrow. " + BOOK_HOW,
+  'ip-cap': 'You have used your demo sessions for today. Try again tomorrow. ' + BOOK_HOW
 };
 
 async function newSession(req, env, body) {
