@@ -25,7 +25,7 @@
     ]
    }
   ],
-  "notes": "Say: \"This is the sentence. Say it until it is boring. The owner does not want AI. The owner wants the lead answered before the competitor gets to it, and a booked job on the calendar. That is what we aim for, and we measure it.\"\nSay: we sell the outcome: a lead that gets an answer, then a booking. We do not lead with the tool or the setup.\nSay: the target first reply is five minutes, set per business at onboarding. It is a target we measure and report, not a guarantee.\nAsk the rep: \"Say the sentence back to me without the word AI.\" If he can, move on."
+  "notes": "Say: \"This is the sentence. Say it until it is boring. The owner does not want AI. The owner wants the lead answered before the competitor gets to it, and a booked job on the calendar. That is what we aim for, and we measure it.\"\nSay: we sell the outcome: a lead that gets an answer, then a booking. We do not lead with the tool or the setup.\nSay: the target first reply is two minutes, set per business at onboarding. It is a target we measure and report, not a guarantee.\nAsk the rep: \"Say the sentence back to me without the word AI.\" If he can, move on."
  },
  {
   "title": "The problem",
@@ -55,7 +55,7 @@
    },
    "Status: nothing on this slide is live for a client."
   ],
-  "notes": "Status: the console, the database with a separate space per client, approvals, inbox, handoffs, meetings and the email path are built. The lead record pipeline (S2L-1 and S2L-1b) is built and under audit, not live. Channel adapters are designed. See slide 5.\nSay, plainly, for a skeptical owner:\n- \"A lead can arrive as a form, an ad form, an email, a text, a DM, a call. We turn every one into the same kind of record, so the system treats them the same way. The glossary calls this a lead event.\"\n- \"Before we send anything, we check if we already have this person (so nobody gets two texts) and whether we have a valid reason to contact them (the consent basis). No reason, no message.\"\n- \"The first reply goes out inside the response window. The default is five minutes. We set it per business.\"\n- \"The design is a follow-up ladder: for example text, then email, then a call attempt. It stops when the person books, replies in a way that needs a human, is handed to a person, opts out, or hits a daily cap. Nothing loops forever.\"\n- \"Anytime the lead asks for a human, or the topic is an emergency, a big job, a complaint, or a price only a person may quote, the owner or staff gets an alert with the whole thread and a suggested next move.\"\n- \"Last, the lead ends as booked, paid, handed to a person, opted out, or closed. Results shows how fast the first reply was, per channel.\"\nAsk the rep: \"Walk me through what happens to a web form lead at 11:40 pm.\" Expected: record created, duplicate and consent check, text and email within seconds, owner alerted, callback attempt if no reply, booking if the lead says yes. Status: each step depends on the adapters on slide 5."
+  "notes": "Status: the console, the database with a separate space per client, approvals, inbox, handoffs, meetings and the email path are built. The lead record pipeline (S2L-1 and S2L-1b) is built and under audit, not live. Channel adapters are designed. See slide 5.\nSay, plainly, for a skeptical owner:\n- \"A lead can arrive as a form, an ad form, an email, a text, a DM, a call. We turn every one into the same kind of record, so the system treats them the same way. The glossary calls this a lead event.\"\n- \"Before we send anything, we check if we already have this person (so nobody gets two texts) and whether we have a valid reason to contact them (the consent basis). No reason, no message.\"\n- \"The first reply goes out inside the response window. The default is two minutes. We set it per business.\"\n- \"The design is a follow-up ladder: for example text, then email, then a call attempt. It stops when the person books, replies in a way that needs a human, is handed to a person, opts out, or hits a daily cap. Nothing loops forever.\"\n- \"Anytime the lead asks for a human, or the topic is an emergency, a big job, a complaint, or a price only a person may quote, the owner or staff gets an alert with the whole thread and a suggested next move.\"\n- \"Last, the lead ends as booked, paid, handed to a person, opted out, or closed. Results shows how fast the first reply was, per channel.\"\nAsk the rep: \"Walk me through what happens to a web form lead at 11:40 pm.\" Expected: record created, duplicate and consent check, text and email within seconds, owner alerted, callback attempt if no reply, booking if the lead says yes. Status: each step depends on the adapters on slide 5."
  },
  {
   "title": "Channels",
@@ -518,7 +518,7 @@
       ],
       [
        "Response window",
-       "How fast the first reply should go out. Default 5 minutes, set per business."
+       "How fast the first reply should go out. Default 2 minutes, set per business."
       ],
       [
        "Consent basis",
