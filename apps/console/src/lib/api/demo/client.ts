@@ -4,9 +4,10 @@
 import { can } from '@db/permissions.mjs';
 import { CONNECTORS, freeEmailChecks } from '@rules/catalog.mjs';
 import { ApiError, invalidate, type Client, type Scope, type Campaign, type Icp } from '../client';
-import type { Dataset, ApprovalCard, Agent, ChatMessage, Contact, InboxItem, Meeting, Routine, Role, Analytics, Me, Pipeline, AboutKind, AskMode, HandoffItem, HandoffCard, ThreadMessage, PlaybookReply, ReplyDraft, PlaybookCategory } from '../types';
+import type { Dataset, ApprovalCard, Agent, ChatMessage, Contact, InboxItem, Meeting, Routine, Role, Analytics, Me, Pipeline, AboutKind, AskMode, HandoffItem, HandoffCard, ThreadMessage, PlaybookReply, ReplyDraft, PlaybookCategory, ClientRecord, ChecklistState } from '../types';
 import { addBusinessMinutes, SLA_MINUTES } from '@rules/reply-rules.mjs';
 import { PLAYBOOK_CATEGORIES, unknownFields, render, firstName, AUTONOMY_WINDOW, AUTONOMY_RATE } from '@rules/playbook.mjs';
+import { checklistFor } from './seed';
 import { load, save, gate, newId, personaEmail, convertOnMeeting, recordReply } from './store';
 import { think } from './brain';
 import { studioDemo, mediaCounts } from './studio';
@@ -46,6 +47,20 @@ async function write<T>(fn: (w: World) => T): Promise<T> {
 const audit = (w: World, ws: string | null, actor: string, action: string, entityType: string, entityId: string) =>
   w.audit.push({ id: newId(), ws, actor, action, entityType, entityId, at: nowIso() });
 const nf = (what: string) => new ApiError(404, 'not_found', `${what} not found`);
+/** Dev portal is operator-only. The matrix in packages/db has no client-record action yet, so the demo checks the role directly. */
+function operatorOnly(w: World): MemberRow {
+  const m = me(w);
+  if (m.role !== 'admin' && m.role !== 'operator') throw new ApiError(403, 'forbidden', 'only operators can open client records');
+  return m;
+}
+function clientOf(w: World, id: string) {
+  const c = w.clients.find((x) => x.id === id);
+  if (!c) throw nf('client');
+  return c;
+}
+function clientEvent(c: ClientRecord, actor: string, action: string, detail: string) {
+  c.audit.push({ id: newId(), at: nowIso(), actor, action, detail });
+}
 const conflict = (msg: string) => new ApiError(409, 'conflict', msg);
 
 function card(w: World, d: DraftRow): ApprovalCard {
@@ -835,6 +850,39 @@ export const demoClient: Client = {
     }
     audit(w, s.workspaceId, m.userId, 'enroll', 'campaign', campaignId);
     return { enrolled, skipped };
+  }),
+
+  clients: (orgId) => read((w) => {
+    operatorOnly(w);
+    if (orgId !== w.org.id) throw nf('organization');
+    return w.clients;
+  }),
+  // Guarded transition: only a closed deal can start onboarding. Stamps the standard checklist and writes an audit row.
+  startOnboarding: (orgId, id) => write((w) => {
+    const m = operatorOnly(w);
+    if (orgId !== w.org.id) throw nf('organization');
+    const c = clientOf(w, id);
+    if (c.status !== 'closed') throw conflict(`Onboarding can start only from closed, this client is ${c.status}`);
+    c.status = 'onboarding';
+    c.checklist = checklistFor(c.id);
+    clientEvent(c, m.name, 'onboarding_started', `Checklist created (${c.checklist.length} items)`);
+    audit(w, null, m.userId, 'update', 'client', c.id);
+    return c;
+  }),
+  setChecklistItem: (orgId, id, itemId, state: ChecklistState) => write((w) => {
+    const m = operatorOnly(w);
+    if (orgId !== w.org.id) throw nf('organization');
+    const c = clientOf(w, id);
+    if (c.status !== 'onboarding') throw conflict('The checklist can change only while the client is in onboarding');
+    const item = c.checklist.find((x) => x.id === itemId);
+    if (!item) throw nf('checklist item');
+    if (state === 'blocked') throw conflict('Blocked is set by the system with a reason, not by hand');
+    const before = item.state;
+    item.state = state;
+    if (state !== 'blocked') item.blockedBy = null;
+    clientEvent(c, m.name, 'checklist', `${item.label}: ${before} to ${state}`);
+    audit(w, null, m.userId, 'update', 'client', c.id);
+    return c;
   }),
 
   agentStats: (s, id, days = 30) => read((w) => {

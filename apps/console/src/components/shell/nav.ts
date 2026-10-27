@@ -1,12 +1,12 @@
 // One nav list; each entry says who sees it (DESIGN 5.3). The shell, bottom bar, palette and route guards all read this.
 // Pages are grouped into six sections (DECISIONS 2026-10-01, WORKSPACE-PLAN.md): the top bar shows sections, and a
 // section with more than one page shows its pages as tabs under the bar. URLs stay one page each (/w/:ws/:page).
-import { Home, CheckCheck, Inbox, CalendarDays, Users, BarChart3, Sparkles, Bot, Plug, Database, Settings as Cog, Send, MessageSquareReply, Megaphone, SlidersHorizontal, Handshake, BookOpenText, type LucideIcon } from 'lucide-react';
+import { Home, CheckCheck, Inbox, CalendarDays, Users, BarChart3, Sparkles, Bot, Plug, Database, Settings as Cog, Send, MessageSquareReply, Megaphone, SlidersHorizontal, Handshake, BookOpenText, Briefcase, type LucideIcon } from 'lucide-react';
 import type { Role } from '@/lib/api/types';
 import type { Action } from '@/lib/session';
 
-export type PageKey = 'home' | 'approvals' | 'inbox' | 'handoffs' | 'playbook' | 'meetings' | 'leads' | 'analytics' | 'studio' | 'agents' | 'data' | 'connections' | 'settings';
-export type SectionKey = 'home' | 'outbound' | 'inbound' | 'marketing' | 'results' | 'setup';
+export type PageKey = 'home' | 'approvals' | 'inbox' | 'handoffs' | 'playbook' | 'meetings' | 'leads' | 'analytics' | 'studio' | 'agents' | 'data' | 'connections' | 'settings' | 'clients';
+export type SectionKey = 'home' | 'outbound' | 'inbound' | 'marketing' | 'results' | 'setup' | 'dev';
 export interface NavItem { key: PageKey; section: SectionKey; label: string; hint: string; icon: LucideIcon; shortcut?: string; visible: (role: Role, can: (a: Action) => boolean) => boolean }
 export interface Section { key: SectionKey; label: string; hint: string; icon: LucideIcon }
 
@@ -16,8 +16,12 @@ export const SECTIONS: Section[] = [
   { key: 'inbound', label: 'Inbound', hint: 'Replies and the meetings they turn into', icon: MessageSquareReply },
   { key: 'marketing', label: 'Marketing', hint: 'Images, video and social content', icon: Megaphone },
   { key: 'results', label: 'Results', hint: 'What worked, by the numbers', icon: BarChart3 },
+  { key: 'dev', label: 'Dev portal', hint: 'Client records: sales, onboarding and go live', icon: Briefcase },
   { key: 'setup', label: 'Setup', hint: 'Agents, data, connections and rules', icon: SlidersHorizontal },
 ];
+
+// The dev portal is for the operator team. packages/db has no client-record action yet, so the role is checked here.
+const OPERATORS: Role[] = ['admin', 'operator'];
 
 // Outside parties see only their own screens: a client viewer their results, a closer their handoffs (0015).
 const OUTSIDE: Role[] = ['client_viewer', 'closer'];
@@ -34,6 +38,7 @@ export const NAV: NavItem[] = [
   { key: 'analytics', section: 'results', label: 'Analytics', hint: 'Replies, meetings and approval rates', icon: BarChart3, shortcut: 'g r', visible: (_, can) => can('reports_view') },
   { key: 'agents', section: 'setup', label: 'Agents', hint: 'Role, autonomy, data access, guardrails', icon: Bot, shortcut: 'g t', visible: (r) => !OUTSIDE.includes(r) },
   { key: 'data', section: 'setup', label: 'Data', hint: 'What agents read, and who reads what', icon: Database, shortcut: 'g d', visible: (r) => !OUTSIDE.includes(r) },
+  { key: 'clients', section: 'dev', label: 'Clients', hint: 'Closed deals and onboarding checklists', icon: Briefcase, shortcut: 'g c', visible: (r) => OPERATORS.includes(r) },
   { key: 'connections', section: 'setup', label: 'Connections', hint: 'Mailboxes, calendar and tools', icon: Plug, visible: (r) => !OUTSIDE.includes(r) },
   { key: 'settings', section: 'setup', label: 'Settings', hint: 'Workspace, members, sending and safety', icon: Cog, visible: (r) => !OUTSIDE.includes(r) },
 ];

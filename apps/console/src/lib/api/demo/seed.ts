@@ -1,7 +1,7 @@
 // The demo world: the SPEC §1 agency story ("Northside Growth"), the same people as packages/api/src/seed-demo.mjs,
 // plus 30 days of history so Analytics has real rows behind every number. Everyone and every company is fictional;
 // every address is on a reserved .example domain.
-import type { Role } from '../types';
+import type { Role, ClientRecord, ClientStatus, ChecklistGroup, ChecklistState, ChecklistItem } from '../types';
 
 export interface Row { id: string }
 export interface WorkspaceRow extends Row { name: string; timezone: string; trustLevel: 1 | 2 | 3; clientApprovalsEnabled: boolean; autoAdjustEnabled: boolean;
@@ -49,10 +49,10 @@ export interface World {
   mailboxes: MailboxRow[]; holds: HoldRow[]; suppression: string[]; contacts: ContactRow[]; evidence: EvidenceRow[]; icps: IcpRow[];
   campaigns: CampaignRow[]; enrollments: EnrollmentRow[]; drafts: DraftRow[]; sent: SentRow[]; inbound: InboundRow[]; meetings: MeetingRow[];
   audit: AuditRow[]; credits: { data: number; action: number; media: number }; handoffs: HandoffRow[];
-  playbook: PlaybookRow[]; questions: QuestionRow[]; replyDrafts: ReplyDraftRow[];
+  playbook: PlaybookRow[]; questions: QuestionRow[]; replyDrafts: ReplyDraftRow[]; clients: ClientRecord[];
 }
 
-export const WORLD_VERSION = 10;
+export const WORLD_VERSION = 11;
 
 // Deterministic randomness so the demo looks the same on every device.
 function rng(seed: number) {
@@ -141,7 +141,7 @@ export function buildWorld(now = new Date()): World {
   const members: MemberRow[] = PERSONAS.map((p) => ({ userId: uid('user'), email: p.email, name: p.name, role: p.role, workspaceIds: p.firstWorkspaceOnly ? [w0.id] : null }));
   const maya = members[0].userId;
 
-  const w: World = { version: WORLD_VERSION, org, workspaces, members, invites: [], agents: [], chat: [], routines: [], mailboxes: [], holds: [], suppression: [],
+  const w: World = { version: WORLD_VERSION, clients: [], org, workspaces, members, invites: [], agents: [], chat: [], routines: [], mailboxes: [], holds: [], suppression: [],
     contacts: [], evidence: [], icps: [], campaigns: [], enrollments: [], drafts: [], sent: [], inbound: [], meetings: [], audit: [], credits: { data: 30000, action: 38420, media: 0 }, handoffs: [], playbook: [], questions: [], replyDrafts: [] };
 
   // A starter playbook for every workspace (SDR-PIVOT P3): the business's own words, per category. Fictional.
@@ -294,7 +294,37 @@ export function buildWorld(now = new Date()): World {
     w.enrollments.push({ id: uid('enr'), ws: w1.id, campaignId: lawCamp.id, contactId: c.id, state: 'waiting', step: 0, heat: 1, stopReason: null });
   }
 
+  w.clients = seedClients(now);
   w.audit.push({ id: uid('audit'), ws: null, actor: 'seed', action: 'create', entityType: 'org', entityId: org.id, at: iso(ago(now, 60 * 24 * 21)) });
   (w as World & { _todays?: unknown })._todays = todays.map((t) => ({ firstDraftId: t.first.id, sendNow: Boolean(t.p.sent), reply: t.p.reply ?? null, email: t.p.email, subject: t.p.subject }));
   return w;
+}
+
+// Dev portal seed: three fictional clients in different states (closed, onboarding, live). Fictional names only.
+const CHECKLIST_TEMPLATE: [ChecklistGroup, string, string][] = [
+  ['Account', 'Business profile and hours', 'operator'], ['Account', 'Owner contacts and alert emails', 'operator'],
+  ['Connections', 'Mailbox connected and tested', 'operator'], ['Connections', 'Calendar connected', 'operator'], ['Connections', 'Phone number and voice line', 'operator'],
+  ['Compliance', 'Consent basis recorded', 'operator'], ['Compliance', 'A2P texting filed', 'operator'],
+  ['Setup', 'Playbook replies and questions', 'operator'], ['Setup', 'Handoff route and closers', 'operator'], ['Setup', 'First drafts approved', 'reviewer'],
+  ['Launch', 'Approval-week plan agreed', 'operator'], ['Launch', 'Go live review', 'reviewer'],
+];
+export const checklistFor = (clientId: string): ChecklistItem[] => CHECKLIST_TEMPLATE.map(([group, label, owner], i) => (
+  { id: `${clientId}-c${i + 1}`, group, label, owner, state: 'todo' as ChecklistState, blockedBy: null, evidence: null }));
+function seedClients(now: Date): ClientRecord[] {
+  const at = (d: number) => iso(ago(now, 60 * 24 * d));
+  const mk = (id: string, name: string, niche: string, status: ClientStatus, contactName: string, contactEmail: string, level: ClientRecord['deal']['level'], price: number, days: number, notes: string): ClientRecord => ({
+    id, name, niche, status, contactName, contactEmail, setupVersion: status === 'live' ? 3 : null,
+    deal: { rep: 'Jordan Reyes', level, price, priceDraft: true, closedAt: at(days), notes }, checklist: status === 'closed' ? [] : checklistFor(id),
+    audit: [{ id: `${id}-a1`, at: at(days), actor: 'Jordan Reyes', action: 'closed', detail: `Sold ${level} at $${price} (draft price)` }],
+  });
+  const live = mk('cl-ridgeline', 'Ridgeline Generators', 'Generator dealer', 'live', 'Tom Alvarez', 'tom@ridgeline.example', 'L2 recurring', 499, 40, 'Storm season rush, wants after-hours coverage.');
+  live.checklist.forEach((c) => { c.state = 'done'; });
+  live.audit.push({ id: 'cl-ridgeline-a2', at: at(38), actor: 'Sam Rivera', action: 'onboarding_started', detail: 'Checklist created (12 items)' },
+    { id: 'cl-ridgeline-a3', at: at(30), actor: 'Sam Rivera', action: 'live', detail: 'Moved to live on setup v3' });
+  const onb = mk('cl-ironwood', 'Ironwood Martial Arts', 'Martial arts school', 'onboarding', 'Priya Nair', 'priya@ironwood.example', 'L1 pilot', 499, 6, 'Three locations, trial-class booking is the goal.');
+  onb.checklist.forEach((c, i) => { c.state = i < 5 ? 'done' : i === 5 ? 'doing' : 'todo'; });
+  const a2p = onb.checklist.find((c) => c.label === 'A2P texting filed')!; a2p.state = 'blocked'; a2p.blockedBy = 'Carrier review (texting shows as pending)';
+  onb.audit.push({ id: 'cl-ironwood-a2', at: at(5), actor: 'Sam Rivera', action: 'onboarding_started', detail: 'Checklist created (12 items)' });
+  const closed = mk('cl-northgate', 'Northgate Remodeling', 'Remodeler', 'closed', 'Dale Whitcomb', 'dale@northgate.example', 'L3 outcome', 149, 1, 'Wants to pay per kept appointment. Quote requests come in by form and phone.');
+  return [closed, onb, live];
 }
