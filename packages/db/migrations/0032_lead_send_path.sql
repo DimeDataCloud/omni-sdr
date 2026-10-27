@@ -44,7 +44,7 @@ GRANT INSERT (lead_draft_id) ON messages TO sender_svc;
 GRANT SELECT ON lead_drafts TO unsub_owner, inbox_owner, lead_owner;
 CREATE POLICY unsub_all ON lead_drafts FOR SELECT TO unsub_owner USING (true);
 CREATE POLICY inbox_all ON lead_drafts FOR SELECT TO inbox_owner USING (true);
-CREATE POLICY lead_read ON lead_drafts FOR SELECT TO lead_owner USING (true);
+CREATE POLICY lead_read ON lead_drafts FOR SELECT TO lead_owner USING (org_id = app_org() AND workspace_id = ANY (app_ws()));
 GRANT SELECT (id, org_id, workspace_id, status, channel, approved_at) ON lead_drafts TO sender_owner;
 GRANT SELECT (lead_draft_id) ON messages TO sender_owner;
 CREATE POLICY sender_list ON lead_drafts FOR SELECT TO sender_owner USING (true);
