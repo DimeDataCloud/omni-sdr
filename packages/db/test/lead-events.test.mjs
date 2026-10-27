@@ -3,8 +3,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { mkdtemp, copyFile, readdir } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { PGlite } from '@electric-sql/pglite';
+import { migrate } from '../src/migrate.mjs';
 import { freshDb, seedTenant, approvedDraft, as, one, q, refused } from './helpers.mjs';
 
+const MIGRATIONS = new URL('../migrations/', import.meta.url);
 const REC = `SELECT * FROM record_lead_event($1, $2, $3, $4, $5, $6, $7, $8, $9)`;
 const rec = (db, t, o = {}) => as(db, 'inbox_svc', { org: t.org, ws: [t.ws] }, () => one(db, REC, [
   o.org ?? t.org, o.ws ?? t.ws, o.source ?? 'web_form', o.channel ?? 'form', o.ext ?? 'ext-1', 'contact' in o ? o.contact : t.contact,
@@ -30,7 +36,7 @@ const clean = async (db, label) => {
   await db.exec('ALTER TABLE lead_events ENABLE TRIGGER lead_events_no_delete');
   return t;
 };
-const minutes = (m) => new Date(Date.now() - 3600000 + m * 60000).toISOString();   // an hour ago, plus m minutes
+const minutes = (m, base = Date.now()) => new Date(base - 3600000 + m * 60000).toISOString();   // an hour ago, plus m minutes. Pass one `base` when two stamps must differ by an exact span: two Date.now() calls can straddle a millisecond tick.
 
 test('intake is idempotent on (workspace, source, external_id); another source with the same id is a separate lead', async () => {
   const db = await freshDb();
@@ -142,11 +148,12 @@ test('time to first touch: median, p90, untouched leads left out of the percenti
   const db = await freshDb();
   const a = await clean(db, 'alpha');
   const b = await clean(db, 'bravo');
+  const base = Date.now();   // one clock reading for every stamp below, so a touch exactly 2 minutes after receipt is exactly 2 minutes (V-29 P2-1)
   const insert = (t, ext, source, channel, mins, touchMins) => db.query(
     `INSERT INTO lead_events (org_id, workspace_id, contact_id, source, channel, external_id, consent_basis, received_at, first_touch_at, first_touch_channel, first_touch_by)
      VALUES ($1, $2, $3, $4, $5, $6, 'express_form', $7, $8, $9, $10)`,
-    [t.org, t.ws, t.contact, source, channel, ext, minutes(mins),
-      touchMins == null ? null : minutes(mins + touchMins), touchMins == null ? null : 'email', touchMins == null ? null : 'agent']);
+    [t.org, t.ws, t.contact, source, channel, ext, minutes(mins, base),
+      touchMins == null ? null : minutes(mins + touchMins, base), touchMins == null ? null : 'email', touchMins == null ? null : 'agent']);
   // alpha web_form: touched after 2, 4, 8 minutes, one never touched. alpha ad_lead: one touched after 1 minute.
   await insert(a, 'w1', 'web_form', 'form', 0, 2);
   await insert(a, 'w2', 'web_form', 'form', 10, 4);
@@ -161,24 +168,88 @@ test('time to first touch: median, p90, untouched leads left out of the percenti
   const web = rows.find((r) => r.source === 'web_form');
   assert.equal(web.median_s, 240);                       // 2, 4, 8 minutes: the untouched lead is not in the percentile
   assert.equal(Math.round(web.p90_s), 432);              // 4 min + 0.8 * (8 - 4) min = 7.2 min
-  assert.equal(web.within_window, 2, 'default window 5 min: the 2- and 4-minute touches');
+  assert.equal(web.within_window, 1, 'default window 2 min (0028): only the 2-minute touch');
 });
 
 test('within_window follows response_window_minutes (a non-default window changes the count)', async () => {
   const db = await freshDb();
   const t = await clean(db, 'alpha');
+  const base = Date.now();   // one reading: the 2-minute touch is exactly 2 minutes after receipt, on the window's edge (<=)
   for (const [ext, touch] of [['w1', 2], ['w2', 4], ['w3', 8]]) {
     await db.query(`INSERT INTO lead_events (org_id, workspace_id, contact_id, source, channel, external_id, consent_basis, received_at, first_touch_at, first_touch_channel, first_touch_by)
-      VALUES ($1, $2, $3, 'web_form', 'form', $4, 'express_form', $5, $6, 'email', 'agent')`, [t.org, t.ws, t.contact, ext, minutes(0), minutes(touch)]);
+      VALUES ($1, $2, $3, 'web_form', 'form', $4, 'express_form', $5, $6, 'email', 'agent')`, [t.org, t.ws, t.contact, ext, minutes(0, base), minutes(touch, base)]);
   }
   const within = () => as(db, 'app_rw', { org: t.org, ws: [t.ws] }, async () =>
     (await one(db, `SELECT within_window AS w FROM ttft_by_source($1, $2)`, [minutes(-60), new Date(Date.now() + 60000).toISOString()])).w);
-  assert.equal(await within(), 2, 'default 5 minutes: the 2 and 4 minute touches');
+  assert.equal(await within(), 1, 'default 2 minutes (0028): only the 2 minute touch');
+  await db.query(`UPDATE workspaces SET response_window_minutes = 5 WHERE id = $1`, [t.ws]);
+  assert.equal(await within(), 2, '5 minutes (the old default, now an explicit choice): the 2 and 4 minute touches');
   await db.query(`UPDATE workspaces SET response_window_minutes = 3 WHERE id = $1`, [t.ws]);
   assert.equal(await within(), 1, '3 minutes: only the 2 minute touch');
   await db.query(`UPDATE workspaces SET response_window_minutes = 10 WHERE id = $1`, [t.ws]);
   assert.equal(await within(), 3, '10 minutes: all three');
   assert.ok(await refused(db.query(`UPDATE workspaces SET response_window_minutes = 0 WHERE id = $1`, [t.ws])), 'the window is 1 to 1440');
+});
+
+test('0028: on a database populated at 0027, a window left at 5 moves to 2, any other choice is kept, and new rows default to 2', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'mig27-'));
+  for (const f of (await readdir(MIGRATIONS)).filter((n) => n.endsWith('.sql') && n < '0028').sort()) await copyFile(new URL(f, MIGRATIONS), join(dir, f));
+  const db = new PGlite();
+  await migrate(db, dir);
+  const org = (await one(db, `INSERT INTO orgs (name) VALUES ('window') RETURNING id`)).id;
+  const ws = async (name, minutes) => (await one(db, `INSERT INTO workspaces (org_id, name${minutes == null ? '' : ', response_window_minutes'}) VALUES ($1, $2${minutes == null ? '' : ', $3'}) RETURNING id`,
+    minutes == null ? [org, name] : [org, name, minutes])).id;
+  const [five, ten, one1] = [await ws('at-five', 5), await ws('at-ten', 10), await ws('at-one', 1)];
+  assert.equal((await one(db, `SELECT response_window_minutes AS m FROM workspaces WHERE id = $1`, [await ws('default-before', null)])).m, 5, 'before 0028 the default is 5');
+  const ran = await migrate(db);   // the real directory: only 0028 is left
+  // Everything from 0028 on runs now (later migrations may exist); 0028 is the first of them.
+  assert.equal(ran.ran[0], '0028_response_window_default_2.sql');
+  assert.ok(ran.ran.every((f) => f >= '0028'), ran.ran.join(', '));
+  const win = async (id) => (await one(db, `SELECT response_window_minutes AS m FROM workspaces WHERE id = $1`, [id])).m;
+  assert.equal(await win(five), 2, 'a row at 5 moved with the default');
+  assert.equal(await win(ten), 10, 'a window someone set to 10 is left alone');
+  assert.equal(await win(one1), 1, 'and so is 1');
+  assert.equal(await win(await ws('default-after', null)), 2, 'a new row defaults to 2');
+});
+
+test('0028: a migrator that owns workspaces but RLS filters (no BYPASSRLS) still backfills through ops, and one that cannot SET ROLE ops fails loudly and changes nothing (V-29 P3-1)', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'mig27b-'));
+  for (const f of (await readdir(MIGRATIONS)).filter((n) => n.endsWith('.sql') && n < '0028').sort()) await copyFile(new URL(f, MIGRATIONS), join(dir, f));
+  const db = new PGlite();
+  await migrate(db, dir);
+  const org = (await one(db, `INSERT INTO orgs (name) VALUES ('rls-owner') RETURNING id`)).id;
+  await db.query(`INSERT INTO workspaces (org_id, name, response_window_minutes) VALUES ($1, 'at-five', 5), ($1, 'at-ten', 10)`, [org]);
+  // The Neon shape: owns the table, no SUPERUSER, no BYPASSRLS, FORCE RLS still on for it.
+  await db.exec(`CREATE ROLE mig_plain NOLOGIN; ALTER TABLE workspaces OWNER TO mig_plain`);
+  assert.equal((await one(db, `SELECT rolsuper OR rolbypassrls AS x FROM pg_roles WHERE rolname = 'mig_plain'`)).x, false);
+  const sql = readFileSync(new URL('0028_response_window_default_2.sql', MIGRATIONS), 'utf8');
+  const runAs = async () => {
+    // SESSION AUTHORIZATION, not SET ROLE: PGlite's login is a superuser, and SET ROLE authority is judged against the session user,
+    // so a plain SET ROLE would let mig_plain switch to ops whatever its membership.
+    await db.exec('SET SESSION AUTHORIZATION mig_plain');
+    let err = null;
+    try { await db.exec(`BEGIN;
+${sql}
+COMMIT;`); } catch (e) { err = e; }
+    await db.exec('ROLLBACK').catch(() => {});
+    await db.exec('SET SESSION AUTHORIZATION postgres');   // PGlite's RESET SESSION AUTHORIZATION keeps the last role
+    return err;
+  };
+  const win = async (name) => (await one(db, `SELECT response_window_minutes AS m FROM workspaces WHERE name = $1`, [name])).m;
+  const dflt = async () => (await one(db, `SELECT column_default AS d FROM information_schema.columns WHERE table_name = 'workspaces' AND column_name = 'response_window_minutes'`)).d;
+
+  // Not allowed to SET ROLE ops: the migration fails, nothing changes (the default change rolled back with it).
+  const denied = await runAs();
+  assert.ok(denied, 'the migration must not succeed for a migrator that cannot reach the rows');
+  assert.match(denied.message, /must be a member of ops/, denied.message);
+  assert.deepEqual([await win('at-five'), await win('at-ten')], [5, 10]);
+  assert.equal(await dflt(), '5');
+
+  // With SET on ops it backfills although RLS hides every workspace from the migrator itself.
+  await db.exec('GRANT ops TO mig_plain');
+  assert.equal(await runAs(), null);
+  assert.deepEqual([await win('at-five'), await win('at-ten')], [2, 10], 'the 5 moved, the 10 stayed');
+  assert.equal(await dflt(), '2');
 });
 
 // ─── 0023 (S2L-1b) ───────────────────────────────────────────────────────────────────────────────────────────────
