@@ -1,5 +1,6 @@
 // Dev portal demo store, shaped like Backend's 6a (omnisdr-pivot/DESIGN-backend-6a-api-shape.md): same resources, same 403/409 codes, so the swap is a base-URL change.
 // Fake data only. Role checks live here because packages/db has no client-record actions yet; in 6a the server checks each action and the database refuses again.
+import { looksLikeEmail } from './email';
 import { ApiError } from '../client';
 import type {
   ChecklistGroup, ChecklistItem, ChecklistState, ClientEvent, ClientHealth, ClientRecord, ClientStatus, ClientSummary, ConnChannel, DealLevel, DemoConnection, DemoReplyDraft,
@@ -251,7 +252,7 @@ export function makeClientApi({ read, write, me, nf }: Helpers) {
       if (!business || business.length > 100) throw bad('Business name is required, up to 100 characters');
       if (!niche || niche.length > 60) throw bad('Niche is required, up to 60 characters');
       if (!contactName || contactName.length > 100) throw bad('Contact name is required, up to 100 characters');
-      if (!/^[^s@]+@[^s@]+.[^s@]+$/.test(contactEmail) || contactEmail.length > 200) throw bad('Contact email looks wrong');
+      if (!looksLikeEmail(contactEmail)) throw bad('Contact email looks wrong');
       if (notes.length > 500) throw bad('Notes are limited to 500 characters');
       const step = w.priceConfig.levels.find((l) => LEVEL_NAME[l.level] === input.level);
       if (!step || step.level === 0) throw bad('Pick Level 1, 2 or 3');
