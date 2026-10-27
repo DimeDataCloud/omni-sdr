@@ -152,9 +152,10 @@ function ownerSms(why){var F=S.f,t=S.t;var h=S.hot?'HOT: ':'';
  if(why==='unconfirmed')return h+(F.name||'caller')+' ('+F.phone+') wants '+F.service+'. Tentative estimate '+F.slot+'. Caller said the details were wrong: call to correct before the visit.';
  if(why==='oos')return 'Out of scope: '+(F.name||'caller')+' asked about '+F.service+'. No booking made.';
  return 'Call ended early. Captured so far: '+[F.name,F.phone,F.service].filter(Boolean).join(', ')+'.'}
+var BOOK_EMAIL='getomnisdr@gmail.com'; // same address as BOOK_URL in worker.js
 function finish(why){if(S.over)return;S.over=true;clearInterval(S.timer);S.tm.forEach(clearTimeout);S.queue=[];if(window.speechSynthesis)try{speechSynthesis.cancel()}catch(e){}
  $('f').hidden=true;$('end').hidden=true;
- var o=$('over');o.hidden=false;o.textContent=why==='time'?'The demo call reached its 3 minute limit.':'Call ended.';
+ var o=$('over');o.hidden=false;o.textContent=(why==='time'?'The demo call reached its 3 minute limit.':'Call ended.')+' Start over to run it again, or email '+BOOK_EMAIL+' to book a live walkthrough.';
  var sms=$('ownerSms');sms.className='';sms.textContent='';var b=el('div','sms');b.appendChild(el('small',null,'To '+S.t.owner+' · simulated'));b.appendChild(el('div',null,ownerSms(why)));sms.appendChild(b);
  ev('end',{why:why,fields:S.f,hot:S.hot,flags:S.flags.map(function(x){return x.t})});
  var again=el('button','btn',' Start over');again.textContent='Start over';again.style.marginLeft='8px';again.addEventListener('click',function(){location.reload()});o.appendChild(document.createTextNode(' '));o.appendChild(again)}
