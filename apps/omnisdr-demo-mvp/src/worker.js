@@ -244,6 +244,8 @@ function testMintCeiling(env) {
 
 export default {
   async fetch(req, env) {
+    // HEAD answers like GET without a body, so link previews and uptime checks do not see a 404.
+    if (req.method === 'HEAD') { const r = await this.fetch(new Request(req, { method: 'GET' }), env); return new Response(null, { status: r.status, headers: r.headers }); }
     try {
       const u = new URL(req.url), p = u.pathname, m = req.method;
       if (m === 'GET' && p === '/tryme') return (!triedGated(env) || (await salesAuthed(req, env))) ? page(demoHtml, env) : toEntry();
