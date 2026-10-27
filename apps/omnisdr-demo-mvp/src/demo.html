@@ -87,7 +87,7 @@ function you(t){$('log').appendChild(el('div','bubble u',t));$('log').scrollTop=
 function renderCap(){
  var d=$('cap');d.textContent='';var F=S.f;
  [['Project',F.service],['Bathroom and size',F.scope],['Timeline',F.timeline],['Name',F.name],['Mobile',F.phone],['Zip',F.zip],['Estimate slot',F.slot]].forEach(function(p){
-  d.appendChild(el('dt',null,p[0]));d.appendChild(el('dd',null,p[1]||'—'))});
+  d.appendChild(el('dt',null,p[0]));d.appendChild(el('dd',null,p[1]||'none'))});
  var fl=$('flags');fl.textContent='';S.flags.forEach(function(x){fl.appendChild(el('span','pill '+(x.bad?'bad':'warn'),x.t));fl.appendChild(document.createTextNode(' '))})}
 function flag(t,bad){if(!S.flags.some(function(x){return x.t===t}))S.flags.push({t:t,bad:bad});renderCap()}
 function ask(){var q=QUESTION[S.step];if(S.step==='slot'){q='Mike offers '+S.t.estimate+'. I have '+S.t.slots[0]+' or '+S.t.slots[1]+'. Which works better?'}if(q)say(q)}
