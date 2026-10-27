@@ -16,6 +16,12 @@ fs.mkdirSync(OUT, { recursive: true });
     await p.keyboard.press('n'); await p.keyboard.press('ArrowRight'); await p.keyboard.press('ArrowRight'); await p.keyboard.press('ArrowRight'); await p.keyboard.press('ArrowRight');
     await p.screenshot({ path: `${OUT}/deck-table-notes-${name}.png` });
     await c.close();
+    // 429 state: its own client ip so the earlier attempts do not count
+    const c2 = await b.newContext({ viewport: vp, extraHTTPHeaders: { 'cf-connecting-ip': name === 'phone' ? '9.9.9.1' : '9.9.9.2' } }); const q = await c2.newPage();
+    await q.goto(BASE + '/'); await q.waitForSelector('#pc:not([disabled])');
+    for (let i = 0; i < 6; i++) { await q.waitForFunction(() => !document.getElementById('pc').disabled || /wait 15 minutes/.test(document.getElementById('log').textContent)); if (await q.$eval('#pc', (e) => e.disabled)) break; await q.fill('#pc', 'nope' + i); await q.press('#pc', 'Enter'); await q.waitForTimeout(1300); }
+    await q.waitForFunction(() => /wait 15 minutes/.test(document.getElementById('log').textContent), null, { timeout: 8000 }); await q.screenshot({ path: `${OUT}/chat-429-${name}.png` });
+    await c2.close();
   }
   await b.close(); console.log('shots in ' + OUT);
 })().catch((e) => { console.error(e); process.exit(1); });
