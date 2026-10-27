@@ -23,19 +23,49 @@ export class LeadError extends Error {
   constructor(reason) { super(`lead refused: ${reason}`); this.name = 'LeadError'; this.reason = reason; }
 }
 
-const IDENTITY_KEY = /(^|_)(e-?mail|phone|mobile|tel|name|handle|username|address|ssn)($|_)/i;
-const EMAIL_SHAPE = /[^\s@"]+@[^\s@"]+\.[a-z]{2,}/i;
+// The same rules as the database CHECKs in 0023 (lead_key_identity_free, lead_value_identity_free); one shared case list
+// (db/test/lead-identity-cases.json) is run against both layers. The DB is the guarantee; this gives the adapter a readable error.
+// LIMIT: structured identity fields only. Free text in a value (a name typed into a note) is not detected.
+const EMAIL_SHAPE = /[^\s@"]+@[^\s@"]+\.[A-Za-z]{2,}/;
 
-// Shallow-to-deep walk: keys that look like identity, or string values shaped like an email, are refused.
-function scanPayload(v, path = 'payload') {
-  if (v && typeof v === 'object') {
+// Keys are normalized (lower-case, letters and digits only) so camelCase, snake_case, "full name" and "e-mail" collapse.
+const keyLooksLikeIdentity = (k) => {
+  const n = String(k).toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+  return ['tel', 'ssn', 'cell'].includes(n) || /(mail|phone|mobile|handle|address|name|(phone|mobile|cell|tel)(number|num|no))$/.test(n);
+};
+
+// Email-shaped; or phone-shaped: 7+ digits with a separator or leading + (a bare ISO date is fine), or a BARE run of exactly
+// 10 or 11 digits. Other bare digit runs pass: ad-platform ids are 15+ digits.
+const valueLooksLikeIdentity = (v) => {
+  const s = String(v).trim();
+  if (EMAIL_SHAPE.test(s)) return true;
+  if (/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(s)) return false;
+  const digits = s.replace(/[^0-9]/g, '').length;
+  if (/^[+(]?[0-9][0-9 ()./+-]*$/.test(s)) return /^[0-9]+$/.test(s) ? (digits === 10 || digits === 11) : digits >= 7;
+  return false;
+};
+
+/** Why a payload may not be stored, or null. Walks objects and arrays. Exported so the shared case list can test it. */
+export function payloadIdentityProblem(v, path = 'payload') {
+  if (Array.isArray(v)) {
+    for (let i = 0; i < v.length; i++) { const p = payloadIdentityProblem(v[i], `${path}[${i}]`); if (p) return p; }
+  } else if (v && typeof v === 'object') {
     for (const [k, x] of Object.entries(v)) {
-      if (IDENTITY_KEY.test(k)) throw new LeadError(`${path}.${k} looks like contact identity (put it in contact, not payload)`);
-      scanPayload(x, `${path}.${k}`);
+      if (keyLooksLikeIdentity(k)) return `${path}.${k} looks like contact identity (put it in contact, not payload)`;
+      const p = payloadIdentityProblem(x, `${path}.${k}`); if (p) return p;
     }
-  } else if (typeof v === 'string' && EMAIL_SHAPE.test(v)) {
-    throw new LeadError(`${path} holds something shaped like an email address`);
+  } else if ((typeof v === 'string' || typeof v === 'number') && valueLooksLikeIdentity(v)) {
+    return `${path} holds something shaped like an email address or a phone number`;
   }
+  return null;
+}
+
+/** Why an external id may not be stored (it is the source's own id, never an address or a number), or null. */
+export const externalIdIdentityProblem = (id) => (valueLooksLikeIdentity(id) ? 'externalId must be the source\'s own id, not an email address or a phone number' : null);
+
+function scanPayload(v) {
+  const why = payloadIdentityProblem(v);
+  if (why) throw new LeadError(why);
 }
 
 /** Validate an adapter's normalized output; throws LeadError. Returns a clean copy. */
@@ -45,7 +75,8 @@ export function normalizeLead(adapter, n) {
   if (!CONSENT_BASES.includes(n?.consentBasis)) throw new LeadError('a consent basis is required (use "none" to record without outbound)');
   const externalId = String(n.externalId ?? '').trim();
   if (!externalId || externalId.length > 998) throw new LeadError('externalId is required');
-  if (EMAIL_SHAPE.test(externalId)) throw new LeadError('externalId must be the source\'s own id, not an email address');
+  const idWhy = externalIdIdentityProblem(externalId);
+  if (idWhy) throw new LeadError(idWhy);
   const receivedAt = n.receivedAt instanceof Date ? n.receivedAt : new Date(n.receivedAt);
   if (Number.isNaN(receivedAt.getTime())) throw new LeadError('receivedAt is not a date');
   const payload = n.payload ?? {};
@@ -86,11 +117,12 @@ export async function ingestLead(client, { orgId, workspaceId }, adapter, raw) {
  * Record the first touch of a lead (write-once). `role` is the caller's worker role: inbox_svc or sender_svc.
  * @returns 'recorded' | 'already_touched' | 'not_found' | 'no_consent' | 'no_contact' | 'suppressed'
  */
-export async function markFirstTouch(client, { orgId, workspaceId, role = 'sender_svc' }, leadEventId, { channel, by, at = new Date() }) {
+export async function markFirstTouch(client, { orgId, workspaceId, role = 'sender_svc' }, leadEventId, { channel, by }) {
   if (!CHANNELS.includes(channel)) throw new LeadError(`unknown channel ${JSON.stringify(channel)}`);
   if (!TOUCHERS.includes(by)) throw new LeadError(`unknown toucher ${JSON.stringify(by)}`);
+  // No time argument: the database stamps the first touch with its own clock, so a caller cannot back-date or future-date it.
   return withService(client, { orgId, workspaceId, role }, async (tx) =>
-    (await tx.query(`SELECT record_first_touch($1, $2, $3, $4) AS r`, [leadEventId, channel, by, at])).rows[0].r);
+    (await tx.query(`SELECT record_first_touch($1, $2, $3) AS r`, [leadEventId, channel, by])).rows[0].r);
 }
 
 /** Median and p90 time to first touch, and how many landed inside the workspace's window, per source and channel. */

@@ -1,6 +1,8 @@
 // 0022 (S2L-1): lead_events, the consent and suppression blocker, the write-once first touch, and the time-to-first-touch metric.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { freshDb, seedTenant, as, one, q, refused } from './helpers.mjs';
 
 const REC = `SELECT * FROM record_lead_event($1, $2, $3, $4, $5, $6, $7, $8, $9)`;
@@ -9,8 +11,15 @@ const rec = (db, t, o = {}) => as(db, 'inbox_svc', { org: t.org, ws: [t.ws] }, (
   o.consent ?? 'express_form', o.at ?? new Date().toISOString(), JSON.stringify(o.payload ?? {})]));
 const blocker = (db, role, t, id) => as(db, role, { org: t.org, ws: [t.ws] }, async () => (await one(db, `SELECT lead_touch_blocker($1) AS r`, [id])).r);
 const touch = (db, role, t, id, o = {}) => as(db, role, { org: t.org, ws: [t.ws] }, async () =>
-  (await one(db, `SELECT record_first_touch($1, $2, $3, $4) AS r`, [id, o.channel ?? 'email', o.by ?? 'agent', o.at ?? new Date().toISOString()])).r);
-const clean = async (db, label) => { const t = await seedTenant(db, label); await db.query('DELETE FROM lead_events WHERE org_id = $1', [t.org]); return t; };
+  (await one(db, `SELECT record_first_touch($1, $2, $3) AS r`, [id, o.channel ?? 'email', o.by ?? 'agent'])).r);
+// seedTenant adds one lead event; lead_events refuses DELETE (0023), so this test-only reset switches that trigger off for one statement, as a superuser can.
+const clean = async (db, label) => {
+  const t = await seedTenant(db, label);
+  await db.exec('ALTER TABLE lead_events DISABLE TRIGGER lead_events_no_delete');
+  await db.query('DELETE FROM lead_events WHERE org_id = $1', [t.org]);
+  await db.exec('ALTER TABLE lead_events ENABLE TRIGGER lead_events_no_delete');
+  return t;
+};
 const minutes = (m) => new Date(Date.now() - 3600000 + m * 60000).toISOString();   // an hour ago, plus m minutes
 
 test('intake is idempotent on (workspace, source, external_id); another source with the same id is a separate lead', async () => {
@@ -50,7 +59,7 @@ test('tenant context: another tenant, a mismatched org or workspace, and no cont
   assert.equal((await one(db, `SELECT first_touch_at FROM lead_events WHERE id = $1`, [bLead])).first_touch_at, null);
   // No context at all (the service role with no tenant): not_found too.
   await db.exec('SET ROLE sender_svc');
-  try { assert.equal((await one(db, `SELECT record_first_touch($1, 'email', 'agent', now()) AS r`, [bLead])).r, 'not_found'); }
+  try { assert.equal((await one(db, `SELECT record_first_touch($1, 'email', 'agent') AS r`, [bLead])).r, 'not_found'); }
   finally { await db.exec('RESET ROLE'); }
 });
 
@@ -76,12 +85,13 @@ test('first touch: write-once in the definer and in the table; the by-values are
   const db = await freshDb();
   const t = await clean(db, 'alpha');
   const id = (await rec(db, t)).lead_event_id;
-  assert.equal(await touch(db, 'sender_svc', t, id, { by: 'system', channel: 'sms' }), 'recorded');
+  assert.equal(await touch(db, 'sender_svc', t, id, { by: 'system', channel: 'email' }), 'recorded');
   assert.equal(await touch(db, 'sender_svc', t, id, { by: 'agent' }), 'already_touched');
   const row = await one(db, `SELECT first_touch_by, first_touch_channel FROM lead_events WHERE id = $1`, [id]);
-  assert.deepEqual([row.first_touch_by, row.first_touch_channel], ['system', 'sms'], 'the second call changed nothing');
+  assert.deepEqual([row.first_touch_by, row.first_touch_channel], ['system', 'email'], 'the second call changed nothing');
   // The table itself refuses a rewrite, even from the migrator, and any change to the rest of the row.
-  assert.match(await refused(db.query(`UPDATE lead_events SET first_touch_at = first_touch_at + interval '1 minute' WHERE id = $1`, [id])) ?? 'ran', /write-once/);
+  assert.match(await refused(db.query(`UPDATE lead_events SET first_touch_at = first_touch_at - interval '1 minute' WHERE id = $1`, [id])) ?? 'ran', /write-once/);
+  // (+1 minute would now stop earlier, at the 0023 bound "not in the future", before reaching this guard; the rewrite is refused either way.)
   assert.match(await refused(db.query(`UPDATE lead_events SET first_touch_by = 'human' WHERE id = $1`, [id])) ?? 'ran', /write-once/);
   assert.match(await refused(db.query(`UPDATE lead_events SET first_touch_at = NULL, first_touch_channel = NULL, first_touch_by = NULL WHERE id = $1`, [id])) ?? 'ran', /write-once/);
   assert.match(await refused(db.query(`UPDATE lead_events SET consent_basis = 'none' WHERE id = $1`, [id])) ?? 'ran', /immutable/);
@@ -90,7 +100,7 @@ test('first touch: write-once in the definer and in the table; the by-values are
   const id2 = (await rec(db, t, { ext: 'e2' })).lead_event_id;
   assert.ok(await refused(touch(db, 'sender_svc', t, id2, { by: 'robot' })), 'unknown first_touch_by');
   assert.ok(await refused(db.query(`UPDATE lead_events SET first_touch_at = now() WHERE id = $1`, [id2])), 'a touch with no channel or actor');
-  assert.ok(await refused(touch(db, 'sender_svc', t, id2, { at: new Date(Date.now() - 86400000 * 365).toISOString() })), 'a touch before the lead arrived');
+  assert.ok(await refused(db.query(`UPDATE lead_events SET first_touch_at = received_at - interval '1 minute', first_touch_channel = 'email', first_touch_by = 'agent' WHERE id = $1`, [id2])), 'a touch before the lead arrived');
 });
 
 test('no caller but the definers can write: app_rw, inbox_svc and sender_svc have no INSERT, UPDATE or DELETE', async () => {
@@ -159,4 +169,111 @@ test('within_window follows response_window_minutes (a non-default window change
   await db.query(`UPDATE workspaces SET response_window_minutes = 10 WHERE id = $1`, [t.ws]);
   assert.equal(await within(), 3, '10 minutes: all three');
   assert.ok(await refused(db.query(`UPDATE workspaces SET response_window_minutes = 0 WHERE id = $1`, [t.ws])), 'the window is 1 to 1440');
+});
+
+// ─── 0023 (S2L-1b) ───────────────────────────────────────────────────────────────────────────────────────────────
+const CASES = JSON.parse(readFileSync(fileURLToPath(new URL('./lead-identity-cases.json', import.meta.url)), 'utf8'));
+
+test('S2L-1b: the first-touch time is the server\'s; the old 4-argument functions are gone', async () => {
+  const db = await freshDb();
+  const t = await clean(db, 'alpha');
+  const id = (await rec(db, t, { at: minutes(0) })).lead_event_id;
+  // The old record_first_touch(uuid, text, text, timestamptz) and the 1-argument blocker no longer exist.
+  const sigs = (await q(db, `SELECT proname || '(' || pg_get_function_identity_arguments(oid) || ')' AS s FROM pg_proc WHERE proname IN ('record_first_touch', 'lead_touch_blocker') ORDER BY 1`)).map((r) => r.s);
+  assert.deepEqual(sigs, ['lead_touch_blocker(p_lead_event uuid, p_channel text)', 'record_first_touch(p_lead_event uuid, p_channel text, p_by text)']);
+  await db.exec('SET ROLE sender_svc');
+  try {
+    assert.match(await refused(db.query(`SELECT record_first_touch($1, 'email', 'agent', now() - interval '30 minutes')`, [id])) ?? 'ran', /does not exist/);
+  } finally { await db.exec('RESET ROLE'); }
+  const before = Date.now();
+  assert.equal(await touch(db, 'sender_svc', t, id), 'recorded');
+  const at = new Date((await one(db, `SELECT first_touch_at FROM lead_events WHERE id = $1`, [id])).first_touch_at).getTime();
+  assert.ok(at >= before - 1000 && at <= Date.now() + 1000, 'stamped by the database clock, at the moment of the call');
+});
+
+test('S2L-1b: a future-dated lead (up to 5 minutes of skew) is stamped no earlier than it arrived; beyond 5 minutes is refused', async () => {
+  const db = await freshDb();
+  const t = await clean(db, 'alpha');
+  const soon = (await rec(db, t, { ext: 'soon', at: new Date(Date.now() + 240000).toISOString() })).lead_event_id;
+  assert.equal(await touch(db, 'sender_svc', t, soon), 'recorded');
+  assert.equal((await one(db, `SELECT first_touch_at >= received_at AS ok FROM lead_events WHERE id = $1`, [soon])).ok, true);
+  assert.match(await refused(rec(db, t, { ext: 'far', at: new Date(Date.now() + 600000).toISOString() })) ?? 'ran', /5 minutes in the future/);
+  assert.match(await refused(db.query(`INSERT INTO lead_events (org_id, workspace_id, source, channel, external_id, consent_basis, received_at)
+    VALUES ($1, $2, 'crm', 'email', 'far-direct', 'express_form', now() + interval '10 minutes')`, [t.org, t.ws])) ?? 'ran', /5 minutes in the future/, 'the table refuses it too, not only the definer');
+  const id = (await rec(db, t, { ext: 'late', at: minutes(0) })).lead_event_id;
+  assert.match(await refused(db.query(`UPDATE lead_events SET first_touch_at = now() + interval '1 hour', first_touch_channel = 'email', first_touch_by = 'agent' WHERE id = $1`, [id])) ?? 'ran', /in the future/);
+});
+
+test('S2L-1b: no DELETE and no TRUNCATE for any role, the table owner (the migrator) included; superuser limit stated', async () => {
+  const db = await freshDb();
+  const t = await clean(db, 'alpha');
+  const id = (await rec(db, t)).lead_event_id;
+  // Every non-superuser role lacks the privileges outright.
+  const roles = (await q(db, `SELECT rolname FROM pg_roles WHERE NOT rolsuper AND rolname !~ '^pg_' ORDER BY 1`)).map((r) => r.rolname);
+  assert.ok(roles.includes('lead_owner') && roles.includes('app_rw'), 'the role list is real');
+  for (const r of roles) for (const p of ['DELETE', 'TRUNCATE']) {
+    assert.equal((await one(db, `SELECT has_table_privilege($1, 'lead_events', $2) AS h`, [r, p])).h, false, `${r} must not hold ${p}`);
+  }
+  // The owner always holds the privilege, so the triggers are what stop the owner: here the migrator's own session.
+  const owner = (await one(db, `SELECT pg_get_userbyid(relowner) AS o, current_user AS me FROM pg_class WHERE relname = 'lead_events'`));
+  assert.equal(owner.o, owner.me, 'this session is the table owner, as the migrator is');
+  assert.match(await refused(db.query(`DELETE FROM lead_events WHERE id = $1`, [id])) ?? 'ran', /never deleted/);
+  assert.match(await refused(db.query(`DELETE FROM lead_events`)) ?? 'ran', /never deleted/);
+  assert.match(await refused(db.query(`TRUNCATE lead_events`)) ?? 'ran', /never deleted/);
+  assert.equal((await q(db, `SELECT 1 FROM lead_events WHERE id = $1`, [id])).length, 1, 'the row is still there');
+  // LIMIT, stated: a superuser can DISABLE TRIGGER or DROP TABLE. SQL cannot promise otherwise; the guard is the roles and the triggers.
+  // Whether the production migrator is a superuser is a deployment fact to confirm before go-live.
+});
+
+test('S2L-1b: erasure is anonymize, never delete: the contact UPDATE is allowed, a contact DELETE is refused, the lead stays', async () => {
+  const db = await freshDb();
+  const t = await clean(db, 'alpha');
+  const c = (await one(db, `INSERT INTO contacts (org_id, workspace_id, name, email, phone) VALUES ($1, $2, 'Lena', 'lena@alpha.test', '+16155550111') RETURNING id`, [t.org, t.ws])).id;
+  const id = (await rec(db, t, { ext: 'er-1', contact: c })).lead_event_id;
+  await db.query(`UPDATE contacts SET name = NULL, email = NULL, phone = NULL WHERE id = $1`, [c]);   // the anonymizing UPDATE
+  const row = await one(db, `SELECT c.name, c.email, c.phone, l.contact_id FROM lead_events l JOIN contacts c ON c.id = l.contact_id WHERE l.id = $1`, [id]);
+  assert.deepEqual([row.name, row.email, row.phone, row.contact_id], [null, null, null, c], 'still linked, identity gone');
+  assert.match(await refused(db.query(`DELETE FROM contacts WHERE id = $1`, [c])) ?? 'ran', /lead_events|foreign key/i, 'no ON DELETE SET NULL, no cascade');
+  assert.equal((await q(db, `SELECT 1 FROM lead_events WHERE id = $1`, [id])).length, 1);
+  // A controlled erasure definer is deferred to the privacy card (B-20).
+});
+
+test('S2L-1b: the shared identity case list, DB layer (the JS layer runs the same list in api/test/leads-core.test.mjs)', async () => {
+  const db = await freshDb();
+  const t = await clean(db, 'alpha');
+  let i = 0;
+  for (const c of CASES.payloadRefuse) {
+    assert.match(await refused(rec(db, t, { ext: `pr-${i++}`, payload: c.payload })) ?? 'ran', /identity_free/, `refuse: ${c.why}`);
+  }
+  for (const c of CASES.payloadAllow) {
+    assert.equal((await rec(db, t, { ext: `pa-${i++}`, payload: c.payload })).outcome, 'recorded', `allow: ${c.why}`);
+  }
+  for (const id of CASES.externalIdRefuse) {
+    assert.match(await refused(rec(db, t, { ext: id })) ?? 'ran', /identity_free/, `externalId refuse: ${id}`);
+  }
+  for (const id of CASES.externalIdAllow) {
+    assert.equal((await rec(db, t, { ext: id })).outcome, 'recorded', `externalId allow: ${id}`);
+  }
+  // The CHECKs bind every writer: a direct INSERT by the owner cannot slip identity past the definer.
+  assert.match(await refused(db.query(`INSERT INTO lead_events (org_id, workspace_id, source, channel, external_id, consent_basis, received_at, payload)
+    VALUES ($1, $2, 'crm', 'email', 'direct-1', 'express_form', now(), '{"fullName": "x"}')`, [t.org, t.ws])) ?? 'ran', /identity_free/);
+  // The free-text limit, stated as a test so nobody mistakes the guard for a PII detector.
+  assert.equal((await rec(db, t, { ext: 'free-text', payload: { note: 'ask for Lena at the front desk' } })).outcome, 'recorded', 'free text is not scanned');
+});
+
+test('S2L-1b: the blocker judges the touch channel: an sms or voice touch on a lead that arrived by email has no consent', async () => {
+  const db = await freshDb();
+  const t = await clean(db, 'alpha');
+  const mail = (await rec(db, t, { ext: 'm', source: 'inbound_email', channel: 'email' })).lead_event_id;
+  const sms = (await rec(db, t, { ext: 's', source: 'sms', channel: 'sms' })).lead_event_id;
+  const blockerFor = (id, ch) => as(db, 'sender_svc', { org: t.org, ws: [t.ws] }, async () => (await one(db, `SELECT lead_touch_blocker($1, $2) AS r`, [id, ch])).r);
+  assert.equal(await blockerFor(mail, null), null, 'no channel given: the lead\'s own channel');
+  assert.equal(await blockerFor(mail, 'email'), null);
+  assert.equal(await blockerFor(mail, 'sms'), 'no_consent');
+  assert.equal(await blockerFor(mail, 'voice'), 'no_consent');
+  assert.equal(await blockerFor(sms, 'sms'), null, 'they texted us');
+  assert.equal(await blockerFor(sms, 'voice'), 'no_consent', 'texting us is not consent to be called');
+  assert.equal(await touch(db, 'sender_svc', t, mail, { channel: 'sms' }), 'no_consent');
+  assert.equal((await one(db, `SELECT first_touch_at FROM lead_events WHERE id = $1`, [mail])).first_touch_at, null, 'nothing written');
+  assert.equal(await touch(db, 'sender_svc', t, mail, { channel: 'email' }), 'recorded');
 });
