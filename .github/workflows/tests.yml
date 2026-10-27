@@ -70,3 +70,17 @@ jobs:
       - name: Test ${{ matrix.package }}
         working-directory: ${{ matrix.package }}
         run: npm test
+
+  functions:
+    name: test (functions)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      # Pages Functions under functions/ (no dependencies to install). The test files use node:sqlite and import the .ts
+      # handlers directly, which needs Node 24. Quoted so node expands the glob; it reports 0 tests if none exist yet.
+      - name: Test functions
+        run: node --test "functions/api/*.test.mjs"
