@@ -92,8 +92,9 @@ export function ErrorState({ error, onRetry }: { error: { message: string; detai
     </div>
   );
 }
-export function NoAccess({ what }: { what: string }) {
-  return <EmptyState icon={<Lock className="size-5" aria-hidden />} title="You don't have access" body={`Your role can't open ${what} in this workspace. Ask a workspace admin if you need it.`} />;
+/** `client` swaps the advice: a client has no workspace admin to ask, they have an account contact. */
+export function NoAccess({ what, client }: { what: string; client?: boolean }) {
+  return <EmptyState icon={<Lock className="size-5" aria-hidden />} title="You don't have access" body={client ? `Your account can't open ${what}. Ask your account contact if you think that is a mistake.` : `Your role can't open ${what} in this workspace. Ask a workspace admin if you need it.`} />;
 }
 export function Banner({ tone = 'info', title, children, action, role }: { tone?: 'info' | 'warning' | 'danger'; title: ReactNode; children?: ReactNode; action?: ReactNode; role?: 'alert' | 'status' }) {
   const Icon = tone === 'info' ? Info : tone === 'warning' ? AlertTriangle : OctagonAlert;

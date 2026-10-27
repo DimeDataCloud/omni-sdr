@@ -19,6 +19,7 @@ export const screenLoaders: Record<PageKey, () => Promise<ScreenModule>> = {
   data: () => import('@/features/data/DataPage'),
   myservice: () => import('@/features/clientportal/MySetupPage'),
   conversations: () => import('@/features/clientportal/ConversationsPage'),
+  billing: () => import('@/features/clientportal/BillingPage'),
   clients: () => import('@/features/clients/ClientsPage'),
   prospects: () => import('@/features/sales/ProspectsPage'),
   saleslog: () => import('@/features/sales/LogPage'),
