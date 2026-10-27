@@ -4,7 +4,7 @@ import type {
   Me, Settings, Members, ApprovalsList, ApprovalCard, InboxItem, Meeting, Agent, ChatMessage, Routine, Capacity,
   Analytics, Credits, Connector, Contact, ContactDetail, Role, ModelTier, DraftStatus, Id, About, AskMode, Pipeline,
   Autonomy, AgentStats, Dataset, HandoffItem, HandoffCard, HandoffDraft, HandoffReason, HandoffOutcome,
-  Playbook, PlaybookReply, PlaybookCategory, ReplyDraft, ClientRecord, ClientSummary, ClientHealth, PriceConfig, ClientStatus, ChecklistItem, ChecklistState, ClientEvent, SetupConfig, SetupVersion, SetupDraft, DemoConnection, DemoReplyDraft, ConnChannel,
+  Playbook, PlaybookReply, PlaybookCategory, ReplyDraft, ClientRecord, ClientSummary, ClientHealth, PriceConfig, SalesDeal, CloseSaleInput, ClientStatus, ChecklistItem, ChecklistState, ClientEvent, SetupConfig, SetupVersion, SetupDraft, DemoConnection, DemoReplyDraft, ConnChannel,
   Asset, AssetKind, AssetStatus, Aspect, Edits, GenMode, Ingredient, MotionKey, Product, Project, Scene, SequenceClip, StudioCaps,
 } from './types';
 
@@ -94,6 +94,8 @@ export interface Client {
   // Rep portal (DESIGN-frontend-4-sales-portal): proposals for Backend, not in 6a.
   priceConfig(orgId: Id): Promise<PriceConfig>;
   putPriceConfig(orgId: Id, config: PriceConfig): Promise<PriceConfig>;
+  salesDeals(orgId: Id): Promise<SalesDeal[]>;   // a rep gets only their own; the server must enforce that, not the UI
+  closeSale(orgId: Id, input: CloseSaleInput): Promise<SalesDeal>;   // creates the client record with status closed
   // Demo only, not in 6a.
   demoConnections(orgId: Id, id: Id): Promise<DemoConnection[]>;
   demoTestConnection(orgId: Id, id: Id, channel: ConnChannel): Promise<DemoConnection[]>;

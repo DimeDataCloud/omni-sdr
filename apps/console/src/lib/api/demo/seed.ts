@@ -54,7 +54,7 @@ export interface World {
   playbook: PlaybookRow[]; questions: QuestionRow[]; replyDrafts: ReplyDraftRow[]; clients: ClientRow[]; priceConfig: PriceConfig;
 }
 
-export const WORLD_VERSION = 16;
+export const WORLD_VERSION = 17;
 
 // Deterministic randomness so the demo looks the same on every device.
 function rng(seed: number) {

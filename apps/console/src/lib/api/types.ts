@@ -286,6 +286,11 @@ export interface ClientHealth {
   appliedVersion: number | null; pendingVersions: number; billing: { state: 'not_connected' };
 }
 
+/** A deal as the rep portal shows it: the closed sale plus where the client record is now. A rep sees only their own. */
+export interface SalesDeal { id: Id; business: string; niche: string; level: DealLevel; priceCents: number; priceIsDraft: boolean; status: ClientStatus; closedAt: Iso; repId: Id }
+/** Close a sale. No price and no rep: the server takes the amount from the price config and the rep from the session. */
+export interface CloseSaleInput { business: string; niche: string; level: DealLevel; contactName: string; contactEmail: string; notes: string }
+
 /** Rep portal price ladder (SALES-DECK-COPY slide 13). Data, not copy: every amount is DRAFT until `isFinal`, which only Christian sets. */
 export type PriceUnit = 'free' | 'one_time' | 'per_month' | 'per_kept_appointment';
 export interface PriceLevel {
