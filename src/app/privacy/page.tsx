@@ -47,7 +47,7 @@ export default function PrivacyPage() {
         >
           <section className="space-y-3">
             <h2 className="text-xl font-bold text-[#111111]">1. Overview</h2>
-            <p>Omni SDR ("we", "our", or "us"), operating at <strong>omnisdr.com</strong>, explains here what personal information we collect when you visit our website, join our early-access waitlist, or use our platform, why we collect it, who handles it for us, and how to ask us to change or delete it. This page describes what we do today. We do not claim any security certification or audit that we do not hold.</p>
+            <p>Omni SDR (&ldquo;we&rdquo;, &ldquo;our&rdquo;, or &ldquo;us&rdquo;), operating at <strong>omnisdr.com</strong>, explains here what personal information we collect when you visit our website, join our early-access waitlist, or use our platform, why we collect it, who handles it for us, and how to ask us to change or delete it. This page describes what we do today. We do not claim any security certification or audit that we do not hold.</p>
           </section>
 
           <section className="space-y-3">
