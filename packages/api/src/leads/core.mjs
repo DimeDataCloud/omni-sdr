@@ -115,14 +115,19 @@ export async function ingestLead(client, { orgId, workspaceId }, adapter, raw) {
 
 /**
  * Record the first touch of a lead (write-once). `role` is the caller's worker role: inbox_svc or sender_svc.
+ * A first touch is a real send: `messageId` must name a SENT message to this lead's own contact, in this workspace, on the touch
+ * channel, sent at or after the lead arrived. The database checks all of that and stamps the touch with the message's own sent_at.
  * @returns 'recorded' | 'already_touched' | 'not_found' | 'no_consent' | 'no_contact' | 'suppressed'
+ *   | 'no_message' | 'message_not_found' | 'message_not_sent' | 'message_channel' | 'message_before_lead'
  */
-export async function markFirstTouch(client, { orgId, workspaceId, role = 'sender_svc' }, leadEventId, { channel, by }) {
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export async function markFirstTouch(client, { orgId, workspaceId, role = 'sender_svc' }, leadEventId, { channel, by, messageId }) {
   if (!CHANNELS.includes(channel)) throw new LeadError(`unknown channel ${JSON.stringify(channel)}`);
   if (!TOUCHERS.includes(by)) throw new LeadError(`unknown toucher ${JSON.stringify(by)}`);
-  // No time argument: the database stamps the first touch with its own clock, so a caller cannot back-date or future-date it.
+  if (messageId != null && !UUID.test(String(messageId))) throw new LeadError('messageId must be a message id');
+  // No time argument: the touch time is the message's own sent_at, so a caller cannot back-date or future-date it.
   return withService(client, { orgId, workspaceId, role }, async (tx) =>
-    (await tx.query(`SELECT record_first_touch($1, $2, $3) AS r`, [leadEventId, channel, by])).rows[0].r);
+    (await tx.query(`SELECT record_first_touch($1, $2, $3, $4) AS r`, [leadEventId, channel, by, messageId ?? null])).rows[0].r);
 }
 
 /** Median and p90 time to first touch, and how many landed inside the workspace's window, per source and channel. */
