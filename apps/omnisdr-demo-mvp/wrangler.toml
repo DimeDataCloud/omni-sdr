@@ -21,6 +21,17 @@ KILL = "0"
 TRYME_GATED = "on"
 ENGINE_B = "0"
 TURNSTILE_SITEKEY = "0x4AAAAAAFkPgjzo9EQJoOUI"
+# Rep portal sign-in (Cloudflare Access on demo.omnisdr.com/rep*). Empty means /rep refuses everyone: fail closed until set.
+ACCESS_TEAM = ""
+ACCESS_AUD = ""
+
+# Rep portal records. Schema: migrations/rep/*.sql, applied by Halo at deploy. The owner's admin email is the
+# REP_ADMIN_EMAIL secret, never a var: this repo is public.
+[[d1_databases]]
+binding = "REP_DB"
+database_name = "omnisdr-rep"
+database_id = "5e05220e-0710-41d0-ab84-6fcb5952570f"
+migrations_dir = "migrations/rep"
 
 [[rules]]
 type = "Text"
