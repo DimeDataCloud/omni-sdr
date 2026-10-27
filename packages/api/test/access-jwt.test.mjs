@@ -111,6 +111,38 @@ test('JWKS down: no cache → 401 (fail closed); with a cache → keeps working 
   assert.equal(calls.n, before, 'a down endpoint is not hammered: retry waits a minute');
 });
 
+test('B-11 P3: a header or payload that is JSON but not an object is 401 malformed, never a TypeError', async () => {
+  const { verify } = verifierWith(goodKeys);
+  const raw = (h, p) => `${Buffer.from(h).toString('base64url')}.${Buffer.from(p).toString('base64url')}.c2ln`;
+  const good = JSON.stringify({ alg: 'RS256', kid: 'k1' });
+  for (const bad of ['null', '42', '"x"', '[]', '[1,2]', 'true']) {
+    assert.equal(await reason(verify(raw(bad, JSON.stringify(claims())))), 'malformed token', `header ${bad}`);
+    assert.equal(await reason(verify(raw(good, bad))), 'malformed token', `payload ${bad}`);
+  }
+});
+
+test('B-11 P3: an email ensure_user() would reject is refused here (403), not a 500 later', async () => {
+  const { verify } = verifierWith(goodKeys);
+  for (const email of ['a@b', 'a@b.', 'a@.b', 'a b@c.co', '@x.co', 'a@']) {
+    assert.match(await reason(verify(jwt(claims(undefined, { email })))), /^403 /, email);
+  }
+  assert.equal(await reason(verify(jwt(claims('a@b.co')))), 'accepted');
+});
+
+test('B-11 P3: with no cached keys, a down JWKS is fetched once a minute, not once a request', async () => {
+  let up = false;
+  const { verify, calls, clock } = verifierWith(() => { if (!up) throw new Error('boom'); return goodKeys(); });
+  for (let i = 0; i < 25; i++) assert.equal(await reason(verify(jwt(claims()))), 'signing keys unavailable');
+  assert.equal(calls.n, 1, 'one fetch for the whole burst');
+  clock.t += 61000;
+  assert.equal(await reason(verify(jwt(claims()))), 'signing keys unavailable');
+  assert.equal(calls.n, 2, 'one more after a minute');
+  up = true;
+  clock.t += 61000;
+  assert.equal(await reason(verify(jwt(claims()))), 'accepted', 'recovers when the endpoint does');
+  assert.equal(calls.n, 3);
+});
+
 // ---- over HTTP ----
 const HMAC = 'test-inbound-secret';
 async function startAccessApi({ extra = null } = {}) {

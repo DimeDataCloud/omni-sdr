@@ -39,7 +39,13 @@ export function certsFetcher({ teamDomain, fetchImpl = fetch }) {
 const parts = (token) => {
   const p = String(token ?? '').split('.');
   if (p.length !== 3 || p.some((x) => !x)) throw new AuthError('malformed token');
-  const json = (s) => { try { return JSON.parse(Buffer.from(s, 'base64url').toString('utf8')); } catch { throw new AuthError('malformed token'); } };
+  // Header and payload must each be a JSON object: 'null', a number or an array would otherwise throw a TypeError (a 500) below.
+  const json = (s) => {
+    let v;
+    try { v = JSON.parse(Buffer.from(s, 'base64url').toString('utf8')); } catch { throw new AuthError('malformed token'); }
+    if (v === null || typeof v !== 'object' || Array.isArray(v)) throw new AuthError('malformed token');
+    return v;
+  };
   return { head: json(p[0]), payload: json(p[1]), signed: `${p[0]}.${p[1]}`, sig: Buffer.from(p[2], 'base64url') };
 };
 
@@ -56,13 +62,16 @@ export function accessVerifier({ teamDomain, aud, fetchKeys = certsFetcher({ tea
   let loadedAt = -Infinity;
   let lastForced = -Infinity;
   let inflight = null;
+  let failedAt = -Infinity;   // last failed fetch; with no cached keys, requests inside the minute fail closed without refetching
 
   function refresh() {
     inflight ??= (async () => {
       try {
         keys = new Map((await fetchKeys()).map((k) => [k.kid, k.key]));
         loadedAt = now();
+        failedAt = -Infinity;
       } catch {
+        failedAt = now();
         // Keep serving cached keys, and don't hammer a down endpoint: retry in a minute.
         loadedAt = now() - KEY_TTL_MS + FORCED_REFETCH_MS;
       }
@@ -70,6 +79,7 @@ export function accessVerifier({ teamDomain, aud, fetchKeys = certsFetcher({ tea
     return inflight;
   }
   async function getKey(kid) {
+    if (!keys && now() - failedAt < FORCED_REFETCH_MS) throw new AuthError('signing keys unavailable');   // backoff: don't hammer a down endpoint
     if (!keys || now() - loadedAt >= KEY_TTL_MS) {
       const first = !keys;
       await refresh();
@@ -98,7 +108,8 @@ export function accessVerifier({ teamDomain, aud, fetchKeys = certsFetcher({ tea
     if (!auds.includes(aud)) throw new AuthError('wrong audience');
     if (typeof payload.exp !== 'number' || payload.exp <= t - SKEW_S) throw new AuthError('expired');
     if (payload.nbf !== undefined && (typeof payload.nbf !== 'number' || payload.nbf > t + SKEW_S)) throw new AuthError('not yet valid');
-    if (typeof payload.email !== 'string' || !/^[^@\s]+@[^@\s]+$/.test(payload.email.trim())) throw new HttpError(403, 'forbidden', 'no email on this identity');
+    // The same shape ensure_user() requires (0005): an address it would reject must be refused here, not become a 500 on /v1/me.
+    if (typeof payload.email !== 'string' || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(payload.email.trim())) throw new HttpError(403, 'forbidden', 'no email on this identity');
     return identityFor(payload.email);
   };
 }
