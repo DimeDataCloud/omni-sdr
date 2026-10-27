@@ -12,7 +12,7 @@ export const PRICES = {
     { level: 1, label: 'Pilot', what: 'One system, 30 days, results report at day 14. No setup fee', amountCents: 49900, unit: 'one_time', quotable: true },
     { level: 2, label: 'Usage plan', what: 'Lite, Standard or Plus, chosen from the pilot numbers. Internal: $299, $499 or $899 a month. Do not quote', amountCents: null, unit: 'per_month', quotable: false },
     { level: 3, label: 'Outcome pricing', what: 'Remodelers first. A fee per kept appointment plus a monthly floor. Do not quote', amountCents: null, unit: 'per_kept_appointment', quotable: false },
-    { level: 4, label: 'Agency and custom', what: 'Multi-location or larger jobs, $999 a month and up, ACH only. Christian quotes it; send him the owner's needs', amountCents: null, unit: 'per_month', quotable: false },
+    { level: 4, label: 'Agency and custom', what: "Multi-location or larger jobs, $999 a month and up, ACH only. Christian quotes it; send him the owner's needs", amountCents: null, unit: 'per_month', quotable: false },
   ],
 };
 
@@ -20,7 +20,7 @@ export const PRICES = {
 // Sales tax is billed to the client on top. Figures are DRAFT with the prices (CREDIT-ALLOWANCE-MODEL sections 6 and 8).
 export const PAY = {
   repShare: 0.5,
-  note: 'You earn 50% of the pay pool every month the client stays: the price minus payment fees and the client's credit allowance (their usage budget at our cost). Sales tax is added to the client's bill, so it never comes out of your pay. All figures are draft until prices are final.',
+  note: "You earn 50% of the pay pool every month the client stays: the price minus payment fees and the client's credit allowance (their usage budget at our cost). Sales tax is added to the client's bill, so it never comes out of your pay. All figures are draft until prices are final.",
   table: [
     { plan: 'Pilot or Standard ($499)', allowance: '$175', each: 'about $151' },
     { plan: 'Lite ($299)', allowance: '$105', each: 'about $90' },
@@ -28,7 +28,7 @@ export const PAY = {
     { plan: 'Agency ($999 a month and up)', allowance: 'Built per quote', each: '$150 for the first location, $100 for each added one' },
   ],
 };
-export const TAX_NOTE = 'Prices are before sales tax. Tax is added to the client's bill.';
+export const TAX_NOTE = "Prices are before sales tax. Tax is added to the client's bill.";
 
 export const OBJECTIONS = [
   { id: 'price', heard: '"$499 is a lot."', answer: 'Fair question. The pilot price is a draft, and it is set against one job, not against software. What is a typical job worth to you? [listen] If a typical job is worth more than the pilot, one extra booked job covers it. We measure booked jobs and show you at day 14.' },
