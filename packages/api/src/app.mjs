@@ -50,7 +50,7 @@ function compile(path) {
 export function createApp({ pool, verifyToken, tokenFrom = accessToken, extraRoutes = null, publicRoutes = PUBLIC_ROUTES, config = {}, model = null, now = () => new Date(), log = () => {} }) {
   const cfg = {
     corsOrigins: [], appUrl: 'https://app.omnisdr.com', unsubscribeBase: 'https://app.omnisdr.com',
-    replyDomain: 'reply.omnisdr.com', inboundSecret: null, trustProxy: false, ...config,
+    replyDomain: 'reply.omnisdr.com', inboundSecret: null, trustProxy: false, formDailyCap: undefined, ...config,
   };
   const routes = [];
   const add = (method) => (path, opts, handler) => {

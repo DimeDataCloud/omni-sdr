@@ -62,3 +62,63 @@ test('hooks: a typed-address lead cannot reach auto-send: autonomy is off and a 
     assert.match(def, /channel <> 'form'/, 'the CHECK that keeps form replies out of the autonomy counter is still there');
   } finally { await api.stop(); }
 });
+
+// ─── S2L-2d: intake limits ─────────────────────────────────────────────────────────────────────────────────────────
+
+async function withCappedHook(cap) {
+  const api = await startApi({ config: { formDailyCap: cap } });
+  const r = await api.call('POST', `${api.W}/hooks`, { body: { name: 'Website form' } });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  const post = (body) => api.call('POST', `/v1/hooks/${r.body.id}`, { as: null, token: r.body.token, body });
+  const written = async () => ({
+    msgs: (await api.q(`SELECT count(*)::int AS n FROM inbound_messages WHERE channel = 'form'`))[0].n,
+    leads: (await api.q(`SELECT count(*)::int AS n FROM lead_events WHERE source = 'web_form'`))[0].n,
+  });
+  return { api, post, written };
+}
+
+test('hooks: over the daily cap the route answers 429 and writes nothing; a retry of a recorded submission is still 200', async () => {
+  const { api, post, written } = await withCappedHook(2);
+  try {
+    const before = await written();
+    assert.equal((await post({ message: 'first one', email: 'a1@lead.example', externalId: 'cap-1' })).status, 202);
+    assert.equal((await post({ message: 'second one', email: 'a2@lead.example', externalId: 'cap-2' })).status, 202);
+    const over = await post({ message: 'third one', email: 'a3@lead.example', externalId: 'cap-3' });
+    assert.equal(over.status, 429, JSON.stringify(over.body));
+    assert.equal(over.body.error, 'rate_limited');
+    assert.deepEqual(await written(), { msgs: before.msgs + 2, leads: before.leads + 2 }, 'the refused one left no message and no lead event');
+    assert.equal((await api.q(`SELECT 1 FROM contacts WHERE email = 'a3@lead.example'`)).length, 0, 'nor a contact');
+    assert.equal((await post({ message: 'first one', email: 'a1@lead.example', externalId: 'cap-1' })).status, 200, 'a recorded submission retried is a duplicate, not a 429');
+  } finally { await api.stop(); }
+});
+
+test('hooks: a burst at the cap is bounded, and once it is over every further submission is refused', async () => {
+  const { api, post, written } = await withCappedHook(2);
+  try {
+    const before = await written();
+    const res = await Promise.all([1, 2, 3, 4, 5].map((i) => post({ message: `burst ${i}`, email: `burst${i}@lead.example`, externalId: `burst-${i}` })));
+    const by = (s) => res.filter((r) => r.status === s).length;
+    // Exact here only because the test database has one connection; on a pool, in-flight requests may each see cap - 1.
+    assert.ok(by(202) >= 2 && by(202) + by(429) === 5, JSON.stringify(res.map((r) => r.status)));
+    const after = await written();
+    assert.deepEqual(after, { msgs: before.msgs + by(202), leads: before.leads + by(202) }, 'every accepted one wrote both rows, every refused one none');
+    assert.equal((await post({ message: 'after the burst', email: 'late@lead.example', externalId: 'burst-late' })).status, 429);
+    assert.deepEqual(await written(), after);
+  } finally { await api.stop(); }
+});
+
+test('hooks: a NUL character is a 400, not a 500, in any text field, and writes nothing', async () => {
+  const { api, post, written } = await withCappedHook(50);
+  try {
+    const before = await written();
+    for (const body of [
+      { message: 'hello\u0000there' }, { message: 'ok', name: 'Da\u0000na' }, { message: 'ok', externalId: 'x\u0000y' },
+      { message: 'ok', page: '/a\u0000b' }, { message: 'ok', phone: '615\u0000555' },
+    ]) {
+      const res = await post(body);
+      assert.equal(res.status, 400, JSON.stringify(body) + ' -> ' + JSON.stringify(res.body));
+    }
+    assert.deepEqual(await written(), before);
+    assert.equal((await post({ message: 'a normal one', externalId: 'nul-ok' })).status, 202, 'and normal input still works');
+  } finally { await api.stop(); }
+});
