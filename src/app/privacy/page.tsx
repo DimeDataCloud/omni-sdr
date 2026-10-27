@@ -3,7 +3,7 @@ import Link from 'next/link';
 
 export const metadata = {
   title: 'Privacy Policy | Omni SDR',
-  description: 'Privacy Policy and Zero-Training AI data protection standards for Omni SDR.',
+  description: 'How Omni SDR collects, uses, stores, and shares personal information.',
 };
 
 export default function PrivacyPage() {
@@ -33,7 +33,7 @@ export default function PrivacyPage() {
           <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-[#111111] mb-3">
             Privacy Policy
           </h1>
-          <p className="text-sm font-medium text-gray-500">Effective Date: September 28, 2026 · Last Updated: September 2026</p>
+          <p className="text-sm font-medium text-gray-500">Effective Date: October 2026</p>
         </header>
 
         <div 
@@ -46,62 +46,86 @@ export default function PrivacyPage() {
           }}
         >
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">1. Overview & Commitment</h2>
-            <p>Omni SDR ("we", "our", or "us"), operating at <strong>omnisdr.com</strong>, is committed to safeguarding the privacy and security of your personal data. This Privacy Policy details how we collect, process, store, and protect information when you visit our website, join our early-access waitlist, or use our enterprise AI SDR platform services.</p>
+            <h2 className="text-xl font-bold text-[#111111]">1. Overview</h2>
+            <p>Omni SDR ("we", "our", or "us"), operating at <strong>omnisdr.com</strong>, explains here what personal information we collect when you visit our website, join our early-access waitlist, or use our platform, why we collect it, who handles it for us, and how to ask us to change or delete it. This page describes what we do today. We do not claim any security certification or audit that we do not hold.</p>
           </section>
 
           <section className="space-y-3">
             <h2 className="text-xl font-bold text-[#111111]">2. Information We Collect</h2>
             <ul className="list-disc pl-5 space-y-2">
-              <li><strong>Contact & Account Data:</strong> Name, professional email address, company name, phone number, and business location provided when requesting early access or registering an account.</li>
-              <li><strong>Outreach & Evidence Data:</strong> Public digital footprint data and business signals gathered strictly on behalf of customers for verifiable outbound engagement.</li>
-              <li><strong>Technical Telemetry:</strong> Anonymized browser metadata, IP addresses, session timestamps, and device headers used exclusively for rate limiting, bot protection, and security auditing.</li>
+              <li><strong>Waitlist and contact details:</strong> name, email address, account type, and, if you choose to give them, company name, phone number, and location. We collect these when you ask for early access. We use them to save your place, to contact you about access and launch, and to answer your questions.</li>
+              <li><strong>Account data:</strong> when you use the platform, the sign-in identity and workspace details needed to run your account.</li>
+              <li><strong>Lead and prospect data for clients:</strong> when a client uses Omni SDR, we process the business contact details and public business information the client supplies or that we gather from public sources for that client, so that the client can run outreach and follow-up. See section 6.</li>
+              <li><strong>Technical data:</strong> IP address, browser and device headers, and request times. We use them for rate limiting, bot protection, and security.</li>
             </ul>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">3. AI Processing & Foundation Models</h2>
-            <p>Omni SDR is engineered with a strict <strong>Zero-Training Enterprise Guarantee</strong>:</p>
+            <h2 className="text-xl font-bold text-[#111111]">3. AI Processing</h2>
+            <p>Parts of the platform use a large language model to draft and classify text.</p>
             <ul className="list-disc pl-5 space-y-2">
-              <li>Customer data, prospect information, and message drafts processed through our AI gateway are <strong>never</strong> used to train, retrain, or improve foundational commercial AI models (Google Vertex AI / Gemini).</li>
-              <li>All generative tasks run within private, enterprise-tier Google Cloud boundaries governed by SOC 2, ISO 27001, and HIPAA-compliant data agreements.</li>
+              <li>We use Google&rsquo;s Gemini API for model calls. Text sent for a task, such as a prospect&rsquo;s public business details or a draft message, goes to Google to be processed.</li>
+              <li>We do not train our own models on client or prospect data.</li>
+              <li>Our public demo uses made-up sample data only. It never uses real prospect or customer data.</li>
+              <li>Google&rsquo;s own terms govern how it handles data sent to its API. We do not state or promise more than those terms provide.</li>
             </ul>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">4. Data Storage & Multi-Tenant Isolation</h2>
-            <p>We deploy modern defense-in-depth data architecture:</p>
+            <h2 className="text-xl font-bold text-[#111111]">4. Storage and Security</h2>
+            <p>How your data is stored and protected:</p>
             <ul className="list-disc pl-5 space-y-2">
-              <li><strong>Storage:</strong> Assets and records are encrypted at rest with AES-256 via Google Cloud Storage and private Cloud SQL PostgreSQL instances.</li>
-              <li><strong>Tenant Isolation:</strong> Data boundaries are cryptographically enforced at the database level using Postgres Row-Level Security (RLS). Cross-tenant queries are structurally refused by database triggers.</li>
-              <li><strong>Edge Shielding:</strong> All internet traffic terminates via Cloudflare edge networks with strict TLS 1.3 encryption and automated DDoS mitigation.</li>
+              <li><strong>Waitlist details:</strong> saved in a private Google Cloud Storage bucket through an ingest service that only accepts new signups. Reading the data requires an authenticated administrator.</li>
+              <li><strong>Platform data:</strong> stored in a Postgres database hosted by Neon. Each client&rsquo;s records are separated by Postgres row-level security, so one workspace cannot read another&rsquo;s.</li>
+              <li><strong>Hosting and sign-in:</strong> our website and API run on Cloudflare (Pages, Workers, and Containers). Staff and client sign-in goes through Cloudflare Access. Traffic to our sites is encrypted in transit with TLS.</li>
+              <li><strong>Mailbox access:</strong> if you connect Gmail, we use Google&rsquo;s OAuth. We ask only for the permission to send the messages you approve, and we keep the sign-in token sealed.</li>
+              <li>No system is perfectly secure. We do not hold SOC 2, ISO 27001, or HIPAA certification, and nothing here should be read as saying we do.</li>
             </ul>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">5. Sharing & Disclosures</h2>
-            <p>We never sell, rent, or monetize your personal information. Data is shared strictly with essential infrastructure sub-processors under confidentiality obligations:</p>
+            <h2 className="text-xl font-bold text-[#111111]">5. Who We Share Data With</h2>
+            <p>We do not sell or rent personal information, and we do not share it for advertising. We share it only with the service providers below, who process it for us to run the service:</p>
             <ul className="list-disc pl-5 space-y-1">
-              <li><strong>Cloud Infrastructure:</strong> Google Cloud Platform (Compute, Storage, Database)</li>
-              <li><strong>Security & Network:</strong> Cloudflare (Edge DNS, WAF, Workers)</li>
-              <li><strong>Billing:</strong> Stripe (PCI-DSS Level 1 payment processing)</li>
+              <li><strong>Cloudflare:</strong> website and API hosting, DNS, sign-in (Access), bot checks (Turnstile), and inbound email routing.</li>
+              <li><strong>Neon:</strong> Postgres database hosting for platform data.</li>
+              <li><strong>Google:</strong> Cloud Storage for waitlist signups, the Gemini API for model calls, the Places API for business lookups, and Gmail when a client connects their own mailbox.</li>
+              <li><strong>ZeroBounce:</strong> email address verification before a client sends outreach.</li>
+              <li><strong>Stripe:</strong> payment processing for paid plans. Stripe handles card details; we do not store them.</li>
+              <li>We may also disclose information if the law requires it.</li>
             </ul>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">6. Your Rights (GDPR & CCPA/CPRA)</h2>
-            <p>You maintain the right to access, rectify, port, or request permanent deletion of your personal data at any time. To exercise your rights or request removal from our waitlist or databases, email us at <a href="mailto:privacy@omnisdr.com" className="font-bold underline text-[#111111]">privacy@omnisdr.com</a>. We respond to all verified requests within 30 days.</p>
+            <h2 className="text-xl font-bold text-[#111111]">6. Our Role for Clients</h2>
+            <p>When a client uses Omni SDR to contact prospects, the client decides whom to contact and why, and we act as a service provider (processor) for that client. We process prospect data only on the client&rsquo;s instructions, we do not sell it, and we do not combine it with data from other clients. A prospect who wants to stop receiving messages can use the unsubscribe link in any message or contact us, and we add them to the client&rsquo;s suppression list so they are not contacted again.</p>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">7. Contact Information</h2>
-            <p>For inquiries regarding this policy or data practices, contact:</p>
+            <h2 className="text-xl font-bold text-[#111111]">7. How Long We Keep Data</h2>
+            <ul className="list-disc pl-5 space-y-2">
+              <li><strong>Waitlist details:</strong> until you ask us to delete them, or until we close the waitlist and tell you, whichever comes first.</li>
+              <li><strong>Client and prospect data:</strong> for as long as the client&rsquo;s account is active, and deleted on the client&rsquo;s request or when the account ends.</li>
+              <li><strong>Suppression records</strong> (people who opted out): kept so that we do not contact them again.</li>
+              <li><strong>Technical logs:</strong> kept only as long as needed for security and abuse prevention.</li>
+            </ul>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="text-xl font-bold text-[#111111]">8. Your Choices and Rights</h2>
+            <p>You can ask us to show you what we hold about you, correct it, give you a copy, or delete it, and you can opt out of further contact at any time. This applies whether you are on our waitlist, a client, or a prospect contacted for a client. Email <a href="mailto:privacy@omnisdr.com" className="font-bold underline text-[#111111]">privacy@omnisdr.com</a> or call 479-747-2076, 8 a.m. to 8 p.m. We respond to verified requests within 30 days. California, EU and UK residents have these rights by law, and we honor them for everyone.</p>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="text-xl font-bold text-[#111111]">9. Contact Information</h2>
+            <p>For questions about this policy or your data:</p>
             <p className="font-mono text-xs bg-black/5 p-4 rounded-xl border border-black/10">
               Omni SDR Legal & Privacy Operations<br />
               713 Harpeth Knoll Court<br />
               Nashville, Tennessee 37221<br />
               Website: https://omnisdr.com<br />
-              Email: privacy@omnisdr.com
+              Email: privacy@omnisdr.com<br />
+              Phone: 479-747-2076, 8 a.m. to 8 p.m.
             </p>
           </section>
         </div>
