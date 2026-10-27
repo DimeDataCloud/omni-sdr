@@ -76,7 +76,7 @@ export async function ingestFormLead(client, hook, msg, opts = {}) {
       }
       return { outcome: 'rate_limited', cap };
     }
-    const form = await ingestForm(client, hook, { ...msg, externalId }, { ...opts, tx, hit });
+    const form = await ingestForm(client, hook, { ...msg, externalId }, { ...opts, dailyCap: cap, recent, tx, hit });
     if (form.outcome !== 'recorded') return form;
     return { ...form, lead: await recordLeadIn(tx, scope, lead) };
   });

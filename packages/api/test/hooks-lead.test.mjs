@@ -167,9 +167,15 @@ test('formDailyCap: only a finite integer of at least 1 is used; Infinity, 1e309
   ]) assert.equal(formDailyCap(input), want, `${String(input)} -> ${want}`);
 });
 
-test('hooks: a cap of 0 in the config does not refuse everything: it is the default (500)', async () => {
-  const { api, post } = await withCappedHook(0);
-  try {
-    assert.equal((await post({ message: 'a normal enquiry', email: 'ok@lead.example', externalId: 'zero-1' })).status, 202);
-  } finally { await api.stop(); }
+test('hooks: a cap of 0 or below in the config does not refuse or skip anything: it is the default (500)', async () => {
+  for (const bad of [0, -3]) {
+    const { api, post } = await withCappedHook(bad);
+    try {
+      const id = `zero-${bad}`.replace('-', 'n');
+      assert.equal((await post({ message: 'a normal enquiry', email: `ok${-bad}@lead.example`, externalId: id })).status, 202, `cap ${bad}`);
+      const row = (await api.q(`SELECT decision, decided_at FROM inbound_messages WHERE channel = 'form' AND external_id = $1`, [id]))[0];
+      assert.equal(row.decision, null, `cap ${bad}: the message is NOT marked skipped (a raw cap reached ingestForm before)`);
+      assert.equal(row.decided_at, null);
+    } finally { await api.stop(); }
+  }
 });
