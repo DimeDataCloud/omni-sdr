@@ -17,7 +17,7 @@ const get = (u, h = {}) => fetch(BASE + u, { redirect: 'manual', headers: h });
   ok('entry page honours reduced motion (css and js)', /prefers-reduced-motion:reduce/.test(at) && /matchMedia\('\(prefers-reduced-motion: reduce\)'\)/.test(at));
   ok('entry chat has a log region and a labelled password input with autocomplete off', /role="log"/.test(at) && /<label class="sr" for="pc">Passcode<\/label>/.test(at) && /id="pc" type="password" autocomplete="off"/.test(at));
   ok('entry page has no timestamps or clocks', !/Date\(|toLocale|setInterval|<time/.test(at));
-  ok('password bubble is a fixed mask, value never logged or written', /you\('\u2022\u2022\u2022\u2022\u2022\u2022'\)/.test(at) && !/console\./.test(at) && /p\.value=''/.test(at));
+  ok('password bubble is a fixed mask, value never logged or written', /you\('\\u2022\\u2022\\u2022\\u2022\\u2022\\u2022'\)/.test(at) && !/console\./.test(at) && /p\.value=''/.test(at));
   ok('a tapped choice becomes the visitor bubble before navigating', /you\(c\[0\]\);say\('Opening '/.test(at));
   ok('entry page never echoes typed input into the chat', !/you\(p\.value|you\(body/.test(at));
   ok('entry page has no external assets', !/(src|href)="https?:/.test(at) && !/<link /.test(at));
