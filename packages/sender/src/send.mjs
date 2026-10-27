@@ -14,6 +14,22 @@ import { randomBytes, createHash } from 'node:crypto';
 import { withService } from '../../db/src/context.mjs';
 import { composeEmail } from './compose.mjs';
 
+const pick = ({ raw, parts }) => ({ raw, parts });
+
+// The claim transaction rolled back, so a refusal can only be recorded after it, in a transaction of its own (0021 lets
+// sender_svc append to audit_log). The reason is the guard's text, trimmed to a code: 'org_daily_cap', 'mailbox_daily_cap',
+// 'contact_suppressed', ... A failure to write the audit row never changes the refusal.
+const reasonCode = (m) => m.replace(/^send_guard:\s*/, '').replace(/\(.*?\)/g, '').trim().toLowerCase()
+  .replace(/^organization daily cap reached$/, 'org_daily_cap').replace(/^mailbox daily cap reached$/, 'mailbox_daily_cap')
+  .replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 60);
+async function auditRefusal(client, ctx, draftId, message) {
+  try {
+    await withService(client, ctx, (tx) => tx.query(
+      `INSERT INTO audit_log (org_id, actor, action, entity_type, entity_id) VALUES ($1, 'sender', $2, 'draft', $3)`,
+      [ctx.orgId, `send_refused:${reasonCode(message)}`, draftId]));
+  } catch { /* the refusal stands without its audit row; the caller still gets the reason */ }
+}
+
 const sha = (s) => createHash('sha256').update(s, 'utf8').digest('hex');
 const token = () => randomBytes(24).toString('base64url');
 // The Reply-To token is lowercase hex: mail servers may lower-case an address's local part, and a token that changed
@@ -54,15 +70,18 @@ export async function sendDraft(client, { orgId, workspaceId, draftId, mailboxId
         [sha(unsub), orgId, workspaceId, d.contact_id]);
       return {
         outcome: 'claimed', messageId, mailbox: mb,
-        raw: composeEmail({
+        ...pick(composeEmail({
           from: mb.address, to: d.email, replyTo: `r+${reply}@${urls.replyDomain}`,
           subject: d.subject ?? '', body: d.body, postalAddress: d.postal_address,
           unsubscribeUrl: `${urls.unsubscribeBase}/u/${unsub}`,
-        }).raw,
+        })),
       };
     });
   } catch (err) {
-    if (/^send_guard:/.test(err.message)) return { outcome: 'refused', reason: err.message };
+    if (/^send_guard:/.test(err.message)) {
+      await auditRefusal(client, ctx, draftId, err.message);
+      return { outcome: 'refused', reason: err.message };
+    }
     throw err;
   }
   if (claim.outcome !== 'claimed') return claim;
@@ -76,7 +95,7 @@ export async function sendDraft(client, { orgId, workspaceId, draftId, mailboxId
   let result = { ok: false, error: 'suppressed_check' };
   if (handoffOk) {
     try {
-      result = { ok: true, ...(await adapter.send({ raw: claim.raw, mailbox: claim.mailbox })) };
+      result = { ok: true, ...(await adapter.send({ raw: claim.raw, parts: claim.parts, mailbox: claim.mailbox, messageId: claim.messageId })) };
     } catch (err) {
       result = { ok: false, error: `${err.kind ?? 'unknown'}: ${err.message}`.slice(0, 500) };
     }
