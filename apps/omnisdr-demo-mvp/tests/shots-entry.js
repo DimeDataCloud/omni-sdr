@@ -7,15 +7,14 @@ fs.mkdirSync(OUT, { recursive: true });
 (async () => {
   const b = await chromium.launch();
   for (const [name, vp] of [['phone', { width: 375, height: 800 }], ['desktop', { width: 1280, height: 800 }]]) {
-    const c = await b.newContext({ viewport: vp }); const p = await c.newPage();
-    await p.goto(BASE + '/'); await p.waitForTimeout(700); await p.screenshot({ path: `${OUT}/entry-anim-${name}.png` });
-    await p.waitForTimeout(1500); await p.screenshot({ path: `${OUT}/entry-prompt-${name}.png` });
-    await p.fill('#pc', PASS); await Promise.all([p.waitForNavigation(), p.click('#lf button[type=submit]')]);
-    await p.waitForSelector('a.choice'); await p.screenshot({ path: `${OUT}/entry-chooser-${name}.png` });
+    const c = await b.newContext({ viewport: vp, }); const p = await c.newPage();
+    await p.goto(BASE + '/'); await p.waitForTimeout(500); await p.screenshot({ path: `${OUT}/chat-typing-${name}.png` });
+    await p.waitForTimeout(2200); await p.screenshot({ path: `${OUT}/chat-prompt-${name}.png` });
+    await p.fill('#pc', 'wrong-one'); await p.press('#pc', 'Enter'); await p.waitForTimeout(1500); await p.screenshot({ path: `${OUT}/chat-wrong-${name}.png` });
+    await p.fill('#pc', PASS); await p.press('#pc', 'Enter'); await p.waitForSelector('.rb', { timeout: 6000 }); await p.screenshot({ path: `${OUT}/chat-choices-${name}.png` });
     await p.goto(BASE + '/sales'); await p.waitForSelector('#slide h1'); await p.screenshot({ path: `${OUT}/deck-${name}.png` });
     await p.keyboard.press('n'); await p.keyboard.press('ArrowRight'); await p.keyboard.press('ArrowRight'); await p.keyboard.press('ArrowRight'); await p.keyboard.press('ArrowRight');
     await p.screenshot({ path: `${OUT}/deck-table-notes-${name}.png` });
-    const s = await c.newPage(); await s.goto(BASE + '/'); await s.keyboard.press('x'); await s.waitForTimeout(100); await s.screenshot({ path: `${OUT}/entry-skipped-${name}.png` });
     await c.close();
   }
   await b.close(); console.log('shots in ' + OUT);
