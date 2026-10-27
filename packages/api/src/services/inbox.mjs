@@ -201,16 +201,21 @@ export async function escalateSla(client, { now = new Date(), limit = 500 } = {}
  * a flood (a public form anyone can post to) never spends model calls (#85 audit P2b).
  * @param hook { id, tokenHash }
  * @param msg { body, email?, name?, phone?, page?, externalId?, receivedAt: Date }
+ * @param opts { tx?, hit? } a caller that must write more in the SAME transaction (the speed-to-lead adapter, S2L-2b) passes the
+ *   open inbox_svc service transaction as `tx` and the already-resolved hook as `hit`; this then neither resolves the hook nor opens
+ *   a transaction of its own (transactions do not nest: an inner COMMIT would commit the caller's too).
  * @returns { outcome: 'recorded'|'duplicate'|'unknown_hook', id?, intent?, slaDueAt? }
  */
 export const FORM_DAILY_CAP = 500;
-export async function ingestForm(client, hook, msg, { classify = classifyReply, dailyCap = FORM_DAILY_CAP } = {}) {
-  const hit = await withoutTenant(client, { role: 'inbox_svc' }, async (tx) =>
+export async function ingestForm(client, hook, msg, { classify = classifyReply, dailyCap = FORM_DAILY_CAP, tx: outer = null, hit: given = null } = {}) {
+  if (outer && !given) throw new Error('ingestForm: a caller-supplied tx needs the resolved hook as well');
+  const hit = given ?? await withoutTenant(client, { role: 'inbox_svc' }, async (tx) =>
     (await tx.query(`SELECT * FROM inbox_resolve_hook($1, $2)`, [hook.id, hook.tokenHash])).rows[0]);
   if (!hit) return { outcome: 'unknown_hook' };
   const email = msg.email ? String(msg.email).trim().toLowerCase() : null;
   const verdict = classify({ subject: '', body: msg.body ?? '', from: email ?? '' });
-  return withService(client, { orgId: hit.org_id, workspaceId: hit.workspace_id, role: 'inbox_svc' }, async (tx) => {
+  const inScope = (fn) => (outer ? fn(outer) : withService(client, { orgId: hit.org_id, workspaceId: hit.workspace_id, role: 'inbox_svc' }, fn));
+  return inScope(async (tx) => {
     if (msg.externalId) {
       const dup = (await tx.query(`SELECT id FROM inbound_messages WHERE workspace_id = $1 AND channel = 'form' AND external_id = $2`,
         [hit.workspace_id, msg.externalId])).rows[0];

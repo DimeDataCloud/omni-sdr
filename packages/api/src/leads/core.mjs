@@ -12,6 +12,7 @@
 // Contact identity (email, phone, name, handle) goes in `contact`, never in `payload`: the DB keeps identity on contacts, where
 // suppression and erasure can find it. normalizeLead() refuses a payload that carries identity keys; the externalId is the
 // source's own id for the lead (a submission id), never an address.
+import { createHash } from 'node:crypto';
 import { withService, withTenant } from '../../../db/src/context.mjs';
 
 export const SOURCES = Object.freeze(['web_form', 'ad_lead', 'inbound_email', 'list_import', 'social_dm', 'social_comment', 'sms', 'voice', 'crm']);
@@ -63,6 +64,17 @@ export function payloadIdentityProblem(v, path = 'payload') {
 /** Why an external id may not be stored (it is the source's own id, never an address or a number), or null. */
 export const externalIdIdentityProblem = (id) => (valueLooksLikeIdentity(id) ? 'externalId must be the source\'s own id, not an email address or a phone number' : null);
 
+/**
+ * The id to store for a source's own id: itself, unless it could look like an address or a number (the identity CHECK refuses
+ * those), in which case a stable hash of it (`h:` + 32 hex), so a retry still dedupes and nothing identifying is stored.
+ * Returns null for no id. Use ONE result for every row that must share the key (inbound_messages and lead_events).
+ */
+export function safeExternalId(id) {
+  const s = String(id ?? '').trim();
+  if (!s) return null;
+  return externalIdIdentityProblem(s) || s.length > 200 ? `h:${createHash('sha256').update(s, 'utf8').digest('hex').slice(0, 32)}` : s;
+}
+
 function scanPayload(v) {
   const why = payloadIdentityProblem(v);
   if (why) throw new LeadError(why);
@@ -94,23 +106,36 @@ export function normalizeLead(adapter, n) {
  *   touchBlocker is why a first touch is not allowed right now (null = allowed): 'no_consent' | 'no_contact' | 'suppressed'.
  */
 export async function ingestLead(client, { orgId, workspaceId }, adapter, raw) {
+  const lead = await verifiedLead(adapter, raw);
+  if (!lead) return { outcome: 'dropped' };
+  return withService(client, { orgId, workspaceId, role: 'inbox_svc' }, (tx) => recordLeadIn(tx, { orgId, workspaceId }, lead));
+}
+
+/** The pure half of intake: verify, then normalize. Null = dropped (bad signature or token); throws LeadError on a refused shape. */
+export async function verifiedLead(adapter, raw) {
   if (typeof adapter?.verify !== 'function' || typeof adapter?.normalize !== 'function') throw new LeadError('an adapter needs verify() and normalize()');
-  if (!(await adapter.verify(raw))) return { outcome: 'dropped' };
-  const lead = normalizeLead(adapter, await adapter.normalize(raw));
-  return withService(client, { orgId, workspaceId, role: 'inbox_svc' }, async (tx) => {
-    // Same person, same workspace: one contacts row per address, as the form intake does. Without an address the lead stays
-    // anonymous (contact_id NULL) and cannot be touched until a later step resolves it.
-    let contactId = null;
-    if (lead.contact.email) {
-      await tx.query(`INSERT INTO contacts (org_id, workspace_id, name, email, phone) VALUES ($1, $2, $3, $4, $5)
-                      ON CONFLICT (workspace_id, email) DO NOTHING`, [orgId, workspaceId, lead.contact.name, lead.contact.email, lead.contact.phone]);
-      contactId = (await tx.query(`SELECT id FROM contacts WHERE workspace_id = $1 AND email = $2`, [workspaceId, lead.contact.email])).rows[0]?.id ?? null;
-    }
-    const r = (await tx.query(`SELECT * FROM record_lead_event($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [orgId, workspaceId, lead.source, lead.channel, lead.externalId, contactId, lead.consentBasis, lead.receivedAt, JSON.stringify(lead.payload)])).rows[0];
-    const touchBlocker = (await tx.query(`SELECT lead_touch_blocker($1) AS r`, [r.lead_event_id])).rows[0].r;
-    return { outcome: r.outcome, leadEventId: r.lead_event_id, relatedLeadEventId: r.related_lead_event_id, touchBlocker };
-  });
+  if (!(await adapter.verify(raw))) return null;
+  return normalizeLead(adapter, await adapter.normalize(raw));
+}
+
+/**
+ * The write half of intake, inside a transaction the CALLER owns: an open inbox_svc service transaction for this org and workspace
+ * (withService). An adapter that also writes its own rows (inbound_messages) uses this so both land or neither does; transactions
+ * do not nest, so this never opens one.
+ */
+export async function recordLeadIn(tx, { orgId, workspaceId }, lead) {
+  // Same person, same workspace: one contacts row per address, as the form intake does. Without an address the lead stays
+  // anonymous (contact_id NULL) and cannot be touched until a later step resolves it.
+  let contactId = null;
+  if (lead.contact.email) {
+    await tx.query(`INSERT INTO contacts (org_id, workspace_id, name, email, phone) VALUES ($1, $2, $3, $4, $5)
+                    ON CONFLICT (workspace_id, email) DO NOTHING`, [orgId, workspaceId, lead.contact.name, lead.contact.email, lead.contact.phone]);
+    contactId = (await tx.query(`SELECT id FROM contacts WHERE workspace_id = $1 AND email = $2`, [workspaceId, lead.contact.email])).rows[0]?.id ?? null;
+  }
+  const r = (await tx.query(`SELECT * FROM record_lead_event($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [orgId, workspaceId, lead.source, lead.channel, lead.externalId, contactId, lead.consentBasis, lead.receivedAt, JSON.stringify(lead.payload)])).rows[0];
+  const touchBlocker = (await tx.query(`SELECT lead_touch_blocker($1) AS r`, [r.lead_event_id])).rows[0].r;
+  return { outcome: r.outcome, leadEventId: r.lead_event_id, relatedLeadEventId: r.related_lead_event_id, touchBlocker };
 }
 
 /**
