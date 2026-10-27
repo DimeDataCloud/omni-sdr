@@ -4,7 +4,7 @@
 import { can } from '@db/permissions.mjs';
 import { CONNECTORS, freeEmailChecks } from '@rules/catalog.mjs';
 import { ApiError, invalidate, type Client, type Scope, type Campaign, type Icp } from '../client';
-import type { Dataset, ApprovalCard, Agent, ChatMessage, Contact, InboxItem, Meeting, Routine, Role, Analytics, Me, Pipeline, AboutKind, AskMode, HandoffItem, HandoffCard, ThreadMessage, PlaybookReply, ReplyDraft, PlaybookCategory, ClientRecord, ChecklistState } from '../types';
+import type { Dataset, ApprovalCard, Agent, ChatMessage, Contact, InboxItem, Meeting, Routine, Role, Analytics, Me, Pipeline, AboutKind, AskMode, HandoffItem, HandoffCard, ThreadMessage, PlaybookReply, ReplyDraft, PlaybookCategory, ClientRecord, ChecklistState, ClientSetupPatch, ConnChannel } from '../types';
 import { addBusinessMinutes, SLA_MINUTES } from '@rules/reply-rules.mjs';
 import { PLAYBOOK_CATEGORIES, unknownFields, render, firstName, AUTONOMY_WINDOW, AUTONOMY_RATE } from '@rules/playbook.mjs';
 import { checklistFor } from './seed';
@@ -882,6 +882,54 @@ export const demoClient: Client = {
     item.blockedBy = null;
     clientEvent(c, m.name, 'checklist', `${item.label}: ${before} to ${state}`);
     audit(w, null, m.userId, 'update', 'client', c.id);
+    return c;
+  }),
+
+  // Saving edits the DRAFT setup and counts the changes; the client keeps running the approved version until step 3.
+  updateClientSetup: (orgId, id, patch: ClientSetupPatch) => write((w) => {
+    const m = operatorOnly(w);
+    if (orgId !== w.org.id) throw nf('organization');
+    const c = clientOf(w, id);
+    if (!c.setup || c.status === 'closed' || c.status === 'ended') throw conflict('Start onboarding before editing the setup');
+    const p = patch.profile;
+    if (p?.hours !== undefined && !p.hours.trim()) throw new ApiError(400, 'bad_request', 'hours: required');
+    if (p?.ownerContacts !== undefined && !/@/.test(p.ownerContacts)) throw new ApiError(400, 'bad_request', 'ownerContacts: needs at least one email address');
+    if (patch.customizations?.followUpDays?.some((d) => !Number.isInteger(d) || d < 1 || d > 30)) throw new ApiError(400, 'bad_request', 'followUpDays: whole days from 1 to 30');
+    let n = 0;
+    for (const area of ['profile', 'handoff', 'customizations'] as const) {
+      const next = patch[area] as Record<string, unknown> | undefined;
+      if (!next) continue;
+      const cur = c.setup[area] as Record<string, unknown>;
+      for (const [k, v] of Object.entries(next)) if (JSON.stringify(cur[k]) !== JSON.stringify(v)) { cur[k] = v; n++; }
+    }
+    if (n) {
+      c.setup.changesSinceApproved += n;
+      clientEvent(c, m.name, 'setup_edited', `Draft setup: ${n} field${n === 1 ? '' : 's'} changed`);
+      audit(w, null, m.userId, 'update', 'client', c.id);
+    }
+    return c;
+  }),
+  // Simulated: no carrier or mailbox is touched. A "live" channel stays live; a simulated one stays simulated.
+  testClientConnection: (orgId, id, channel: ConnChannel) => write((w) => {
+    const m = operatorOnly(w);
+    if (orgId !== w.org.id) throw nf('organization');
+    const c = clientOf(w, id);
+    const conn = c.setup?.connections.find((x) => x.channel === channel);
+    if (!c.setup || !conn) throw nf('connection');
+    conn.lastTest = nowIso();
+    clientEvent(c, m.name, 'connection_tested', `${channel}: test run (${conn.state})`);
+    return c;
+  }),
+  decideClientDraft: (orgId, id, draftId, decision) => write((w) => {
+    const m = operatorOnly(w);
+    if (orgId !== w.org.id) throw nf('organization');
+    const c = clientOf(w, id);
+    const d = c.setup?.drafts.find((x) => x.id === draftId);
+    if (!c.setup || !d) throw nf('draft');
+    if (d.state !== 'pending') throw conflict('That draft was already decided');
+    d.state = decision;
+    c.setup.changesSinceApproved += 1;
+    clientEvent(c, m.name, 'draft_' + decision, d.subject);
     return c;
   }),
 
