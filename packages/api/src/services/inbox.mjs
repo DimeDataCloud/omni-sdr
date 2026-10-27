@@ -201,13 +201,19 @@ export async function escalateSla(client, { now = new Date(), limit = 500 } = {}
  * a flood (a public form anyone can post to) never spends model calls (#85 audit P2b).
  * @param hook { id, tokenHash }
  * @param msg { body, email?, name?, phone?, page?, externalId?, receivedAt: Date }
- * @param opts { tx?, hit? } a caller that must write more in the SAME transaction (the speed-to-lead adapter, S2L-2b) passes the
+ * @param opts { recent? } the 24-hour form count the caller already took in this same transaction, so it is read once, not twice (S2L-2e).
+ *   { tx?, hit? } a caller that must write more in the SAME transaction (the speed-to-lead adapter, S2L-2b) passes the
  *   open inbox_svc service transaction as `tx` and the already-resolved hook as `hit`; this then neither resolves the hook nor opens
  *   a transaction of its own (transactions do not nest: an inner COMMIT would commit the caller's too).
  * @returns { outcome: 'recorded'|'duplicate'|'unknown_hook', id?, intent?, slaDueAt? }
  */
 export const FORM_DAILY_CAP = 500;
-export async function ingestForm(client, hook, msg, { classify = classifyReply, dailyCap = FORM_DAILY_CAP, tx: outer = null, hit: given = null } = {}) {
+/** A usable daily cap: a finite integer of at least 1 (a number or a numeric string); anything else (Infinity, 1e309, 0, negatives, NaN, junk) is the default. */
+export function formDailyCap(v) {
+  const n = typeof v === 'string' && v.trim() === '' ? NaN : Number(v);
+  return Number.isFinite(n) && n >= 1 && n <= Number.MAX_SAFE_INTEGER ? Math.floor(n) : FORM_DAILY_CAP;
+}
+export async function ingestForm(client, hook, msg, { classify = classifyReply, dailyCap = FORM_DAILY_CAP, recent: known = null, tx: outer = null, hit: given = null } = {}) {
   if (outer && !given) throw new Error('ingestForm: a caller-supplied tx needs the resolved hook as well');
   const hit = given ?? await withoutTenant(client, { role: 'inbox_svc' }, async (tx) =>
     (await tx.query(`SELECT * FROM inbox_resolve_hook($1, $2)`, [hook.id, hook.tokenHash])).rows[0]);
@@ -235,7 +241,7 @@ export async function ingestForm(client, hook, msg, { classify = classifyReply, 
     const conversation = await threadFor(tx, { orgId: hit.org_id, workspaceId: hit.workspace_id, channel: 'form',
       threadKey: contactId ? emailThreadKey(contactId) : `submission:${msg.externalId ?? randomUUID()}`, contactId,
       at: msg.receivedAt, category: verdict.intent });
-    const recent = (await tx.query(`SELECT count(*)::int AS n FROM inbound_messages WHERE workspace_id = $1 AND channel = 'form'
+    const recent = known ?? (await tx.query(`SELECT count(*)::int AS n FROM inbound_messages WHERE workspace_id = $1 AND channel = 'form'
       AND received_at > $2::timestamptz - interval '24 hours'`, [hit.workspace_id, msg.receivedAt])).rows[0].n;
     const capped = recent >= dailyCap;
     // ON CONFLICT: two concurrent retries with one externalId record one row (#85 audit P3-1).
