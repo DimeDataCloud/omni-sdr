@@ -879,7 +879,7 @@ export const demoClient: Client = {
     if (state === 'blocked') throw conflict('Blocked is set by the system with a reason, not by hand');
     const before = item.state;
     item.state = state;
-    if (state !== 'blocked') item.blockedBy = null;
+    item.blockedBy = null;
     clientEvent(c, m.name, 'checklist', `${item.label}: ${before} to ${state}`);
     audit(w, null, m.userId, 'update', 'client', c.id);
     return c;
