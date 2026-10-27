@@ -1,6 +1,7 @@
 // Dev portal demo store, shaped like Backend's 6a (omnisdr-pivot/DESIGN-backend-6a-api-shape.md): same resources, same 403/409 codes, so the swap is a base-URL change.
 // Fake data only. Role checks live here because packages/db has no client-record actions yet; in 6a the server checks each action and the database refuses again.
 import { looksLikeEmail } from './email';
+import { projectConversation } from './clientConvo';
 import { ApiError, type Scope } from '../client';
 import type {
   ChecklistGroup, ChecklistItem, ChecklistState, ClientEvent, ClientHealth, ClientRecord, ClientStatus, ClientSummary, ConnChannel, DealLevel, DemoConnection, DemoReplyDraft,
@@ -55,8 +56,6 @@ function event(c: ClientRow, actor: { id: string | null; kind: 'user' | 'system'
 
 const LEVEL_NAME: Record<number, DealLevel> = { 1: 'L1 pilot', 2: 'L2 recurring', 3: 'L3 outcome' };
 const salesRead = (m: MemberRow) => { if (m.role !== 'admin' && m.role !== 'operator' && m.role !== 'rep') throw forbidden('sales_read'); };
-/** Last four digits only: (•••) •••-0142. Null when there is no number. */
-const maskPhone = (p: string | null) => { const d = (p ?? '').replace(/\D/g, ''); return d.length >= 4 ? '(•••) •••-' + d.slice(-4) : null; };
 const dealOf = (c: ClientRow): SalesDeal => ({ id: c.id, business: c.name, niche: c.profile.niche, level: c.deal.level, priceCents: c.deal.priceCents, priceIsDraft: c.deal.priceIsDraft, status: c.status, closedAt: c.deal.closedAt, repId: c.deal.repId });
 
 function summary(c: ClientRow, m: MemberRow): ClientSummary {
@@ -120,6 +119,8 @@ export function makeClientApi({ read, write, me, nf }: Helpers) {
   const staleCheck = (c: ClientRow, v: VersionRow) => { if (v.parentVersion !== (appliedOf(c)?.version ?? null)) throw new ApiError(409, 'stale_parent', 'The live version changed since this one was written. Start again from the live version.'); };
 
   /** Client portal reads: a client_viewer of that workspace, or an admin or operator previewing. Anyone else is refused. */
+  // Notes for Backend 5 (PR #155 V-49 P3): (1) here an operator may read any workspace's portal view; the real route must also apply the operator's workspace list.
+  // (2) The setup's closer and owner-contact fields are free text the client will read; the real route must show them as written by us, not as typed by a prospect.
   const viewerGate = (w: World, s: Scope) => {
     if (s.orgId !== w.org.id) throw nf('organization');
     const m = me(w);
@@ -309,9 +310,7 @@ export function makeClientApi({ read, write, me, nf }: Helpers) {
       return [...byContact.entries()].map(([contactId, msgs]) => {
         const last = msgs.sort((x, y) => y.receivedAt.localeCompare(x.receivedAt))[0]!;
         const ct = w.contacts.find((x) => x.id === contactId);
-        const first = last.body.replace(/\s+/g, ' ').trim().split(/(?<=[.!?])\s/)[0] ?? '';
-        return { id: contactId, name: ct?.name ?? 'Unknown', maskedPhone: maskPhone(ct?.phone ?? null), channel: last.channel, lastAt: last.receivedAt, intent: last.intent,
-          summary: first.length > 140 ? first.slice(0, 137) + '...' : first, status: last.handledAt ? 'handled' as const : 'open' as const };
+        return projectConversation(contactId, ct?.name ?? 'Unknown', ct?.phone ?? null, last);
       }).sort((x, y) => y.lastAt.localeCompare(x.lastAt)).slice(0, 50);
     }),
     clientEvents: (orgId: string, id: string, q?: { kind?: string; after?: string }) => read((w) => {

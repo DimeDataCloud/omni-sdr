@@ -302,7 +302,7 @@ export interface ClientSetupView {
 }
 /** One conversation as a client sees it: a name, a masked phone, a short summary. The transcript is by request only. */
 export interface ClientConversation {
-  id: Id; name: string; maskedPhone: string | null; channel: string; lastAt: Iso; intent: string; summary: string; status: 'open' | 'handled';
+  id: Id; name: string; maskedPhone: string | null; channel: string; lastAt: Iso; summary: string; status: 'open' | 'handled';
 }
 
 /** Rep prospect lists (fictional rows until Christian approves real prospect data and the privacy page says so). */
