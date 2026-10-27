@@ -27,9 +27,16 @@
     { "why": "bare 10-digit run", "payload": { "ref": "6155550100" } },
     { "why": "bare 11-digit run", "payload": { "ref": "16155550100" } },
     { "why": "bare 10-digit number", "payload": { "ref": 6155550100 } },
+    { "why": "10 digits padded with a tab", "payload": { "ref": "\u00096155550100" } },
+    { "why": "10 digits padded with a newline", "payload": { "ref": "6155550100\n" } },
+    { "why": "10 digits padded with no-break spaces", "payload": { "ref": "\u00a06155550100\u00a0" } },
+    { "why": "11 digits padded with an ideographic space", "payload": { "ref": "\u300016155550100" } },
+    { "why": "formatted phone padded with a carriage return and tab", "payload": { "ref": "\u000d\u0009(615) 555-0100" } },
     { "why": "seven digits with a separator", "payload": { "ref": "555-0100" } }
   ],
   "payloadAllow": [
+    { "why": "ISO date padded with a tab and a no-break space", "payload": { "day": "\u00092026-01-01\u00a0" } },
+    { "why": "15-digit id padded with a newline", "payload": { "ref": "\n123456789012345\n" } },
     { "why": "empty payload", "payload": {} },
     { "why": "ordinary context", "payload": { "form_id": "f-77", "page": "landing-a", "utm_source": "spring" } },
     { "why": "Meta-style 15-digit lead id", "payload": { "leadgen_id": "444444444444444" } },
@@ -45,6 +52,9 @@
     { "why": "words that only contain a deny word inside", "payload": { "hotel_ref": "h-1", "domain_ref": "d-1" } }
   ],
   "externalIdRefuse": [
+    "\u00096155550100",
+    "6155550100\n",
+    "\u00a06155550100\u00a0",
     "maya@example.test",
     "6155550100",
     "16155550100",
