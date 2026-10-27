@@ -1,5 +1,5 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="robots" content="noindex, nofollow"><meta name="theme-color" content="#F7F5F0"><title>Omni-SDR</title>
+<meta name="robots" content="noindex, nofollow"><meta name="theme-color" content="#F7F5F0"><title>OmniSDR</title>
 <style nonce="__NONCE__">__CSS__
 .bubble{max-width:88%;padding:10px 12px;border-radius:12px;margin:0 0 8px;white-space:pre-wrap}
 .bubble.a{background:var(--ok-soft);color:var(--text);border-bottom-left-radius:4px}
@@ -17,7 +17,7 @@
 @keyframes hop{to{transform:translateY(-4px)}}
 @media (prefers-reduced-motion:reduce){.chat,.bubble.in{animation:none}.bubble.t i{animation:none}}
 </style></head><body data-mode="__MODE__"><div class="wrap">
-<header class="top"><div class="brand">__LOGO__<b>Omni-SDR</b></div></header>
+<header class="top"><div class="brand">__LOGO__<b>OmniSDR</b></div></header>
 <main class="card chat"><div id="log" role="log" aria-live="polite"></div>__PANEL__</main>
 </div>
 <script nonce="__NONCE__">
@@ -39,7 +39,7 @@ if(so)so.addEventListener('click',function(){fetch('/api/sales/logout',{method:'
 if(mode==='portal'){say('Welcome back.').then(function(){return say('Where to?')}).then(choices);return}
 var f=document.getElementById('lf'),p=document.getElementById('pc'),sb=document.getElementById('sb'),busy=false;
 function lock(v){p.disabled=v;sb.disabled=v}
-say('Hi, this is Omni-SDR.').then(function(){return say('Type the passcode to come in.')}).then(function(){p.focus()});
+say('Hi, this is OmniSDR.').then(function(){return say('Type the passcode to come in.')}).then(function(){p.focus()});
 f.addEventListener('submit',function(ev){ev.preventDefault();if(busy||!p.value)return;busy=true;lock(true);
  var body=JSON.stringify({passcode:p.value});p.value='';you('\u2022\u2022\u2022\u2022\u2022\u2022');
  fetch('/api/sales/login',{method:'POST',headers:{'content-type':'application/json'},body:body}).then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
