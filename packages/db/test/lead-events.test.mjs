@@ -212,33 +212,44 @@ test('0028: on a database populated at 0027, a window left at 5 moves to 2, any 
   assert.equal(await win(await ws('default-after', null)), 2, 'a new row defaults to 2');
 });
 
-test('0028: a migrator that owns workspaces but is subject to row level security fails loudly and changes nothing (V-29 P3-1)', async () => {
+test('0028: a migrator that owns workspaces but RLS filters (no BYPASSRLS) still backfills through ops, and one that cannot SET ROLE ops fails loudly and changes nothing (V-29 P3-1)', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'mig27b-'));
   for (const f of (await readdir(MIGRATIONS)).filter((n) => n.endsWith('.sql') && n < '0028').sort()) await copyFile(new URL(f, MIGRATIONS), join(dir, f));
   const db = new PGlite();
   await migrate(db, dir);
   const org = (await one(db, `INSERT INTO orgs (name) VALUES ('rls-owner') RETURNING id`)).id;
-  await db.query(`INSERT INTO workspaces (org_id, name, response_window_minutes) VALUES ($1, 'at-five', 5)`, [org]);
-  await db.exec(`CREATE ROLE mig_plain NOLOGIN; ALTER TABLE workspaces OWNER TO mig_plain`);   // owner, no SUPERUSER, no BYPASSRLS, FORCE RLS still on
+  await db.query(`INSERT INTO workspaces (org_id, name, response_window_minutes) VALUES ($1, 'at-five', 5), ($1, 'at-ten', 10)`, [org]);
+  // The Neon shape: owns the table, no SUPERUSER, no BYPASSRLS, FORCE RLS still on for it.
+  await db.exec(`CREATE ROLE mig_plain NOLOGIN; ALTER TABLE workspaces OWNER TO mig_plain`);
+  assert.equal((await one(db, `SELECT rolsuper OR rolbypassrls AS x FROM pg_roles WHERE rolname = 'mig_plain'`)).x, false);
   const sql = readFileSync(new URL('0028_response_window_default_2.sql', MIGRATIONS), 'utf8');
-  await db.exec('SET ROLE mig_plain');
-  let err = null;
-  try { await db.exec(`BEGIN;
+  const runAs = async () => {
+    // SESSION AUTHORIZATION, not SET ROLE: PGlite's login is a superuser, and SET ROLE authority is judged against the session user,
+    // so a plain SET ROLE would let mig_plain switch to ops whatever its membership.
+    await db.exec('SET SESSION AUTHORIZATION mig_plain');
+    let err = null;
+    try { await db.exec(`BEGIN;
 ${sql}
 COMMIT;`); } catch (e) { err = e; }
-  await db.exec('ROLLBACK').catch(() => {});
-  await db.exec('RESET ROLE');
-  assert.ok(err, 'the migration must not succeed silently for a role that RLS filters');
-  assert.match(err.message, /row-level security|row level security|still at a 5 minute window/i, err.message);
-  assert.equal((await one(db, `SELECT response_window_minutes AS m FROM workspaces WHERE name = 'at-five'`)).m, 5, 'the row is untouched');
-  assert.match((await one(db, `SELECT column_default AS d FROM information_schema.columns WHERE table_name = 'workspaces' AND column_name = 'response_window_minutes'`)).d, /^5$/, 'and the default did not change either (rolled back)');
-  // The same migration as a role that bypasses RLS runs clean.
-  await db.exec('ALTER ROLE mig_plain BYPASSRLS; SET ROLE mig_plain');
-  await db.exec(`BEGIN;
-${sql}
-COMMIT;`);
-  await db.exec('RESET ROLE');
-  assert.equal((await one(db, `SELECT response_window_minutes AS m FROM workspaces WHERE name = 'at-five'`)).m, 2);
+    await db.exec('ROLLBACK').catch(() => {});
+    await db.exec('SET SESSION AUTHORIZATION postgres');   // PGlite's RESET SESSION AUTHORIZATION keeps the last role
+    return err;
+  };
+  const win = async (name) => (await one(db, `SELECT response_window_minutes AS m FROM workspaces WHERE name = $1`, [name])).m;
+  const dflt = async () => (await one(db, `SELECT column_default AS d FROM information_schema.columns WHERE table_name = 'workspaces' AND column_name = 'response_window_minutes'`)).d;
+
+  // Not allowed to SET ROLE ops: the migration fails, nothing changes (the default change rolled back with it).
+  const denied = await runAs();
+  assert.ok(denied, 'the migration must not succeed for a migrator that cannot reach the rows');
+  assert.match(denied.message, /must be a member of ops/, denied.message);
+  assert.deepEqual([await win('at-five'), await win('at-ten')], [5, 10]);
+  assert.equal(await dflt(), '5');
+
+  // With SET on ops it backfills although RLS hides every workspace from the migrator itself.
+  await db.exec('GRANT ops TO mig_plain');
+  assert.equal(await runAs(), null);
+  assert.deepEqual([await win('at-five'), await win('at-ten')], [2, 10], 'the 5 moved, the 10 stayed');
+  assert.equal(await dflt(), '2');
 });
 
 // ─── 0023 (S2L-1b) ───────────────────────────────────────────────────────────────────────────────────────────────
