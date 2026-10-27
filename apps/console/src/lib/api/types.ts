@@ -241,3 +241,15 @@ export interface Dataset {
   rules: string[]; manage: string;                                  // manage: the page (and query) where its rows are corrected
   always: boolean;                                                  // true: every agent and every send honors it; not a toggle
 }
+
+// ── Dev portal: one client record (design: omnisdr-pivot/DESIGN-frontend-1-dev-portal.md). Names are proposals for Backend. ──
+export type ClientStatus = 'closed' | 'onboarding' | 'building' | 'ready' | 'live' | 'paused' | 'ended';
+export type ChecklistGroup = 'Account' | 'Connections' | 'Compliance' | 'Setup' | 'Launch';
+export type ChecklistState = 'todo' | 'doing' | 'blocked' | 'done';
+export interface ChecklistItem { id: Id; group: ChecklistGroup; label: string; owner: string; state: ChecklistState; blockedBy: string | null; evidence: string | null }
+export interface ClientAudit { id: Id; at: Iso; actor: string; action: string; detail: string }
+export interface ClientRecord {
+  id: Id; name: string; niche: string; status: ClientStatus; contactName: string; contactEmail: string;
+  deal: { rep: string; level: 'L1 pilot' | 'L2 recurring' | 'L3 outcome'; price: number; priceDraft: boolean; closedAt: Iso; notes: string };
+  checklist: ChecklistItem[]; audit: ClientAudit[]; setupVersion: number | null;
+}

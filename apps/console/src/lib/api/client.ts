@@ -4,7 +4,7 @@ import type {
   Me, Settings, Members, ApprovalsList, ApprovalCard, InboxItem, Meeting, Agent, ChatMessage, Routine, Capacity,
   Analytics, Credits, Connector, Contact, ContactDetail, Role, ModelTier, DraftStatus, Id, About, AskMode, Pipeline,
   Autonomy, AgentStats, Dataset, HandoffItem, HandoffCard, HandoffDraft, HandoffReason, HandoffOutcome,
-  Playbook, PlaybookReply, PlaybookCategory, ReplyDraft,
+  Playbook, PlaybookReply, PlaybookCategory, ReplyDraft, ClientRecord, ChecklistState,
   Asset, AssetKind, AssetStatus, Aspect, Edits, GenMode, Ingredient, MotionKey, Product, Project, Scene, SequenceClip, StudioCaps,
 } from './types';
 
@@ -75,6 +75,11 @@ export interface Client {
   patchAgent(s: Scope, id: Id, patch: Partial<Pick<Agent, 'name' | 'station' | 'badge' | 'modelTier' | 'systemPrompt' | 'contextSources' | 'autonomousMode'>> & { autonomy?: Autonomy }): Promise<Agent>;
   /** PROPOSED (WORKSPACE-PLAN.md): an agent's last N days of drafts and the corrections people made. */
   agentStats(s: Scope, id: Id, days?: number): Promise<AgentStats>;
+
+  // Dev portal: the client record (operator, admin). Org-level, not workspace-level.
+  clients(orgId: Id): Promise<ClientRecord[]>;
+  startOnboarding(orgId: Id, id: Id): Promise<ClientRecord>;
+  setChecklistItem(orgId: Id, id: Id, itemId: Id, state: ChecklistState): Promise<ClientRecord>;
   /** PROPOSED (WORKSPACE-PLAN.md): every dataset agents can read, with size, freshness and readers. */
   datasets(s: Scope): Promise<Dataset[]>;
   archiveAgent(s: Scope, id: Id): Promise<void>;
