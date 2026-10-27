@@ -291,6 +291,10 @@ export interface SalesDeal { id: Id; business: string; niche: string; level: Dea
 /** Close a sale. No price and no rep: the server takes the amount from the price config and the rep from the session. */
 export interface CloseSaleInput { business: string; niche: string; level: DealLevel; contactName: string; contactEmail: string; notes: string }
 
+/** What a client sees of their own record: one word, the live setup version and when it went out. No price, checklist, drafts or contacts. */
+export type ClientStatusWord = 'Setting up' | 'Approval week' | 'Live' | 'Paused';
+export interface ClientStatusView { word: ClientStatusWord; appliedVersion: number | null; appliedAt: Iso | null }
+
 /** Rep prospect lists (fictional rows until Christian approves real prospect data and the privacy page says so). */
 export type ProspectStatus = 'new' | 'contacted' | 'audit_run' | 'results_call' | 'proposed' | 'signed';
 export interface Prospect { id: Id; repId: Id; business: string; niche: string; signal: string; lastTouch: string | null; nextStep: string; status: ProspectStatus; notes: string }

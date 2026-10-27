@@ -122,6 +122,7 @@ export const httpClient: Client = {
   putPriceConfig: () => notBuilt('The price config'),
   salesDeals: () => notBuilt('Sales deals'),
   closeSale: () => notBuilt('Sales deals'),
+  clientStatus: () => notBuilt('Client status'),
   prospects: () => notBuilt('Prospect lists'),
   patchProspect: () => notBuilt('Prospect lists'),
   salesLog: () => notBuilt('The daily log'),

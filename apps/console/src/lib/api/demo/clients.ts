@@ -1,10 +1,10 @@
 // Dev portal demo store, shaped like Backend's 6a (omnisdr-pivot/DESIGN-backend-6a-api-shape.md): same resources, same 403/409 codes, so the swap is a base-URL change.
 // Fake data only. Role checks live here because packages/db has no client-record actions yet; in 6a the server checks each action and the database refuses again.
 import { looksLikeEmail } from './email';
-import { ApiError } from '../client';
+import { ApiError, type Scope } from '../client';
 import type {
   ChecklistGroup, ChecklistItem, ChecklistState, ClientEvent, ClientHealth, ClientRecord, ClientStatus, ClientSummary, ConnChannel, DealLevel, DemoConnection, DemoReplyDraft,
-  SetupConfig, SetupDraft, SetupVersion, VersionStatus, SalesDeal, CloseSaleInput,
+  SetupConfig, SetupDraft, SetupVersion, VersionStatus, SalesDeal, CloseSaleInput, ClientStatusView,
 } from '../types';
 import type { MemberRow, World } from './seed';
 import { EMPTY_CONFIG, PATHS, demoChecks, diffConfig, topRisk } from './setup-versions';
@@ -269,6 +269,19 @@ export function makeClientApi({ read, write, me, nf }: Helpers) {
       w.clients.push(c);
       return dealOf(c);
     }),
+    /** The client portal's one read. A client_viewer gets only their own workspace's record, reduced to a word; admin and operator may preview it. */
+    clientStatus: (s: Scope) => read((w): ClientStatusView | null => {
+      if (s.orgId !== w.org.id) throw nf('organization');
+      const m = me(w);
+      if (m.role === 'client_viewer') { if (!m.workspaceIds?.includes(s.workspaceId)) throw nf('workspace'); } else opsOnly(m, 'client_status');
+      const c = w.clients.find((x) => x.workspaceId === s.workspaceId);
+      if (!c || c.status === 'ended' || c.status === 'lead') return null;
+      const a = appliedOf(c);
+      const first = c.versions.map((v) => v.appliedAt).filter((t): t is string => Boolean(t)).sort()[0];
+      const word = c.status === 'paused' ? 'Paused' : c.status === 'live'
+        ? (first && Date.now() - Date.parse(first) < 7 * 86400e3 ? 'Approval week' : 'Live') : 'Setting up';
+      return { word, appliedVersion: a?.version ?? null, appliedAt: a?.appliedAt ?? null };
+    }),
     clientEvents: (orgId: string, id: string, q?: { kind?: string; after?: string }) => read((w) => {
       const { c } = open(w, orgId, id, (x) => opsOnly(x, 'client_read'));
       const all = [...c.events].reverse().filter((e) => !q?.kind || e.kind === q.kind);
@@ -310,7 +323,7 @@ export function makeClientApi({ read, write, me, nf }: Helpers) {
 }
 
 // ── seed: three fictional clients (closed, onboarding, live). Fictional names and .example addresses only. ──
-export function seedClients(at: (daysAgo: number) => string, members: MemberRow[]): ClientRow[] {
+export function seedClients(at: (daysAgo: number) => string, members: MemberRow[], viewerWorkspaceId: string): ClientRow[] {
   const maya = members[0].userId, sam = members[1].userId, riley = members[2].userId;
   void maya;
   const jordan = members.find((x) => x.role === 'rep')!.userId;
@@ -370,7 +383,7 @@ export function seedClients(at: (daysAgo: number) => string, members: MemberRow[
   dental.versions = dental.versions.slice(0, 3);
   dental.events = dental.events.filter((e) => e.kind !== 'setup.draft_saved');
   dental.health = { replyMedianMinutes: 52, replyWindowMinutes: 30, openDrafts: 6, openHandoffs: 3, alertFailures: 2, sendErrors: 1 };
-  dental.workspaceId = 'ws-maple';
+  dental.workspaceId = viewerWorkspaceId;   // the client_viewer persona's workspace, so their status is this record's
 
   // Onboarding: five items done, one in progress, A2P blocked on carrier review.
   const onb = mk('cl-ironwood', 'Ironwood Martial Arts', 'Martial arts school', 'onboarding', 'Priya Nair', 'priya@ironwood.example', 'L1 pilot', 49900, 6, 'Three locations, trial-class booking is the goal.');
