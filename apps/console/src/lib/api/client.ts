@@ -4,7 +4,7 @@ import type {
   Me, Settings, Members, ApprovalsList, ApprovalCard, InboxItem, Meeting, Agent, ChatMessage, Routine, Capacity,
   Analytics, Credits, Connector, Contact, ContactDetail, Role, ModelTier, DraftStatus, Id, About, AskMode, Pipeline,
   Autonomy, AgentStats, Dataset, HandoffItem, HandoffCard, HandoffDraft, HandoffReason, HandoffOutcome,
-  Playbook, PlaybookReply, PlaybookCategory, ReplyDraft, ClientRecord, ChecklistState, ClientSetupPatch, ConnChannel,
+  Playbook, PlaybookReply, PlaybookCategory, ReplyDraft, ClientRecord, ClientSummary, ClientStatus, ChecklistItem, ChecklistState, ClientEvent, SetupConfig, SetupVersion, SetupDraft, DemoConnection, DemoReplyDraft, ConnChannel,
   Asset, AssetKind, AssetStatus, Aspect, Edits, GenMode, Ingredient, MotionKey, Product, Project, Scene, SequenceClip, StudioCaps,
 } from './types';
 
@@ -76,18 +76,26 @@ export interface Client {
   /** PROPOSED (WORKSPACE-PLAN.md): an agent's last N days of drafts and the corrections people made. */
   agentStats(s: Scope, id: Id, days?: number): Promise<AgentStats>;
 
-  // Dev portal: the client record (operator, admin). Org-level, not workspace-level.
-  clients(orgId: Id): Promise<ClientRecord[]>;
-  startOnboarding(orgId: Id, id: Id): Promise<ClientRecord>;
-  setChecklistItem(orgId: Id, id: Id, itemId: Id, state: ChecklistState): Promise<ClientRecord>;
-  updateClientSetup(orgId: Id, id: Id, patch: ClientSetupPatch): Promise<ClientRecord>;
-  testClientConnection(orgId: Id, id: Id, channel: ConnChannel): Promise<ClientRecord>;
-  decideClientDraft(orgId: Id, id: Id, draftId: Id, decision: 'approved' | 'rejected'): Promise<ClientRecord>;
-  // CI/CD (step 3). Propose, roll out and roll back: operator, admin. Review: reviewer, operator, admin (the author cannot approve their own medium or high change).
-  proposeVersion(orgId: Id, id: Id, title: string): Promise<ClientRecord>;
-  reviewVersion(orgId: Id, id: Id, versionId: Id, decision: 'approve' | 'send_back', note: string): Promise<ClientRecord>;
-  rolloutVersion(orgId: Id, id: Id, versionId: Id): Promise<ClientRecord>;
-  rollbackVersion(orgId: Id, id: Id): Promise<ClientRecord>;
+  // Dev portal (6a). Org-level routes, checked per action on the server: client_read admin/operator/reviewer; sales_write, onboard_write, setup_edit, setup_apply,
+  // client_transition admin/operator; setup_approve admin/operator/reviewer and never the author (403 own_version). Errors: 403 forbidden, 404, 409 stale_parent,
+  // 409 transition_not_allowed (details.unmet lists unmet Go live guards), 409 auto_item, 409 conflict, 400 bad_request.
+  clients(orgId: Id, q?: { status?: ClientStatus }): Promise<ClientSummary[]>;
+  client(orgId: Id, id: Id): Promise<ClientRecord>;
+  patchClientProfile(orgId: Id, id: Id, patch: Partial<ClientRecord['profile']>): Promise<ClientRecord>;
+  transitionClient(orgId: Id, id: Id, to: ClientStatus, reason: string): Promise<ClientRecord>;
+  clientChecklist(orgId: Id, id: Id): Promise<ChecklistItem[]>;
+  patchChecklistItem(orgId: Id, id: Id, key: string, patch: { state: ChecklistState; evidenceRef?: string; waivedReason?: string }): Promise<ChecklistItem>;
+  setupVersions(orgId: Id, id: Id): Promise<SetupVersion[]>;
+  setupDraft(orgId: Id, id: Id): Promise<SetupDraft>;
+  putSetupDraft(orgId: Id, id: Id, config: SetupConfig): Promise<SetupDraft>;
+  setupAction(orgId: Id, id: Id, version: number, action: 'submit' | 'approve' | 'reject' | 'apply' | 'rollback', reason?: string): Promise<SetupVersion>;
+  clientEvents(orgId: Id, id: Id, q?: { kind?: string; after?: string }): Promise<{ items: ClientEvent[]; next: string | null }>;
+  // Demo only, not in 6a.
+  demoConnections(orgId: Id, id: Id): Promise<DemoConnection[]>;
+  demoTestConnection(orgId: Id, id: Id, channel: ConnChannel): Promise<DemoConnection[]>;
+  demoReplyDrafts(orgId: Id, id: Id): Promise<DemoReplyDraft[]>;
+  demoDecideReplyDraft(orgId: Id, id: Id, draftId: Id, decision: 'approved' | 'rejected'): Promise<DemoReplyDraft[]>;
+  demoPeople(orgId: Id): Promise<Record<Id, string>>;   // names for user and rep ids; real data resolves them through users
   /** PROPOSED (WORKSPACE-PLAN.md): every dataset agents can read, with size, freshness and readers. */
   datasets(s: Scope): Promise<Dataset[]>;
   archiveAgent(s: Scope, id: Id): Promise<void>;

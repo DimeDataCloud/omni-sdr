@@ -242,38 +242,46 @@ export interface Dataset {
   always: boolean;                                                  // true: every agent and every send honors it; not a toggle
 }
 
-// ── Dev portal: one client record (design: omnisdr-pivot/DESIGN-frontend-1-dev-portal.md). Names are proposals for Backend. ──
-export type ClientStatus = 'closed' | 'onboarding' | 'building' | 'ready' | 'live' | 'paused' | 'ended';
+// ── Dev portal: the client record, shaped like Backend's 6a (omnisdr-pivot/DESIGN-backend-6a-api-shape.md). camelCase here, snake_case on the wire. ──
+export type ClientStatus = 'lead' | 'closed' | 'onboarding' | 'building' | 'ready' | 'live' | 'paused' | 'ended';
+export type DealLevel = 'L1 pilot' | 'L2 recurring' | 'L3 outcome';
+/** GET clients rows. One call, no N+1. */
+export interface ClientSummary {
+  id: Id; name: string; status: ClientStatus; statusChangedAt: Iso; ownerUserId: Id | null;
+  deal: { repId: Id; level: DealLevel; priceCents: number; priceIsDraft: boolean; closedAt: Iso };
+  appliedVersion: number | null; pendingVersions: number;
+  checklist: { done: number; required: number; nextBlocked: string | null };
+}
+/** GET clients/:id. Profile is record keeping only: edited now, no review. Anything the system reads at run time is config (versioned). */
+export interface ClientRecord extends ClientSummary { workspaceId: Id | null; profile: { niche: string; contactName: string; contactEmail: string; notes: string } }
+
 export type ChecklistGroup = 'Account' | 'Connections' | 'Compliance' | 'Setup' | 'Launch';
-export type ChecklistState = 'todo' | 'doing' | 'blocked' | 'done';
-export interface ChecklistItem { id: Id; group: ChecklistGroup; label: string; owner: string; state: ChecklistState; blockedBy: string | null; evidence: string | null }
-export interface ClientAudit { id: Id; at: Iso; actor: string; action: string; detail: string }
-export interface ClientRecord {
-  id: Id; name: string; niche: string; status: ClientStatus; contactName: string; contactEmail: string;
-  deal: { rep: string; level: 'L1 pilot' | 'L2 recurring' | 'L3 outcome'; price: number; priceDraft: boolean; closedAt: Iso; notes: string };
-  checklist: ChecklistItem[]; audit: ClientAudit[]; setupVersion: number | null;
-  setup: ClientSetup | null;   // the draft setup, edited in Dev onboarding; null until onboarding starts
-  versions: SetupVersion[];    // reviewed, numbered setup changes (step 3); the one with status 'live' is what the client runs
+export type ChecklistState = 'todo' | 'in_progress' | 'blocked' | 'done' | 'waived';
+export interface ChecklistItem {
+  key: string; section: ChecklistGroup; title: string; required: boolean; kind: 'manual' | 'auto'; state: ChecklistState;
+  ownerUserId: Id | null; evidenceRef: string | null; waivedReason: string | null; blockedBy: string | null; doneBy: Id | null; doneAt: Iso | null;
 }
-// CI/CD (step 3). A version is a named, reviewed snapshot of the setup. Rollback is a new version, so the trail stays linear.
+/** GET clients/:id/events. Append-only. detail carries ids and enum values only, so the UI composes the sentence. */
+export interface ClientEvent { id: Id; at: Iso; actorUserId: Id | null; actorKind: 'user' | 'system'; kind: string; subjectId: Id | null; detail: Record<string, string | number | boolean | null> }
+
+// Setup versions (CI/CD). The config is everything the system reads at run time.
 export type Risk = 'low' | 'medium' | 'high';
-export type SetupSnapshot = Pick<ClientSetup, 'profile' | 'handoff' | 'customizations'>;
-export interface SetupChange { area: 'profile' | 'handoff' | 'customizations'; field: string; label: string; before: string; after: string; risk: Risk }
-export type VersionStatus = 'in_review' | 'sent_back' | 'approved' | 'live' | 'failed' | 'retired';
-export interface SetupVersion {
-  id: Id; number: number; title: string; author: string; createdAt: Iso; status: VersionStatus; risk: Risk; changes: SetupChange[]; snapshot: SetupSnapshot;
-  reviewer: string | null; reviewNote: string | null; selfApproved: boolean; rollbackOf: number | null;
-  checks: { label: string; ok: boolean; why: string | null }[] | null;   // post-rollout checks, null until a rollout runs
+export interface SetupConfig {
+  hours: string; timezone: string; quietHours: string; services: string; ownerContacts: string; consentBasis: string;
+  closers: string; booking: string; payment: string; resolution: string; unknown: string;
+  followUpDays: number[]; tone: 'warm' | 'direct' | 'formal'; replyNotes: string;
 }
-// Dev onboarding (step 2). Saving edits the DRAFT setup; nothing the client runs changes until a version is approved (step 3).
+export interface SetupChange { area: string; path: keyof SetupConfig & string; before: string; after: string; risk: Risk }
+export type VersionStatus = 'draft' | 'in_review' | 'approved' | 'applied' | 'rejected' | 'rolled_back';
+export interface SetupVersion {
+  version: number; status: VersionStatus; authorId: Id; reviewerId: Id | null; parentVersion: number | null; note: string; risk: Risk; diff: SetupChange[];
+  createdAt: Iso; reviewedAt: Iso | null; appliedAt: Iso | null;
+  checks: { label: string; ok: boolean; why: string | null }[];   // 6a returns []; the demo fills labelled demo checks
+}
+export interface SetupDraft { version: number; parentVersion: number | null; config: SetupConfig }
+
+// Demo only, NOT in 6a (connection cards and the draft approval queue come later). Labelled as demo on screen.
 export type ConnState = 'live' | 'simulated' | 'needs_approval';
 export type ConnChannel = 'mailbox' | 'calendar' | 'phone' | 'voice' | 'crm';
-export interface ClientSetup {
-  profile: { hours: string; timezone: string; services: string; ownerContacts: string; consentBasis: string };
-  handoff: { booking: string; payment: string; resolution: string; unknown: string; closers: string; quietHours: string };
-  customizations: { tone: 'warm' | 'direct' | 'formal'; followUpDays: number[]; replyNotes: string };
-  connections: { channel: ConnChannel; state: ConnState; lastTest: Iso | null; note: string }[];
-  drafts: { id: Id; subject: string; body: string; state: 'pending' | 'approved' | 'rejected' }[];
-  changesSinceApproved: number;
-}
-export type ClientSetupPatch = { profile?: Partial<ClientSetup['profile']>; handoff?: Partial<ClientSetup['handoff']>; customizations?: Partial<ClientSetup['customizations']> };
+export interface DemoConnection { channel: ConnChannel; state: ConnState; lastTest: Iso | null; note: string }
+export interface DemoReplyDraft { id: Id; subject: string; body: string; state: 'pending' | 'approved' | 'rejected' }
