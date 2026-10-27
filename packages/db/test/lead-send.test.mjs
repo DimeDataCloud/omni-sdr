@@ -43,7 +43,7 @@ const age = async (db, id, interval) => {
   await db.query(`UPDATE lead_drafts SET approved_at = now() - $2::interval WHERE id = $1`, [id, interval]);
   await db.exec('ALTER TABLE lead_drafts ENABLE TRIGGER lead_drafts_approver_binding');
 };
-const reason = (p) = refused(p).then((m) => m ?? 'SENT');
+const reason = (p) => refused(p).then((m) => m ?? 'SENT');
 const fresh = async (label, opts) => { const db = await freshDb(); const t = await seedTenant(db, label, opts); await db.query('DELETE FROM org_send_counters'); await db.query('DELETE FROM send_counters'); return { db, t }; };
 
 test('a message names exactly one draft, for every role, and the lead shape sends', async () => {
