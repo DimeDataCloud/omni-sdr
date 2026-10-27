@@ -291,6 +291,14 @@ export interface SalesDeal { id: Id; business: string; niche: string; level: Dea
 /** Close a sale. No price and no rep: the server takes the amount from the price config and the rep from the session. */
 export interface CloseSaleInput { business: string; niche: string; level: DealLevel; contactName: string; contactEmail: string; notes: string }
 
+/** Rep prospect lists (fictional rows until Christian approves real prospect data and the privacy page says so). */
+export type ProspectStatus = 'new' | 'contacted' | 'audit_run' | 'results_call' | 'proposed' | 'signed';
+export interface Prospect { id: Id; repId: Id; business: string; niche: string; signal: string; lastTouch: string | null; nextStep: string; status: ProspectStatus; notes: string }
+export interface ProspectPatch { status?: ProspectStatus; nextStep?: string; notes?: string }
+/** One rep's day. Counts are whole numbers; objectionWords is what owners actually said, in their words. */
+export interface SalesLog { date: string; repId: Id; attempts: number; conversations: number; audits: number; resultsCalls: number; pilotsProposed: number; pilotsSigned: number; objectionWords: string }
+export type SalesLogInput = Omit<SalesLog, 'repId'>;
+
 /** Rep portal price ladder (SALES-DECK-COPY slide 13). Data, not copy: every amount is DRAFT until `isFinal`, which only Christian sets. */
 export type PriceUnit = 'free' | 'one_time' | 'per_month' | 'per_kept_appointment';
 export interface PriceLevel {

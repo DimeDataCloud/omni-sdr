@@ -2,8 +2,8 @@
 // plus 30 days of history so Analytics has real rows behind every number. Everyone and every company is fictional;
 // every address is on a reserved .example domain.
 import { seedClients, type ClientRow } from './clients';
-import { DEFAULT_PRICES } from './sales';
-import type { PriceConfig, Role } from '../types';
+import { DEFAULT_PRICES, seedProspects } from './sales';
+import type { PriceConfig, Prospect, Role, SalesLog } from '../types';
 
 export interface Row { id: string }
 export interface WorkspaceRow extends Row { name: string; timezone: string; trustLevel: 1 | 2 | 3; clientApprovalsEnabled: boolean; autoAdjustEnabled: boolean;
@@ -51,10 +51,10 @@ export interface World {
   mailboxes: MailboxRow[]; holds: HoldRow[]; suppression: string[]; contacts: ContactRow[]; evidence: EvidenceRow[]; icps: IcpRow[];
   campaigns: CampaignRow[]; enrollments: EnrollmentRow[]; drafts: DraftRow[]; sent: SentRow[]; inbound: InboundRow[]; meetings: MeetingRow[];
   audit: AuditRow[]; credits: { data: number; action: number; media: number }; handoffs: HandoffRow[];
-  playbook: PlaybookRow[]; questions: QuestionRow[]; replyDrafts: ReplyDraftRow[]; clients: ClientRow[]; priceConfig: PriceConfig;
+  playbook: PlaybookRow[]; questions: QuestionRow[]; replyDrafts: ReplyDraftRow[]; clients: ClientRow[]; priceConfig: PriceConfig; prospects: Prospect[]; salesLogs: SalesLog[];
 }
 
-export const WORLD_VERSION = 17;
+export const WORLD_VERSION = 18;
 
 // Deterministic randomness so the demo looks the same on every device.
 function rng(seed: number) {
@@ -144,7 +144,7 @@ export function buildWorld(now = new Date()): World {
   const members: MemberRow[] = PERSONAS.map((p) => ({ userId: uid('user'), email: p.email, name: p.name, role: p.role, workspaceIds: p.firstWorkspaceOnly ? [w0.id] : null }));
   const maya = members[0].userId;
 
-  const w: World = { version: WORLD_VERSION, clients: [], priceConfig: DEFAULT_PRICES(), org, workspaces, members, invites: [], agents: [], chat: [], routines: [], mailboxes: [], holds: [], suppression: [],
+  const w: World = { version: WORLD_VERSION, clients: [], priceConfig: DEFAULT_PRICES(), prospects: [], salesLogs: [], org, workspaces, members, invites: [], agents: [], chat: [], routines: [], mailboxes: [], holds: [], suppression: [],
     contacts: [], evidence: [], icps: [], campaigns: [], enrollments: [], drafts: [], sent: [], inbound: [], meetings: [], audit: [], credits: { data: 30000, action: 38420, media: 0 }, handoffs: [], playbook: [], questions: [], replyDrafts: [] };
 
   // A starter playbook for every workspace (SDR-PIVOT P3): the business's own words, per category. Fictional.
@@ -297,6 +297,7 @@ export function buildWorld(now = new Date()): World {
     w.enrollments.push({ id: uid('enr'), ws: w1.id, campaignId: lawCamp.id, contactId: c.id, state: 'waiting', step: 0, heat: 1, stopReason: null });
   }
 
+  w.prospects = seedProspects((d) => iso(ago(now, 60 * 24 * d)), members);
   w.clients = seedClients((d) => iso(ago(now, 60 * 24 * d)), members);
   w.audit.push({ id: uid('audit'), ws: null, actor: 'seed', action: 'create', entityType: 'org', entityId: org.id, at: iso(ago(now, 60 * 24 * 21)) });
   (w as World & { _todays?: unknown })._todays = todays.map((t) => ({ firstDraftId: t.first.id, sendNow: Boolean(t.p.sent), reply: t.p.reply ?? null, email: t.p.email, subject: t.p.subject }));
