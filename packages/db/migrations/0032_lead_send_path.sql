@@ -93,13 +93,20 @@ END $$;
 CREATE FUNCTION lead_drafts_approver_binding() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 BEGIN
-  IF NEW.status = 'approved' AND NEW.approved_by IS NOT NULL
-     AND (TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM 'approved' OR OLD.approved_by IS DISTINCT FROM NEW.approved_by) THEN
-    IF app_user() IS NULL OR NEW.approved_by <> app_user() THEN
-      RAISE EXCEPTION 'lead_drafts: an approval is made by the signed-in approver' USING ERRCODE = '42501';
-    END IF;
-    IF NOT lead_approver_ok(NEW.org_id, NEW.workspace_id, NEW.approved_by) THEN
-      RAISE EXCEPTION 'lead_drafts: this member cannot approve here' USING ERRCODE = '42501';
+  IF NEW.status = 'approved' AND NEW.approved_by IS NOT NULL THEN
+    IF TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM 'approved' OR OLD.approved_by IS DISTINCT FROM NEW.approved_by THEN
+      IF app_user() IS NULL OR NEW.approved_by <> app_user() THEN
+        RAISE EXCEPTION 'lead_drafts: an approval is made by the signed-in approver' USING ERRCODE = '42501';
+      END IF;
+      IF NOT lead_approver_ok(NEW.org_id, NEW.workspace_id, NEW.approved_by) THEN
+        RAISE EXCEPTION 'lead_drafts: this member cannot approve here' USING ERRCODE = '42501';
+      END IF;
+      -- The time of an approval is the database's, never the caller's: the 7-day cap in send_guard and sender_due_workspaces
+      -- reads it, so a value the approver supplies (a date far ahead) would defeat the cap (V-45 P2-1).
+      NEW.approved_at := now();
+    ELSIF NEW.approved_at IS DISTINCT FROM OLD.approved_at THEN
+      -- Nor can it be rewritten on an approved row: an old approval would be refreshed without a re-approval.
+      RAISE EXCEPTION 'lead_drafts: approved_at is set by the approval itself and cannot be changed' USING ERRCODE = '42501';
     END IF;
   END IF;
   RETURN NEW;

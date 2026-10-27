@@ -36,7 +36,14 @@ async function approvedLead(db, t, ext, { consent, channel, contact, approve = t
 }
 const sendLead = (db, t, id, { mailbox = t.mailbox, channel = 'email', org = t.org, ctx = ctxOf(t) } = {}) => as(db, 'sender_svc', ctx, () => db.query(
   `INSERT INTO messages (org_id, workspace_id, lead_draft_id, mailbox_id, channel) VALUES ($1, $2, $3, $4, $5)`, [org, t.ws, id, mailbox, channel]));
-const reason = (p) => refused(p).then((m) => m ?? 'SENT');
+// Test-only: a past approval cannot be made through the API (approved_at is stamped by the trigger), so age one the way a superuser can,
+// with the binding trigger off for that one statement.
+const age = async (db, id, interval) => {
+  await db.exec('ALTER TABLE lead_drafts DISABLE TRIGGER lead_drafts_approver_binding');
+  await db.query(`UPDATE lead_drafts SET approved_at = now() - $2::interval WHERE id = $1`, [id, interval]);
+  await db.exec('ALTER TABLE lead_drafts ENABLE TRIGGER lead_drafts_approver_binding');
+};
+const reason = (p) = refused(p).then((m) => m ?? 'SENT');
 const fresh = async (label, opts) => { const db = await freshDb(); const t = await seedTenant(db, label, opts); await db.query('DELETE FROM org_send_counters'); await db.query('DELETE FROM send_counters'); return { db, t }; };
 
 test('a message names exactly one draft, for every role, and the lead shape sends', async () => {
@@ -62,7 +69,7 @@ test('a lead draft is claimed once, structurally', async () => {
   const { db, t } = await fresh('a');
   const lead = await approvedLead(db, t, 'ls-2');
   assert.equal(await refused(sendLead(db, t, lead.id)), null);
-  assert.match(await reason(sendLead(db, t, lead.id)), /duplicate key|messages_lead_draft_id_key/);
+  assert.match(await reason(sendLead(db, t, lead.id)), /messages_lead_draft_id_key/);
 });
 
 test('a lead draft names the lead\'s own contact (composite FK, not only the guard)', async () => {
@@ -150,11 +157,18 @@ test('the guard refuses a lead draft that is not approved, was edited after appr
   await as(db, 'app_rw', ctxOf(t), () => db.query(`UPDATE lead_drafts SET body = 'A different body.' WHERE id = $1`, [edited.id]));
   assert.match(await reason(sendLead(db, t, edited.id)), /not approved with a current gate pass/);
   const old = await approvedLead(db, t, 'g-3');
-  await db.query(`UPDATE lead_drafts SET approved_at = now() - interval '8 days' WHERE id = $1`, [old.id]);
+  await age(db, old.id, '8 days');
   assert.match(await reason(sendLead(db, t, old.id)), /older than 7 days/);
   const fine = await approvedLead(db, t, 'g-4');
-  await db.query(`UPDATE lead_drafts SET approved_at = now() - interval '6 days' WHERE id = $1`, [fine.id]);
+  await age(db, fine.id, '6 days');
   assert.equal(await refused(sendLead(db, t, fine.id)), null);
+  // The boundary itself (V-45 P3-3): a minute inside 7 days sends, a minute outside does not.
+  const inside = await approvedLead(db, t, 'g-5');
+  await age(db, inside.id, '6 days 23 hours 59 minutes');
+  assert.equal(await refused(sendLead(db, t, inside.id)), null, 'just inside 7 days');
+  const outside = await approvedLead(db, t, 'g-6');
+  await age(db, outside.id, '7 days 1 minute');
+  assert.match(await reason(sendLead(db, t, outside.id)), /older than 7 days/, 'just outside 7 days');
 });
 
 test('the guard re-checks the approver NOW: a removed, demoted or workspace-excluded approver does not send', async () => {
@@ -226,7 +240,7 @@ test('holds, a paused mailbox, the org cap, the mailbox cap and a foreign tenant
   const b = await seedTenant(db, 'b');
   const l = await approvedLead(db, t, 'h-tenant');
   assert.match(await reason(as(db, 'ops', ctxOf(t), () => db.query(
-    `INSERT INTO messages (org_id, workspace_id, lead_draft_id, mailbox_id, channel) VALUES ($1, $2, $3, $4, 'email')`, [b.org, b.ws, l.id, b.mailbox]))), /violates foreign key|another tenant/);
+    `INSERT INTO messages (org_id, workspace_id, lead_draft_id, mailbox_id, channel) VALUES ($1, $2, $3, $4, 'email')`, [b.org, b.ws, l.id, b.mailbox]))), /another tenant/);
 });
 
 test('the guard refuses a channel mismatch on a lead message', async () => {
@@ -297,7 +311,7 @@ test('a workspace whose only approved work is a lead draft is due, and stops bei
   assert.equal(await refused(sendLead(db, t, l.id)), null);
   assert.equal(Number(await due()), before);
   const stale = await approvedLead(db, t, 'r-5b');
-  await db.query(`UPDATE lead_drafts SET approved_at = now() - interval '8 days' WHERE id = $1`, [stale.id]);
+  await age(db, stale.id, '8 days');
   assert.equal(Number(await due()), before, 'an expired approval does not keep the workspace due');
 });
 
@@ -324,6 +338,53 @@ test('the unsubscribe link on a lead email works end to end: the token suppresse
   assert.equal((await one(db, `SELECT unsubscribe($1) AS ok`, [token])).ok, true);
   const next = await approvedLead(db, t, 'r-7b', { contact: l.contact });
   assert.match(await reason(sendLead(db, t, next.id)), /contact suppressed|lead cannot be contacted \(suppressed\)/);
+});
+
+// ─── V-45 P2-1: the time of an approval is the database's ───────────────────────────────────────────────────────────
+test('approved_at is stamped by the approval and cannot be supplied or rewritten (the 7-day cap is not the caller\'s to move)', async () => {
+  const { db, t } = await fresh('a');
+  const approveWith = (id, at) => as(db, 'app_rw', userCtx(t), () => db.query(
+    `UPDATE lead_drafts SET status = 'approved', approved_by = $2, approved_at = ${at} WHERE id = $1`, [id, t.user]));
+  for (const [label, at] of [['100 years ahead', "now() + interval '100 years'"], ['100 days ago', "now() - interval '100 days'"], ['NULL', 'NULL']]) {
+    const { id } = await approvedLead(db, t, `fa-${label}`, { approve: false });
+    await approveWith(id, at);
+    const r = await one(db, `SELECT status, abs(extract(epoch FROM (approved_at - now()))) AS drift FROM lead_drafts WHERE id = $1`, [id]);
+    assert.equal(r.status, 'approved', label);
+    assert.ok(Number(r.drift) < 5, `${label}: approved_at is the database's now(), not the supplied value`);
+    assert.equal(await refused(sendLead(db, t, id)), null, `${label}: and the draft sends, because the approval is fresh`);
+  }
+  // Rewriting it on an approved row, with no approval change, is refused for the approver, the gate role and the table owner.
+  const { id } = await approvedLead(db, t, 'fa-rewrite');
+  for (const [role, ctx] of [['app_rw', userCtx(t)], ['gate_svc', ctxOf(t)]]) {
+    assert.match(await reason(as(db, role, ctx, () => db.query(`UPDATE lead_drafts SET approved_at = now() + interval '100 years' WHERE id = $1`, [id]))),
+      /approved_at is set by the approval|permission denied/, role);
+  }
+  assert.match(await reason(db.query(`UPDATE lead_drafts SET approved_at = now() + interval '100 years' WHERE id = $1`, [id])), /approved_at is set by the approval/, 'table owner');
+  // An old approval cannot be refreshed without a re-approval.
+  await age(db, id, '8 days');
+  assert.match(await reason(as(db, 'app_rw', userCtx(t), () => db.query(`UPDATE lead_drafts SET approved_at = now() WHERE id = $1`, [id]))), /approved_at is set by the approval/);
+  assert.match(await reason(sendLead(db, t, id)), /older than 7 days/);
+  // A re-approval by another approver restamps it: the stale draft is approved again in the proper way.
+  const other = (await one(db, `INSERT INTO users (idp_uid, email) VALUES ('uid-re', 're@example.test') RETURNING id`)).id;
+  await db.query(`INSERT INTO memberships (org_id, user_id, role) VALUES ($1, $2, 'operator')`, [t.org, other]);
+  await as(db, 'app_rw', userCtx(t, other), () => db.query(`UPDATE lead_drafts SET approved_by = $2 WHERE id = $1`, [id, other]));
+  assert.equal(await refused(sendLead(db, t, id)), null, 'a re-approval by another approver is a fresh approval');
+});
+
+// ─── V-45 P3-2: a lead message takes the same locks as an enrollment message ─────────────────────────────────────────
+test('a lead message takes the org lock and the global lock shared, as the enrollment shape does', async () => {
+  const { db, t } = await fresh('a');
+  const l = await approvedLead(db, t, 'lk-1');
+  const held = () => q(db, `SELECT mode, ((classid::bigint << 32) | objid::bigint) AS key FROM pg_locks WHERE locktype = 'advisory' AND granted`);
+  const modesOn = async (key) => (await held()).filter((x) => String(x.key) === key).map((x) => x.mode);
+  const orgKey = String((await one(db, `SELECT org_lock_key($1) AS k`, [t.org])).k);
+  const globalKey = String((await one(db, `SELECT org_lock_key(NULL) AS k`)).k);
+  await db.query('BEGIN');
+  try {
+    assert.equal(await refused(sendLead(db, t, l.id)), null);
+    assert.deepEqual(await modesOn(orgKey), ['ShareLock'], 'org key shared');
+    assert.deepEqual(await modesOn(globalKey), ['ShareLock'], 'global key shared');
+  } finally { await db.query('ROLLBACK'); }
 });
 
 // ─── 3a follow-ups folded in ─────────────────────────────────────────────────────────────────────────────────────
