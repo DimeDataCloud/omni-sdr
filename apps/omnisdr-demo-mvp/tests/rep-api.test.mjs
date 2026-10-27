@@ -153,9 +153,10 @@ test('the page ships with its own nonce CSP and no unfilled placeholders', async
   assert.equal(r.headers.get('x-frame-options'), 'DENY');
 });
 
-test('content carries the six-step path and the pricing guide, with a quote rule for every level', async () => {
+test('content carries the six-step path, How it works and the pricing guide, with a quote rule for every level', async () => {
   const DB = setup(), k = (await j(await call(DB, A, '/rep/api/content'))).body;
   assert.equal(k.path.length, 6);
+  assert.equal(k.how.flow.length, 5); assert.ok(k.how.channels.every((c) => c.status)); // every channel carries an honest status
   assert.match(k.path[3].body, /\$499 plus tax/);
   for (const l of k.prices.levels) assert.ok(k.pricingGuide.quote.some((q) => q.level === l.level), 'quote rule for level ' + l.level);
   assert.doesNotMatch(JSON.stringify(k), /—/); // house style: no em dashes in rep copy

@@ -53,6 +53,38 @@ export const PATH = [
   { title: 'Scope and invoice', body: 'Write down what the pilot covers for this business, then send the pilot agreement and the invoice. Payment comes first. Consent language is agreed before anything goes live.' },
   { title: 'Onboard', body: 'Fill the onboarding tab with the owner, then a 45-minute setup call, every channel tested, and week one in approval mode.' },
 ];
+// Rep guide "How it works" chapter (v6), from SYSTEM-DESIGN-speed-to-lead. Status labels follow the guide's "What is ready today".
+export const HOW = {
+  lede: "Every way a lead can reach the business gets a fast, on-brand reply in the lead's own channel. The owner gets a booked job or a hot handoff, with proof of how fast it happened.",
+  flow: [
+    { title: '1. Leads come in', items: ['Calls and missed calls', 'Web forms and ad forms', 'Email', 'Social comments and DMs (later)', 'An old customer list, with consent'] },
+    { title: '2. One clean record', items: ['Duplicates merged', 'Consent checked: no reason to contact, no message', 'Opt-outs blocked on every channel'] },
+    { title: '3. The agent follows the playbook', items: ["The client's services, hours and tone", 'What it may and may not say', 'Qualify, answer, book'] },
+    { title: '4. A person when it matters', items: ['The lead asks for one', 'Urgent, big job, complaint', 'A price only a person may quote'] },
+    { title: '5. Proof in their numbers', items: ['Time to first reply, per channel', 'Replies, bookings, recovered calls', 'A weekly report'] },
+  ],
+  channels: [
+    { name: 'Voice receptionist', what: 'Answers calls 24/7, says it is an AI assistant, qualifies, books, texts the owner a summary, and transfers live when the caller asks or the job is big. It can also call a new form lead back within minutes.', status: 'In build', tone: 'warn' },
+    { name: 'Web form and email', what: 'A form lead gets a reply and the owner gets an alert within seconds, any hour.', status: 'In build, first pilot channels', tone: 'warn' },
+    { name: 'Text', what: 'Missed-call text-back and follow-up until the lead books, replies or opts out.', status: 'Carrier approval', tone: 'warn' },
+    { name: 'Social', what: 'A comment or DM opens a private conversation that runs through to a booking. Automated messages say they are automated.', status: 'Later', tone: 'bad' },
+  ],
+  examples: [
+    { title: 'A web form at 11:40 p.m.', body: 'The lead record is created in seconds, checked for duplicates and consent, and a reply goes out while the owner gets an alert. No answer in 5 minutes: the agent calls them back. The lead says "tomorrow morning": the agent offers two real open slots, books one and confirms. The owner sees it on their phone.' },
+    { title: 'A missed call at 2 p.m.', body: 'The call is marked missed. We wait one minute in case the staff call back first. Still nobody: a text goes out, "Sorry we missed you, what do you need?", and the staff get a task. Urgent words in the reply go straight to a person.' },
+  ],
+  sections: [
+    { title: 'Handing off to a person', body: 'The owner or a staff member gets an alert with a summary, the whole thread, what the lead wants and a suggested next move. They reply from their phone or the Inbox, and it goes out in the same channel the lead used. While a person has the thread, the agent stays quiet. If nobody picks up in time, the agent tells the lead when to expect a reply and alerts a backup contact. On a call, the agent offers a warm transfer; if no one answers, it takes a message and books a callback.' },
+    { title: 'Through to the booking', body: "Real open slots from the client's calendar, a confirmation with an add-to-calendar link, and reminders 24 hours and 2 hours before. A no-show gets new slots; two misses hand it to a person." },
+    { title: 'Through to payment (planned)', body: "The client can turn on a pay-now link, a deposit to hold the slot, or quote then invoice. The default is pay on site. Card details never touch OmniSDR, the money goes to the client's own account, and refunds and disputes are human-only. Not part of a pilot today." },
+    { title: 'What the owner sees', body: 'Alerts on their phone for hot leads and bookings, with no app to learn. A web console with Approvals, one Inbox across every channel, Handoffs, Meetings, their Playbook and Results. A weekly report: leads in, time to first reply, replies, bookings and recovered calls, with any revenue figure labelled as an estimate.' },
+    { title: 'Week one is in approval mode', body: 'Every channel starts off. The owner turns one on, and for the first week every message waits for their yes before it goes. After that they choose, channel by channel, when it sends on its own. They can take over any conversation at any time.' },
+  ],
+  ends: ['Booked', 'Paid or deposit taken', 'Handed to a person', 'Opted out', 'Closed', 'Follow-up limit reached'],
+  endsNote: 'Nothing loops forever. A lead that goes quiet gets a capped number of follow-ups, inside quiet hours and daily limits, and then stops.',
+  say: '"It answers in minutes, in the channel they used, and hands off to you the moment it should. For the first week you approve every message."',
+};
+
 export const PATH_GATE = 'The gate: after 20 real conversations in a niche, fewer than 2 paid pilots means we move to another niche. We rotate on facts, never by discounting.';
 
 export const OBJECTIONS = [

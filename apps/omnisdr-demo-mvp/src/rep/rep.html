@@ -23,12 +23,14 @@ a.lnk,button.lnk{color:var(--ink);font-weight:600;background:none;border:0;paddi
 .fields{display:grid;gap:0 16px}@media(min-width:700px){.fields{grid-template-columns:1fr 1fr}}.fields .full{grid-column:1/-1}
 dialog{border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--text);width:min(560px,calc(100% - 32px));padding:20px}dialog::backdrop{background:rgba(0,0,0,.4)}
 .timeline li{display:block}.timeline small{color:var(--muted)}
+.flow{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin:0 0 16px}.flow .card ul{margin:0;padding-left:18px;color:var(--muted)}.flow .core{border-color:var(--ink)}
+main>.card,main>section.card,main>.grid{margin-bottom:16px}
 ol.path{margin:0;padding-left:22px;display:grid;gap:10px}ol.path li b{display:block}ol.path li span{display:block;max-width:72ch}
 </style></head>
 <body><div class="wrap">
 <header class="top"><div class="brand">__LOGO__<b>OmniSDR · Rep</b></div><span class="muted" id="who"></span></header>
 <nav class="main" id="nav" aria-label="Rep portal">
-  <a href="#today">Today</a><a href="#calls">Call Room</a><a href="#pipeline">Pipeline</a><a href="#accounts">Accounts</a><a href="#calendar">Calendar</a><a href="#playbook">Playbook</a><a href="#team" hidden id="navTeam">Team</a>
+  <a href="#today">Today</a><a href="#calls">Call Room</a><a href="#pipeline">Pipeline</a><a href="#accounts">Accounts</a><a href="#calendar">Calendar</a><a href="#playbook">Playbook</a><a href="#how">How it works</a><a href="#team" hidden id="navTeam">Team</a>
 </nav>
 <main id="view" aria-live="polite"><p class="muted">Loading…</p></main>
 </div>
@@ -230,6 +232,18 @@ const screens = {
       <section class="card stack"><h2>Demo</h2><ol>${K.demoSteps.map((s) => `<li>${esc(s)}</li>`).join('')}</ol><p class="note">${esc(K.demoLimits)}</p><a class="btn" href="/tryme" target="_blank" rel="noopener">Open the live demo</a>
         <h2>Your pay</h2><p>${esc(K.pay.note)}</p>
         <div class="tbl"><table><thead><tr><th>Plan</th><th>Allowance</th><th>You and the developer, each</th></tr></thead><tbody>${(K.pay.table || []).map((r) => `<tr><td>${esc(r.plan)}</td><td>${esc(r.allowance)}</td><td>${esc(r.each)}</td></tr>`).join('')}</tbody></table></div></section></div>`;
+  },
+
+  async how() {
+    const H = K.how, card = (t, b) => `<section class="card stack"><h2>${esc(t)}</h2><p class="muted">${esc(b)}</p></section>`;
+    view.innerHTML = `<h1>How it works</h1><p class="sub">${esc(H.lede)}</p>
+      <div class="flow">${H.flow.map((n, k) => `<section class="card stack${k === 2 ? ' core' : ''}"><h2>${esc(n.title)}</h2><ul>${n.items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul></section>`).join('')}</div>
+      <section class="card"><h2>The ways we answer</h2><div class="tbl"><table><thead><tr><th>Channel</th><th>What happens</th><th>Status</th></tr></thead><tbody>${H.channels.map((c) => `<tr><td>${esc(c.name)}</td><td>${esc(c.what)}</td><td><span class="pill ${c.tone}">${esc(c.status)}</span></td></tr>`).join('')}</tbody></table></div>
+        <p class="note">Sell what is ready. Promise no start date and no channel that is not live.</p></section>
+      <div class="grid two">${H.examples.map((e) => card(e.title, e.body)).join('')}</div>
+      <div class="grid two">${H.sections.map((x) => card(x.title, x.body)).join('')}
+        <section class="card stack"><h2>Every lead ends in one of these</h2><p class="row">${H.ends.map((e) => `<span class="pill">${esc(e)}</span>`).join('')}</p><p class="muted">${esc(H.endsNote)}</p></section></div>
+      <section class="card stack"><h2>Say this</h2><p>${esc(H.say)}</p><a class="btn" href="/tryme" target="_blank" rel="noopener">Open the live demo</a></section>`;
   },
 
   async team() {
