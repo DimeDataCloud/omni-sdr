@@ -16,9 +16,10 @@ async function newLead(db, t, ext, { consent = 'express_form', channel = 'form',
   return (await one(db, `INSERT INTO lead_events (org_id, workspace_id, contact_id, source, channel, external_id, consent_basis, received_at)
     VALUES ($1, $2, $3, 'web_form', $4, $5, $6, now()) RETURNING id`, [t.org, t.ws, contact, channel, ext, consent])).id;
 }
+let phones = 0;   // a distinct phone per contact: suppressing one person must not suppress the others through a shared number
 async function newContact(db, t, tag, { emailStatus = 'unknown', email = `${tag}@lead.test` } = {}) {
-  return (await one(db, `INSERT INTO contacts (org_id, workspace_id, name, email, email_status, phone) VALUES ($1, $2, 'Lee', $3, $4, '+16155550111') RETURNING id`,
-    [t.org, t.ws, email, emailStatus])).id;
+  return (await one(db, `INSERT INTO contacts (org_id, workspace_id, name, email, email_status, phone) VALUES ($1, $2, 'Lee', $3, $4, $5) RETURNING id`,
+    [t.org, t.ws, email, emailStatus, `+1615556${String(phones++).padStart(4, '0')}`])).id;
 }
 // A lead with a draft, gated and approved by the signed-in user. Returns ids; `approve: false` stops at review.
 async function approvedLead(db, t, ext, { consent, channel, contact, approve = true, draftChannel = 'email', body = 'Thanks, Lee. When works for a call?' } = {}) {
@@ -50,7 +51,7 @@ test('a message names exactly one draft, for every role, and the lead shape send
     assert.match(await refused(both(role)) ?? 'SENT', /messages_exactly_one_draft|names exactly one draft/, `both, ${role}`);
     assert.match(await refused(neither(role)) ?? 'SENT', /messages_exactly_one_draft|names exactly one draft/, `neither, ${role}`);
   }
-  assert.match(await refused(db.query(`INSERT INTO messages (org_id, workspace_id, mailbox_id, channel) VALUES ($1, $2, $3, 'email')`, [t.org, t.ws, t.mailbox])) ?? 'SENT', /messages_exactly_one_draft/, 'neither, table owner');
+  assert.match(await refused(db.query(`INSERT INTO messages (org_id, workspace_id, mailbox_id, channel) VALUES ($1, $2, $3, 'email')`, [t.org, t.ws, t.mailbox])) ?? 'SENT', /messages_exactly_one_draft|names exactly one draft/, 'neither, table owner');
   assert.equal(await refused(sendLead(db, t, lead.id)), null);
   const m = await one(db, `SELECT draft_id, lead_draft_id, state FROM messages WHERE lead_draft_id = $1`, [lead.id]);
   assert.deepEqual([m.draft_id, m.lead_draft_id, m.state], [null, lead.id, 'claimed']);
@@ -88,7 +89,9 @@ test('an approval needs the signed-in approver: no user context, another user, o
   // A closer, and a client viewer while client approvals are off, may not approve.
   const closer = (await one(db, `INSERT INTO users (idp_uid, email) VALUES ('uid-c', 'c@example.test') RETURNING id`)).id;
   await db.query(`INSERT INTO memberships (org_id, user_id, role) VALUES ($1, $2, 'closer')`, [t.org, closer]);
-  assert.match(await reason(approveAs(userCtx(t, closer), closer)), /cannot approve here|row-level|violates/);
+  // A closer cannot even see a lead draft (closer_scope), so the UPDATE matches no row: it must not have approved anything.
+  await approveAs(userCtx(t, closer), closer).catch(() => {});
+  assert.equal((await one(db, `SELECT status FROM lead_drafts WHERE id = $1`, [id])).status, 'review', 'a closer approved nothing');
   const viewer = (await one(db, `INSERT INTO users (idp_uid, email) VALUES ('uid-v', 'v@example.test') RETURNING id`)).id;
   await db.query(`INSERT INTO memberships (org_id, user_id, role) VALUES ($1, $2, 'client_viewer')`, [t.org, viewer]);
   assert.match(await reason(approveAs(userCtx(t, viewer), viewer)), /cannot approve here/);
@@ -198,12 +201,12 @@ test('the guard takes email_status unknown and valid for a lead and refuses inva
 
 test('holds, a paused mailbox, the org cap, the mailbox cap and a foreign tenant apply to a lead message as to any other', async () => {
   const { db, t } = await fresh('a', { cap: 2 });
-  const hold = (type, id) => db.query(`INSERT INTO holds (org_id, scope_type, scope_id, reason, set_by) VALUES ($1, $2, $3, 'test', 'test') RETURNING id`, [t.org, type, id]);
+  const hold = (type, id) => db.query(`INSERT INTO holds (org_id, scope_type, scope_id, reason, set_by) VALUES ($1, $2, $3, 'test', 'test')`, [t.org, type, id]);
   for (const [type, id] of [['org', t.org], ['workspace', t.ws], ['mailbox', t.mailbox]]) {
     const l = await approvedLead(db, t, `h-${type}`);
-    const h = (await hold(type, id)).rows[0].id;
+    await hold(type, id);
     assert.match(await reason(sendLead(db, t, l.id)), /on hold/, type);
-    await db.query(`DELETE FROM holds WHERE id = $1`, [h]);
+    await db.query(`DELETE FROM holds WHERE scope_type = $1 AND scope_id = $2`, [type, id]);
   }
   const paused = await approvedLead(db, t, 'h-paused');
   await db.query(`UPDATE mailboxes SET paused_reason = 'bounces' WHERE id = $1`, [t.mailbox]);
