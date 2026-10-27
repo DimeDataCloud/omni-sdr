@@ -490,3 +490,18 @@ test('0026: a temp messages/drafts/enrollments table cannot shadow the definer l
   await markSent(db, t, { state: 'sent' });
   assert.equal(await touch(db, 'sender_svc', t, lead, { message: t.message }), 'recorded', 'and the honest send still works');
 });
+
+test('0029: the form intake cap count can use inbound_form_recent (the partial index matches the query the route runs)', async () => {
+  const db = await freshDb();
+  const t = await seedTenant(db, 'capidx');
+  await db.query(`INSERT INTO inbound_messages (org_id, workspace_id, channel, from_address, subject, body, received_at, intent, intent_confidence, classified_by, external_id)
+    SELECT $1, $2, 'form', 'p' || g || '@x.test', 's', 'b', now() - (g || ' minutes')::interval, 'question', 0.5, 'rules', 'e' || g FROM generate_series(1, 20000) g`, [t.org, t.ws]);
+  await db.query('ANALYZE inbound_messages');
+  // The same statement ingestFormLead runs (packages/api/src/leads/web-form.mjs).
+  const sql = `SELECT count(*)::int AS n FROM inbound_messages WHERE workspace_id = $1 AND channel = 'form' AND received_at > $2::timestamptz - interval '24 hours'`;
+  assert.equal((await one(db, sql, [t.ws, new Date().toISOString()])).n, 1439);
+  await db.exec('SET enable_seqscan = off');
+  const plan = (await db.query('EXPLAIN ' + sql, [t.ws, new Date().toISOString()])).rows.map((r) => r['QUERY PLAN']).join('\n');
+  assert.match(plan, /inbound_form_recent/, plan);
+  assert.equal((await one(db, `SELECT indexdef AS d FROM pg_indexes WHERE indexname = 'inbound_form_recent'`)).d.includes("channel = 'form'"), true, 'it is partial on the form channel');
+});
