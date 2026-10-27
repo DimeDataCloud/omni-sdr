@@ -2,7 +2,8 @@
 // plus 30 days of history so Analytics has real rows behind every number. Everyone and every company is fictional;
 // every address is on a reserved .example domain.
 import { seedClients, type ClientRow } from './clients';
-import type { Role } from '../types';
+import { DEFAULT_PRICES } from './sales';
+import type { PriceConfig, Role } from '../types';
 
 export interface Row { id: string }
 export interface WorkspaceRow extends Row { name: string; timezone: string; trustLevel: 1 | 2 | 3; clientApprovalsEnabled: boolean; autoAdjustEnabled: boolean;
@@ -50,10 +51,10 @@ export interface World {
   mailboxes: MailboxRow[]; holds: HoldRow[]; suppression: string[]; contacts: ContactRow[]; evidence: EvidenceRow[]; icps: IcpRow[];
   campaigns: CampaignRow[]; enrollments: EnrollmentRow[]; drafts: DraftRow[]; sent: SentRow[]; inbound: InboundRow[]; meetings: MeetingRow[];
   audit: AuditRow[]; credits: { data: number; action: number; media: number }; handoffs: HandoffRow[];
-  playbook: PlaybookRow[]; questions: QuestionRow[]; replyDrafts: ReplyDraftRow[]; clients: ClientRow[];
+  playbook: PlaybookRow[]; questions: QuestionRow[]; replyDrafts: ReplyDraftRow[]; clients: ClientRow[]; priceConfig: PriceConfig;
 }
 
-export const WORLD_VERSION = 15;
+export const WORLD_VERSION = 16;
 
 // Deterministic randomness so the demo looks the same on every device.
 function rng(seed: number) {
@@ -75,6 +76,7 @@ export const PERSONAS: { email: string; name: string; role: Role; firstWorkspace
   { email: 'sam@example.com', name: 'Sam Rivera', role: 'operator', blurb: 'Runs campaigns and approvals' },
   { email: 'riley@example.com', name: 'Riley Brooks', role: 'reviewer', blurb: 'Approves drafts, reads the inbox' },
   { email: 'client@example.com', name: 'Dr. Lena Ortiz (client)', role: 'client_viewer', firstWorkspaceOnly: true, blurb: 'A client: sees results' },
+  { email: 'jordan@example.com', name: 'Jordan Reyes (rep)', role: 'rep', firstWorkspaceOnly: true, blurb: 'Sells OmniSDR: quote sheet and own deals' },
   { email: 'cole@example.com', name: 'Cole Park (closer)', role: 'closer', firstWorkspaceOnly: true, blurb: 'Takes the conversations handed to them' },
 ];
 
@@ -142,7 +144,7 @@ export function buildWorld(now = new Date()): World {
   const members: MemberRow[] = PERSONAS.map((p) => ({ userId: uid('user'), email: p.email, name: p.name, role: p.role, workspaceIds: p.firstWorkspaceOnly ? [w0.id] : null }));
   const maya = members[0].userId;
 
-  const w: World = { version: WORLD_VERSION, clients: [], org, workspaces, members, invites: [], agents: [], chat: [], routines: [], mailboxes: [], holds: [], suppression: [],
+  const w: World = { version: WORLD_VERSION, clients: [], priceConfig: DEFAULT_PRICES(), org, workspaces, members, invites: [], agents: [], chat: [], routines: [], mailboxes: [], holds: [], suppression: [],
     contacts: [], evidence: [], icps: [], campaigns: [], enrollments: [], drafts: [], sent: [], inbound: [], meetings: [], audit: [], credits: { data: 30000, action: 38420, media: 0 }, handoffs: [], playbook: [], questions: [], replyDrafts: [] };
 
   // A starter playbook for every workspace (SDR-PIVOT P3): the business's own words, per category. Fictional.

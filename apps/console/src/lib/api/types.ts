@@ -2,7 +2,7 @@
 // Written from the route code on 2026-09-29. Timestamps are ISO strings. All ids are uuids.
 // Base path for workspace routes: /v1/o/{orgId}/w/{workspaceId}
 
-export type Role = 'admin' | 'operator' | 'reviewer' | 'client_viewer' | 'closer';
+export type Role = 'admin' | 'operator' | 'reviewer' | 'client_viewer' | 'closer' | 'rep';
 export type AccountType = 'owner' | 'agency';
 export type ModelTier = 'flash_lite' | 'flash' | 'pro';
 export type Iso = string;
@@ -285,6 +285,19 @@ export interface ClientHealth {
   clientId: Id; replyMedianMinutes: number | null; replyWindowMinutes: number; openDrafts: number; openHandoffs: number; alertFailures: number; sendErrors: number;
   appliedVersion: number | null; pendingVersions: number; billing: { state: 'not_connected' };
 }
+
+/** Rep portal price ladder (SALES-DECK-COPY slide 13). Data, not copy: every amount is DRAFT until `isFinal`, which only Christian sets. */
+export type PriceUnit = 'free' | 'one_time' | 'per_month' | 'per_kept_appointment';
+export interface PriceLevel {
+  level: 0 | 1 | 2 | 3; label: string; what: string; amountCents: number; unit: PriceUnit;
+  /** Top of a range (Level 2 is $299 to $499 a month), else null. */
+  rangeToCents: number | null;
+  /** Monthly floor that goes with a per-appointment fee (Level 3), else null. */
+  floorCents: number | null;
+  /** Reps may say this number out loud. Until Christian confirms, only Level 0 and Level 1 are. */
+  quotable: boolean;
+}
+export interface PriceConfig { levels: PriceLevel[]; isFinal: boolean; effectiveDate: string | null }
 
 // Demo only, NOT in 6a (connection cards and the draft approval queue come later). Labelled as demo on screen.
 export type ConnState = 'live' | 'simulated' | 'needs_approval';

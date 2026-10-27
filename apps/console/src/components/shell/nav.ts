@@ -1,12 +1,13 @@
 // One nav list; each entry says who sees it (DESIGN 5.3). The shell, bottom bar, palette and route guards all read this.
 // Pages are grouped into six sections (DECISIONS 2026-10-01, WORKSPACE-PLAN.md): the top bar shows sections, and a
 // section with more than one page shows its pages as tabs under the bar. URLs stay one page each (/w/:ws/:page).
-import { Home, CheckCheck, Inbox, CalendarDays, Users, BarChart3, Sparkles, Bot, Plug, Database, Settings as Cog, Send, MessageSquareReply, Megaphone, SlidersHorizontal, Handshake, BookOpenText, Briefcase, type LucideIcon } from 'lucide-react';
+import { Home, CheckCheck, Inbox, CalendarDays, Users, BarChart3, Sparkles, Bot, Plug, Database, Settings as Cog, Send, MessageSquareReply, Megaphone, SlidersHorizontal, Handshake, BookOpenText, Briefcase, Calculator, type LucideIcon } from 'lucide-react';
 import type { Role } from '@/lib/api/types';
 import type { Action } from '@/lib/session';
+import { salesAccess } from '@/features/sales/access';
 
-export type PageKey = 'home' | 'approvals' | 'inbox' | 'handoffs' | 'playbook' | 'meetings' | 'leads' | 'analytics' | 'studio' | 'agents' | 'data' | 'connections' | 'settings' | 'clients';
-export type SectionKey = 'home' | 'outbound' | 'inbound' | 'marketing' | 'results' | 'setup' | 'dev';
+export type PageKey = 'home' | 'approvals' | 'inbox' | 'handoffs' | 'playbook' | 'meetings' | 'leads' | 'analytics' | 'studio' | 'agents' | 'data' | 'connections' | 'settings' | 'clients' | 'quote';
+export type SectionKey = 'home' | 'outbound' | 'inbound' | 'marketing' | 'results' | 'setup' | 'dev' | 'sales';
 export interface NavItem { key: PageKey; section: SectionKey; label: string; hint: string; icon: LucideIcon; shortcut?: string; visible: (role: Role, can: (a: Action) => boolean) => boolean }
 export interface Section { key: SectionKey; label: string; hint: string; icon: LucideIcon }
 
@@ -16,6 +17,7 @@ export const SECTIONS: Section[] = [
   { key: 'inbound', label: 'Inbound', hint: 'Replies and the meetings they turn into', icon: MessageSquareReply },
   { key: 'marketing', label: 'Marketing', hint: 'Images, video and social content', icon: Megaphone },
   { key: 'results', label: 'Results', hint: 'What worked, by the numbers', icon: BarChart3 },
+  { key: 'sales', label: 'Sales portal', hint: 'Quote sheet and prices for reps', icon: Calculator },
   { key: 'dev', label: 'Dev portal', hint: 'Client records: sales, onboarding and go live', icon: Briefcase },
   { key: 'setup', label: 'Setup', hint: 'Agents, data, connections and rules', icon: SlidersHorizontal },
 ];
@@ -24,7 +26,7 @@ export const SECTIONS: Section[] = [
 const OPERATORS: Role[] = ['admin', 'operator', 'reviewer'];   // reviewers open the page to review versions only
 
 // Outside parties see only their own screens: a client viewer their results, a closer their handoffs (0015).
-const OUTSIDE: Role[] = ['client_viewer', 'closer'];
+const OUTSIDE: Role[] = ['client_viewer', 'closer', 'rep'];
 
 export const NAV: NavItem[] = [
   { key: 'home', section: 'home', label: 'Home', hint: 'Briefing, agents and what to decide', icon: Home, shortcut: 'g h', visible: (r) => !OUTSIDE.includes(r) },
@@ -38,6 +40,7 @@ export const NAV: NavItem[] = [
   { key: 'analytics', section: 'results', label: 'Analytics', hint: 'Replies, meetings and approval rates', icon: BarChart3, shortcut: 'g r', visible: (_, can) => can('reports_view') },
   { key: 'agents', section: 'setup', label: 'Agents', hint: 'Role, autonomy, data access, guardrails', icon: Bot, shortcut: 'g t', visible: (r) => !OUTSIDE.includes(r) },
   { key: 'data', section: 'setup', label: 'Data', hint: 'What agents read, and who reads what', icon: Database, shortcut: 'g d', visible: (r) => !OUTSIDE.includes(r) },
+  { key: 'quote', section: 'sales', label: 'Quote sheet', hint: 'The ladder and the exact sentence to say', icon: Calculator, shortcut: 'g q', visible: (r) => salesAccess(r).portal },
   { key: 'clients', section: 'dev', label: 'Clients', hint: 'Closed deals and onboarding checklists', icon: Briefcase, shortcut: 'g c', visible: (r) => OPERATORS.includes(r) },
   { key: 'connections', section: 'setup', label: 'Connections', hint: 'Mailboxes, calendar and tools', icon: Plug, visible: (r) => !OUTSIDE.includes(r) },
   { key: 'settings', section: 'setup', label: 'Settings', hint: 'Workspace, members, sending and safety', icon: Cog, visible: (r) => !OUTSIDE.includes(r) },
@@ -45,7 +48,7 @@ export const NAV: NavItem[] = [
 
 /** The client viewer calls Analytics "Results" (DESIGN 6.13). */
 export const labelFor = (item: NavItem, role: Role) => (role === 'client_viewer' && item.key === 'analytics' ? 'Results' : item.label);
-export const homeFor = (role: Role): PageKey => (role === 'client_viewer' ? 'analytics' : role === 'closer' ? 'handoffs' : 'home');
+export const homeFor = (role: Role): PageKey => (role === 'client_viewer' ? 'analytics' : role === 'closer' ? 'handoffs' : role === 'rep' ? 'quote' : 'home');
 export const sectionOf = (page: string | undefined) => NAV.find((n) => n.key === page)?.section;
 /** Phone bottom bar: these four sections, then More. */
 export const MOBILE_SECTIONS: SectionKey[] = ['home', 'outbound', 'inbound', 'marketing'];
