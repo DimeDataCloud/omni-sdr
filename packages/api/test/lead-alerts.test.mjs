@@ -192,3 +192,50 @@ test('alerts: POST /internal/relay is signed and answers counts only', async () 
     assert.deepEqual(Object.keys(ok.body).sort(), ['claimed', 'failed', 'noRecipient', 'sent']);
   } finally { await api.stop(); }
 });
+
+test('alerts: a transport that never answers times out; intake is not held, and the row waits for the next pass', async () => {
+  const hung = { send: () => new Promise(() => {}) };
+  const { api, post, relay } = await withHook({ alertTransport: hung, alertSendTimeoutMs: 150 });
+  try {
+    const t0 = Date.now();
+    assert.equal((await post(lead(1))).status, 202);
+    assert.equal((await post(lead(2))).status, 202, 'the second post completes while the first kick is stuck');
+    assert.ok(Date.now() - t0 < 3000, 'intake was not held by the hung send');
+    // The direct pass times out the same way and releases its claim.
+    assert.deepEqual(await relay(hung, { sendTimeoutMs: 100 }), { claimed: 2, sent: 0, failed: 2, noRecipient: 0 });
+    assert.equal((await api.q(`SELECT 1 FROM outbox WHERE topic = 'notify.lead' AND published_at IS NULL`)).length, 2);
+    const ok = fakeAlertTransport();
+    assert.equal((await relay(ok)).sent, 2, 'a healthy provider then delivers both');
+  } finally { await api.stop(); }
+});
+
+test('alerts: kicks are single flight: kicks fired while a pass runs start no further pass', async () => {
+  const slow = { async send() { await new Promise((r) => setTimeout(r, 300)); } };
+  const { api, post } = await withHook({ alertTransport: slow });
+  try {
+    await post(lead(1));
+    await new Promise((r) => setTimeout(r, 400)); // the intake kick has finished its pass
+    await post(lead(2));                          // starts a pass that now takes 300 ms in send
+    let claims = 0;
+    const query = api.db.query.bind(api.db);
+    api.db.query = (sql, ...rest) => { if (/alert_claim/.test(String(sql))) claims++; return query(sql, ...rest); };
+    api.kickAlerts(); api.kickAlerts(); api.kickAlerts();
+    await new Promise((r) => setTimeout(r, 800));
+    assert.ok(claims <= 1, `three kicks during one running pass started ${claims} more passes`);
+  } finally { await api.stop(); }
+});
+
+test('alerts: each admin gets their own message and the row is done only when every send returned', async () => {
+  const { api, post, relay } = await withHook();
+  try {
+    const second = (await api.q(`INSERT INTO users (idp_uid, email) VALUES ('dev:second', 'second@example.com') RETURNING id`))[0].id;
+    await api.q(`INSERT INTO memberships (org_id, user_id, role, workspace_ids) VALUES ($1, $2, 'admin', NULL)`, [api.demo.org, second]);
+    await post(lead());
+    const t = fakeAlertTransport({ failFor: (m) => m.to[0] === 'second@example.com' });
+    assert.deepEqual(await relay(t), { claimed: 1, sent: 0, failed: 1, noRecipient: 0 }, 'one failed recipient keeps the row');
+    assert.deepEqual(t.sent.map((m) => m.to), [['maya@example.com']], 'each message names one address only');
+    const all = fakeAlertTransport();
+    assert.equal((await relay(all)).sent, 1);
+    assert.deepEqual(all.sent.map((m) => m.to[0]).sort(), ['maya@example.com', 'second@example.com']);
+  } finally { await api.stop(); }
+});

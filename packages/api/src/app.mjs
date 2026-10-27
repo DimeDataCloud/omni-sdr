@@ -43,11 +43,15 @@ export function createApp({ pool, verifyToken, config = {}, model = null, now = 
   };
   // The alert relay (0030) after a lead is committed. Fired and forgotten: it must never fail or slow the intake request, so every
   // failure is swallowed (the one-minute cron is the safety net). No transport wired: nothing to do.
+  // Single flight: one pass at a time per process; a kick while one runs does nothing (that pass, or the cron, takes the new row).
+  let kicking = false;
   const kickAlerts = () => {
-    if (!cfg.alertTransport) return;
+    if (!cfg.alertTransport || kicking) return;
+    kicking = true;
     try {
-      withClient(pool, (c) => relayAlerts(c, { transport: cfg.alertTransport, consoleBase: cfg.appUrl })).catch(() => {});
-    } catch { /* never the caller's problem */ }
+      withClient(pool, (c) => relayAlerts(c, { transport: cfg.alertTransport, consoleBase: cfg.appUrl, sendTimeoutMs: cfg.alertSendTimeoutMs }))
+        .catch(() => {}).finally(() => { kicking = false; });
+    } catch { kicking = false; }
   };
   const routes = [];
   const add = (method) => (path, opts, handler) => {
@@ -242,7 +246,7 @@ export function createApp({ pool, verifyToken, config = {}, model = null, now = 
     }
   }
 
-  return { handle, routes: routes.map((x) => `${x.method} ${x.path}`), config: cfg };
+  return { handle, kickAlerts, routes: routes.map((x) => `${x.method} ${x.path}`), config: cfg };
 }
 
 // Unsubscribe and invite tokens are credentials; they never reach logs.

@@ -22,8 +22,9 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'alert_owner') THEN CREATE ROLE alert_owner NOLOGIN; END IF;
 END $$;
 
+-- Every kind an earlier migration allowed stays allowed (0008 sla_meeting, 0016 handoff_overdue); db/test/lead-alerts.test.mjs pins it.
 ALTER TABLE notifications DROP CONSTRAINT notifications_kind_check;
-ALTER TABLE notifications ADD CONSTRAINT notifications_kind_check CHECK (kind IN ('sla_meeting', 'new_lead'));
+ALTER TABLE notifications ADD CONSTRAINT notifications_kind_check CHECK (kind IN ('sla_meeting', 'handoff_overdue', 'new_lead'));
 
 -- What the definers read, through SELECT-only policies for alert_owner (they are not the table owner, so FORCE RLS applies).
 GRANT SELECT (id, org_id, topic, payload, published_at) ON outbox TO alert_owner;

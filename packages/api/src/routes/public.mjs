@@ -53,7 +53,7 @@ export function registerPublic(r) {
   // One relay pass for owner alerts (0030), HMAC-signed like the others. Called by the one-minute Cron Trigger (the safety net for
   // the intake kick). Answers counts only.
   r.post('/internal/relay', { auth: 'internal', body: 'raw' }, async (ctx) => relayAlerts(ctx.client,
-    { transport: ctx.config.alertTransport, consoleBase: ctx.config.appUrl }));
+    { transport: ctx.config.alertTransport, consoleBase: ctx.config.appUrl, sendTimeoutMs: ctx.config.alertSendTimeoutMs }));
 
   // Cloudflare Email Sending has no webhooks: a Queue consumer (edge/, a later card) forwards each queue event here,
   // HMAC-signed like /internal/inbound. Exactly the normalized shape of the event, nothing else is accepted. The DB
