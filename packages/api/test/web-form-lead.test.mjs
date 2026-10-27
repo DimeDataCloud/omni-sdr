@@ -117,3 +117,38 @@ test('adapter: a submission is verified only after the hook token was proved', a
   assert.equal(webFormAdapter.verify({}), false);
   assert.equal(webFormAdapter.source, 'web_form');
 });
+
+// ─── route-wiring P3s (S2L-2c) ─────────────────────────────────────────────────────────────────────────────────────
+
+test('an id that is not a string is refused, and nothing is written', async () => {
+  const { db, h } = await setup();
+  for (const bad of [{ a: 1 }, [1, 2], 42, true]) {
+    await assert.rejects(ingestFormLead(db, h, sub({ externalId: bad })), (e) => e.name === 'LeadError' && /externalId must be a string/.test(e.message));
+  }
+  assert.deepEqual([await count(db, 'inbound_messages'), await count(db, 'lead_events')], [0, 0]);
+});
+
+test('a client id shaped like a hashed or generated id is itself hashed, so it cannot claim or collide with a real one', async () => {
+  const { db, h } = await setup();
+  // A's own id is an address, so it is stored as its hash H.
+  await ingestFormLead(db, h, sub({ externalId: 'pat@example.test', email: 'a@example.test' }));
+  const H = (await rows(db, `SELECT external_id FROM lead_events`))[0].external_id;
+  assert.match(H, /^h:[0-9a-f]{32}$/);
+  // B claims H as its own id (and C a sub- id): each must be recorded as a NEW submission, not swallowed as A's duplicate.
+  assert.equal((await ingestFormLead(db, h, sub({ externalId: H, email: 'b@example.test' }))).outcome, 'recorded');
+  assert.equal((await ingestFormLead(db, h, sub({ externalId: 'sub-11111111-1111-4111-8111-111111111111', email: 'c@example.test' }))).outcome, 'recorded');
+  const ids = (await rows(db, `SELECT external_id FROM lead_events`)).map((r) => r.external_id);
+  assert.equal(new Set(ids).size, 3, 'three distinct ids');
+  assert.ok(ids.every((x) => /^h:[0-9a-f]{32}$/.test(x)), 'each stored id here is a hash');
+  assert.equal(ids.filter((x) => x === H).length, 1, 'only A holds H');
+  // A normal id is untouched and still dedupes.
+  assert.equal((await ingestFormLead(db, h, sub({ externalId: 'plain-id-1', email: 'd@example.test' }))).outcome, 'recorded');
+  assert.equal((await ingestFormLead(db, h, sub({ externalId: 'plain-id-1', email: 'd@example.test' }))).outcome, 'duplicate');
+});
+
+test('a caller-supplied hookVerified field changes nothing: the adapter is verified only by the proved hook', async () => {
+  const { db, h } = await setup();
+  assert.equal((await ingestFormLead(db, h, { ...sub({ externalId: 'hv-1' }), hookVerified: false })).outcome, 'recorded');
+  assert.equal((await ingestFormLead(db, h, { ...sub({ externalId: 'hv-2' }), hookVerified: 'no' })).outcome, 'recorded');
+  assert.equal(await count(db, 'lead_events'), 2);
+});
