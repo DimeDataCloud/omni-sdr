@@ -41,7 +41,7 @@ function ChecklistRow({ item: i, client: c, scope, editable }: { item: Checklist
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const people = usePeople(scope.orgId);
-  const send = async (patch: Parameters<typeof api.patchChecklistItem>[4], ok: string) => {
+  const send = async (patch: Parameters<typeof api.patchChecklistItem>[3], ok: string) => {
     setBusy(true);
     try { await api.patchChecklistItem(scope.orgId, c.id, i.key, patch); toast.success(ok); setMode(null); setText(''); } catch (e) { toast.error(errText(e)); } finally { setBusy(false); }
   };

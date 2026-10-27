@@ -44,7 +44,7 @@ const appliedOf = (c: ClientRow) => c.versions.filter((v) => v.status === 'appli
 const isOpen = (v: VersionRow) => v.status === 'in_review' || v.status === 'approved';
 const pendingOf = (c: ClientRow) => c.versions.filter(isOpen).length;
 const nextNumber = (c: ClientRow) => Math.max(0, ...c.versions.map((v) => v.version)) + 1;
-const publicVersion = ({ config: _config, ...v }: VersionRow): SetupVersion => v;
+const publicVersion = (v: VersionRow): SetupVersion => { const out: Partial<VersionRow> = { ...v }; delete out.config; return out as SetupVersion; };
 const isDone = (i: ChecklistItem) => i.state === 'done' || i.state === 'waived';
 
 function event(c: ClientRow, actor: { id: string | null; kind: 'user' | 'system' }, kind: string, subjectId: string | null, detail: ClientEvent['detail'], at = nowIso()) {
@@ -172,7 +172,7 @@ export function makeClientApi({ read, write, me, nf }: Helpers) {
       const d = c.versions.find((v) => v.status === 'draft');
       const next = { authorId: m.userId, parentVersion: base.parentVersion, diff, risk: topRisk(diff), config: structuredClone(config) };
       if (d) Object.assign(d, next);
-      else c.versions.push({ version: base.version, status: 'draft', reviewerId: null, note: '', createdAt: nowIso(), reviewedAt: null, appliedAt: null, checks: [], ...next });
+      else c.versions.push({ version: base.version, status: 'draft', reviewerId: null, note: '', reviewNote: null, createdAt: nowIso(), reviewedAt: null, appliedAt: null, checks: [], ...next });
       event(c, { id: m.userId, kind: 'user' }, 'setup.draft_saved', String(base.version), { risk: next.risk });
       return { version: base.version, parentVersion: base.parentVersion, config: structuredClone(config) };
     }),
@@ -195,7 +195,7 @@ export function makeClientApi({ read, write, me, nf }: Helpers) {
         if (v.authorId === m.userId) throw new ApiError(403, 'own_version', 'You wrote this version, so someone else has to review it');
         if (action === 'reject') {
           if (!reason?.trim()) throw bad('Say what to fix when sending back');
-          v.status = 'rejected';
+          v.status = 'rejected'; v.reviewNote = reason.trim().slice(0, 200);
         } else {
           staleCheck(c, v);
           v.status = 'approved';
@@ -208,16 +208,18 @@ export function makeClientApi({ read, write, me, nf }: Helpers) {
       } else if (action === 'apply') {
         if (v.status !== 'approved') throw conflict('Only an approved version can be applied');
         staleCheck(c, v);
+        const cur = appliedOf(c);
+        if (cur) cur.status = 'superseded';   // exactly one applied per client, in the same step
         v.status = 'applied'; v.appliedAt = nowIso();
         v.checks = demoChecks(v.config, c.connections);   // DEMO checks; 6a returns [] until post-checks exist
       } else {
         // Rollback is a new version restoring an earlier config. It goes through review and apply like any other, so two people always.
-        if (v.status !== 'applied') throw conflict('Only a version that was applied can be restored');
+        if (v.status !== 'applied' && v.status !== 'superseded') throw conflict('Only a version that was applied can be restored');
         const cur = appliedOf(c);
         if (!cur || cur.version === v.version) throw conflict('That version is already live');
         if (c.versions.some((x) => isOpen(x) || x.status === 'draft')) throw conflict('Finish the open version first');
         const diff = diffConfig(cur.config, v.config);
-        const nv: VersionRow = { version: nextNumber(c), status: 'in_review', authorId: m.userId, reviewerId: null, parentVersion: cur.version, note: `rollback to v${v.version}`,
+        const nv: VersionRow = { version: nextNumber(c), status: 'in_review', authorId: m.userId, reviewerId: null, parentVersion: cur.version, note: `rollback to v${v.version}`, reviewNote: null,
           risk: topRisk(diff), diff, createdAt: nowIso(), reviewedAt: null, appliedAt: null, checks: [], config: structuredClone(v.config) };
         c.versions.push(nv);
         event(c, actor, 'setup.rollback', String(nv.version), { restores: v.version });
@@ -306,10 +308,10 @@ export function seedClients(at: (daysAgo: number) => string, members: MemberRow[
   const checks = demoChecks(v3cfg, live.connections);
   const ver = (n: number, status: VersionStatus, note: string, d: number, prev: SetupConfig | null, config: SetupConfig, reviewed: boolean): VersionRow => {
     const diff = diffConfig(prev, config);
-    return { version: n, status, authorId: sam, reviewerId: reviewed ? riley : null, parentVersion: n === 1 ? null : n - 1, note, risk: topRisk(diff), diff, createdAt: at(d), reviewedAt: reviewed ? at(d) : null,
-      appliedAt: status === 'applied' ? at(d) : null, checks: status === 'applied' ? checks : [], config };
+    return { version: n, status, authorId: sam, reviewerId: reviewed ? riley : null, parentVersion: n === 1 ? null : n - 1, note, reviewNote: reviewed ? 'Looks right.' : null, risk: topRisk(diff), diff, createdAt: at(d), reviewedAt: reviewed ? at(d) : null,
+      appliedAt: status === 'applied' || status === 'superseded' ? at(d) : null, checks: status === 'applied' || status === 'superseded' ? checks : [], config };
   };
-  live.versions = [ver(1, 'applied', 'First setup', 36, null, v1cfg, true), ver(2, 'applied', 'Switch to a direct tone', 34, v1cfg, v2cfg, true), ver(3, 'applied', 'Saturday hours and a warmer tone', 31, v2cfg, v3cfg, true),
+  live.versions = [ver(1, 'superseded', 'First setup', 36, null, v1cfg, true), ver(2, 'superseded', 'Switch to a direct tone', 34, v1cfg, v2cfg, true), ver(3, 'applied', 'Saturday hours and a warmer tone', 31, v2cfg, v3cfg, true),
     ver(4, 'in_review', 'Stay open until 8pm', 1, v3cfg, { ...v3cfg, hours: 'Mon to Sat, 7am to 8pm' }, false)];
   live.versions[3].parentVersion = 3;
   const tr = (from: ClientStatus, to: ClientStatus, reason: string, d: number) => event(live, { id: sam, kind: 'user' }, 'client.transition', null, { from, to, reason }, at(d));

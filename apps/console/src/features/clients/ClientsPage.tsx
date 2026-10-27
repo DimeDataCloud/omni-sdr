@@ -28,7 +28,7 @@ export default function ClientsPage() {
   const [openId, setOpenId] = useState<string | null>(null);
   const people = usePeople(scope.orgId);
   const q = useQuery(() => api.clients(scope.orgId), [scope.orgId], { key: `clients:${scope.orgId}`, enabled: operator });
-  const all = q.data ?? [];
+  const all = useMemo(() => q.data ?? [], [q.data]);
   const rows = useMemo(() => all.filter((c) => (view === 'sales' ? c.status === 'closed' : view === 'onboarding' ? IN_SETUP.includes(c.status) : c.appliedVersion !== null || c.pendingVersions > 0))
     .sort((a, b) => (view === 'changes' ? b.pendingVersions - a.pendingVersions : 0)), [all, view]);
   const counts = { changes: all.reduce((n, c) => n + c.pendingVersions, 0), sales: all.filter((c) => c.status === 'closed').length, onboarding: all.filter((c) => IN_SETUP.includes(c.status)).length };

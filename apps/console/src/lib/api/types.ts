@@ -272,9 +272,9 @@ export interface SetupConfig {
   followUpDays: number[]; tone: 'warm' | 'direct' | 'formal'; replyNotes: string;
 }
 export interface SetupChange { area: string; path: keyof SetupConfig & string; before: string; after: string; risk: Risk }
-export type VersionStatus = 'draft' | 'in_review' | 'approved' | 'applied' | 'rejected' | 'rolled_back';
+export type VersionStatus = 'draft' | 'in_review' | 'approved' | 'applied' | 'superseded' | 'rejected' | 'rolled_back';   // exactly one applied per client; applying a newer one supersedes it
 export interface SetupVersion {
-  version: number; status: VersionStatus; authorId: Id; reviewerId: Id | null; parentVersion: number | null; note: string; risk: Risk; diff: SetupChange[];
+  version: number; status: VersionStatus; authorId: Id; reviewerId: Id | null; parentVersion: number | null; note: string; reviewNote: string | null; risk: Risk; diff: SetupChange[];
   createdAt: Iso; reviewedAt: Iso | null; appliedAt: Iso | null;
   checks: { label: string; ok: boolean; why: string | null }[];   // 6a returns []; the demo fills labelled demo checks
 }

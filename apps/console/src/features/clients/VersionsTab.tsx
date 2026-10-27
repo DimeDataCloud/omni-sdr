@@ -12,7 +12,7 @@ import { errText, usePeople, type Tone } from './clientBits';
 
 const STATUS: Record<VersionStatus, { label: string; tone: Tone }> = {
   draft: { label: 'Draft', tone: 'neutral' }, in_review: { label: 'In review', tone: 'info' }, approved: { label: 'Approved', tone: 'info' }, applied: { label: 'Live', tone: 'success' },
-  rejected: { label: 'Sent back', tone: 'warning' }, rolled_back: { label: 'Rolled back', tone: 'neutral' },
+  superseded: { label: 'Replaced', tone: 'neutral' }, rejected: { label: 'Sent back', tone: 'warning' }, rolled_back: { label: 'Rolled back', tone: 'neutral' },
 };
 const RISK: Record<Risk, { label: string; tone: Tone }> = { low: { label: 'Low risk', tone: 'neutral' }, medium: { label: 'Medium risk', tone: 'warning' }, high: { label: 'High risk', tone: 'danger' } };
 const LABELS: Record<string, string> = {
@@ -26,16 +26,13 @@ export function VersionsTab({ client: c, scope }: { client: ClientRecord; scope:
   const operator = role === 'admin' || role === 'operator';
   const people = usePeople(scope.orgId);
   const q = useQuery(() => api.setupVersions(scope.orgId, c.id), [scope.orgId, c.id], { key: `setup-versions:${c.id}` });
-  // Reasons for sent-back versions come from the history, which reviewers do not load.
-  const sentBack = useQuery(() => api.clientEvents(scope.orgId, c.id, { kind: 'setup.reject' }), [scope.orgId, c.id], { key: `client-rejects:${c.id}`, enabled: operator });
-  const reasonFor = (n: number) => sentBack.data?.items.find((e) => e.subjectId === String(n))?.detail.reason;
   const [busy, setBusy] = useState<string | null>(null);
   const run = async (key: string, fn: () => Promise<unknown>, ok: string) => {
     setBusy(key);
     try { await fn(); toast.success(ok); } catch (e) { toast.error(errText(e)); } finally { setBusy(null); }
   };
   const versions = q.data ?? [];
-  const live = versions.filter((v) => v.status === 'applied').sort((a, b) => (b.appliedAt ?? '').localeCompare(a.appliedAt ?? ''))[0] ?? null;
+  const live = versions.find((v) => v.status === 'applied') ?? null;
   const open = versions.find((v) => v.status === 'in_review' || v.status === 'approved') ?? null;
   const draft = versions.find((v) => v.status === 'draft') ?? null;
   if (q.loading && !q.data) return <SkeletonList rows={3} />;
@@ -51,31 +48,30 @@ export function VersionsTab({ client: c, scope }: { client: ClientRecord; scope:
       {open && <Banner tone="info" title={`v${open.version} is ${open.status === 'in_review' ? 'waiting for review' : 'approved and ready to roll out'}`}>One version moves at a time. Finish it before sending another.</Banner>}
       {!versions.length ? <p className="text-sm text-muted">No versions yet. Save changes in the other tabs, then send them for review here.</p> : (
         <ul className="space-y-2">{versions.map((v) => (
-          <VersionRow key={v.version} v={v} client={c} scope={scope} operator={operator} myId={me?.user.id ?? null} isLive={live?.version === v.version} canRestore={operator && !open && !draft && live !== null}
-            people={people} reason={reasonFor(v.version)} busy={busy} run={run} />))}</ul>
+          <VersionRow key={v.version} v={v} client={c} scope={scope} operator={operator} myId={me?.user.id ?? null} canRestore={operator && !open && !draft && live !== null}
+            people={people} busy={busy} run={run} />))}</ul>
       )}
     </div>
   );
 }
 
-function VersionRow({ v, client: c, scope, operator, myId, isLive, canRestore, people, reason, busy, run }: {
-  v: SetupVersion; client: ClientRecord; scope: Scope; operator: boolean; myId: string | null; isLive: boolean; canRestore: boolean; people: (id: string | null) => string;
-  reason: unknown; busy: string | null; run: (key: string, fn: () => Promise<unknown>, ok: string) => Promise<void>;
+function VersionRow({ v, client: c, scope, operator, myId, canRestore, people, busy, run }: {
+  v: SetupVersion; client: ClientRecord; scope: Scope; operator: boolean; myId: string | null; canRestore: boolean; people: (id: string | null) => string;
+  busy: string | null; run: (key: string, fn: () => Promise<unknown>, ok: string) => Promise<void>;
 }) {
   const [text, setText] = useState('');
   const mine = v.authorId === myId;
   const key = (s: string) => `${v.version}${s}`;
   const act = (a: 'submit' | 'approve' | 'reject' | 'apply' | 'rollback', ok: string, why?: string) => run(key(a), () => api.setupAction(scope.orgId, c.id, v.version, a, why), ok);
-  const replaced = v.status === 'applied' && !isLive;
   return (
     <li className="rounded-md border border-control p-3 text-sm">
       <div className="flex flex-wrap items-center gap-2">
         <p className="min-w-0 flex-1 font-medium">v{v.version}{v.note && `, ${v.note}`}</p>
         <Badge tone={RISK[v.risk].tone}>{RISK[v.risk].label}</Badge>
-        <Badge tone={replaced ? 'neutral' : STATUS[v.status].tone}>{replaced ? 'Replaced' : STATUS[v.status].label}</Badge>
+        <Badge tone={STATUS[v.status].tone}>{STATUS[v.status].label}</Badge>
       </div>
       <p className="text-muted">{people(v.authorId)}, {new Date(v.createdAt).toLocaleDateString('en-US')}{v.reviewerId && ` · reviewed by ${people(v.reviewerId)}`}</p>
-      {v.status === 'rejected' && typeof reason === 'string' && <p className="mt-1">Sent back: {reason}</p>}
+      {v.reviewNote && <p className="mt-1">{v.status === 'rejected' ? 'Sent back' : 'Reviewer note'}: {v.reviewNote}</p>}
       <details className="mt-2">
         <summary className="cursor-pointer text-muted">What changed ({v.diff.length})</summary>
         {!v.diff.length ? <p className="mt-1 text-muted">No field differences.</p> : (
@@ -117,7 +113,7 @@ function VersionRow({ v, client: c, scope, operator, myId, isLive, canRestore, p
       {v.status === 'approved' && operator && (
         <div className="mt-3"><Button size="sm" variant="primary" loading={busy === key('apply')} onClick={() => void act('apply', `v${v.version} is live`)}>Roll out now</Button></div>
       )}
-      {replaced && canRestore && (
+      {v.status === 'superseded' && canRestore && (
         <div className="mt-3"><Button size="sm" loading={busy === key('rollback')} onClick={() => void act('rollback', `Proposed a restore of v${v.version}. A second person has to approve it.`)}>Restore this version</Button></div>
       )}
     </li>
