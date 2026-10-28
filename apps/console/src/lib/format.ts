@@ -108,6 +108,7 @@ export const ROLE: Record<Role, { label: string; hint: string }> = {
   admin: { label: 'Admin', hint: 'billing, members, settings' }, operator: { label: 'Operator', hint: 'campaigns, leads, approvals' },
   reviewer: { label: 'Reviewer', hint: 'approves drafts, reads the inbox' }, client_viewer: { label: 'Client', hint: 'sees results' },
   closer: { label: 'Closer', hint: 'takes the conversations handed to them' },
+  rep: { label: 'Sales rep', hint: 'sells OmniSDR: quote sheet and own deals' },
 };
 export const AUTO_ADJUST: Record<AutoAdjustSource, string> = {
   booked_meetings: 'Booked meetings', positive_replies: 'Positive replies', objections: 'Objections', unsubscribes_bounces: 'Unsubscribes and bounces',

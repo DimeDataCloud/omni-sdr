@@ -1,9 +1,10 @@
 // Dev portal demo store, shaped like Backend's 6a (omnisdr-pivot/DESIGN-backend-6a-api-shape.md): same resources, same 403/409 codes, so the swap is a base-URL change.
 // Fake data only. Role checks live here because packages/db has no client-record actions yet; in 6a the server checks each action and the database refuses again.
+import { looksLikeEmail } from './email';
 import { ApiError } from '../client';
 import type {
   ChecklistGroup, ChecklistItem, ChecklistState, ClientEvent, ClientHealth, ClientRecord, ClientStatus, ClientSummary, ConnChannel, DealLevel, DemoConnection, DemoReplyDraft,
-  SetupConfig, SetupDraft, SetupVersion, VersionStatus,
+  SetupConfig, SetupDraft, SetupVersion, VersionStatus, SalesDeal, CloseSaleInput,
 } from '../types';
 import type { MemberRow, World } from './seed';
 import { EMPTY_CONFIG, PATHS, demoChecks, diffConfig, topRisk } from './setup-versions';
@@ -19,7 +20,6 @@ export interface ClientRow {
   health: { replyMedianMinutes: number | null; replyWindowMinutes: number; openDrafts: number; openHandoffs: number; alertFailures: number; sendErrors: number };
 }
 
-const REPS: Record<string, string> = { 'rep-jordan': 'Jordan Reyes' };   // demo only: real data resolves reps through users
 
 // ── checklist ──
 const TEMPLATE: [string, ChecklistGroup, string, boolean, 'manual' | 'auto'][] = [
@@ -52,6 +52,10 @@ const isDone = (i: ChecklistItem) => i.state === 'done' || i.state === 'waived';
 function event(c: ClientRow, actor: { id: string | null; kind: 'user' | 'system' }, kind: string, subjectId: string | null, detail: ClientEvent['detail'], at = nowIso()) {
   c.events.push({ id: `${c.id}-e${c.events.length + 1}`, at, actorUserId: actor.id, actorKind: actor.kind, kind, subjectId, detail });
 }
+
+const LEVEL_NAME: Record<number, DealLevel> = { 1: 'L1 pilot', 2: 'L2 recurring', 3: 'L3 outcome' };
+const salesRead = (m: MemberRow) => { if (m.role !== 'admin' && m.role !== 'operator' && m.role !== 'rep') throw forbidden('sales_read'); };
+const dealOf = (c: ClientRow): SalesDeal => ({ id: c.id, business: c.name, niche: c.profile.niche, level: c.deal.level, priceCents: c.deal.priceCents, priceIsDraft: c.deal.priceIsDraft, status: c.status, closedAt: c.deal.closedAt, repId: c.deal.repId });
 
 function summary(c: ClientRow, m: MemberRow): ClientSummary {
   const req = c.checklist.filter((i) => i.required);
@@ -236,6 +240,35 @@ export function makeClientApi({ read, write, me, nf }: Helpers) {
       return w.clients.filter((c) => c.status === 'live' || c.status === 'paused').map((c) => ({
         clientId: c.id, ...c.health, appliedVersion: appliedOf(c)?.version ?? null, pendingVersions: pendingOf(c), billing: { state: 'not_connected' as const } }));
     }),
+    /** The rep portal's list. Admin and operator see every deal; a rep sees only deals they closed. */
+    salesDeals: (orgId: string) => read((w): SalesDeal[] => {
+      org(w, orgId); const m = me(w); salesRead(m);
+      return w.clients.filter((c) => m.role !== 'rep' || c.deal.repId === m.userId).map(dealOf).sort((a, b) => b.closedAt.localeCompare(a.closedAt));
+    }),
+    /** The one write a rep makes into the client record. The rep and the price come from the server, never from the form. */
+    closeSale: (orgId: string, input: CloseSaleInput) => write((w): SalesDeal => {
+      org(w, orgId); const m = me(w); salesRead(m);
+      const business = input.business.trim(), niche = input.niche.trim(), contactName = input.contactName.trim(), contactEmail = input.contactEmail.trim(), notes = input.notes.trim();
+      if (!business || business.length > 100) throw bad('Business name is required, up to 100 characters');
+      if (!niche || niche.length > 60) throw bad('Niche is required, up to 60 characters');
+      if (!contactName || contactName.length > 100) throw bad('Contact name is required, up to 100 characters');
+      if (!looksLikeEmail(contactEmail)) throw bad('Contact email looks wrong');
+      if (notes.length > 500) throw bad('Notes are limited to 500 characters');
+      const step = w.priceConfig.levels.find((l) => LEVEL_NAME[l.level] === input.level);
+      if (!step || step.level === 0) throw bad('Pick Level 1, 2 or 3');
+      if (m.role === 'rep' && !step.quotable) throw forbidden('close_unquotable_level');
+      if (w.clients.some((c) => c.name.toLowerCase() === business.toLowerCase() && c.status !== 'ended')) throw conflict('That business already has a client record');
+      const at = nowIso();
+      const c: ClientRow = {
+        id: 'cl-' + business.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30) + '-' + (w.clients.length + 1), name: business, status: 'closed', statusChangedAt: at, ownerUserId: null,
+        deal: { repId: m.userId, level: input.level, priceCents: step.amountCents, priceIsDraft: !w.priceConfig.isFinal, closedAt: at }, workspaceId: null,
+        profile: { niche, contactName, contactEmail, notes }, checklist: [], versions: [], events: [], connections: [], replyDrafts: [],
+        health: { replyMedianMinutes: null, replyWindowMinutes: 30, openDrafts: 0, openHandoffs: 0, alertFailures: 0, sendErrors: 0 },
+      };
+      event(c, { id: m.userId, kind: 'user' }, 'deal.closed', null, { level: input.level, price_is_draft: c.deal.priceIsDraft }, at);
+      w.clients.push(c);
+      return dealOf(c);
+    }),
     clientEvents: (orgId: string, id: string, q?: { kind?: string; after?: string }) => read((w) => {
       const { c } = open(w, orgId, id, (x) => opsOnly(x, 'client_read'));
       const all = [...c.events].reverse().filter((e) => !q?.kind || e.kind === q.kind);
@@ -272,7 +305,7 @@ export function makeClientApi({ read, write, me, nf }: Helpers) {
       return c.replyDrafts.map((x) => ({ ...x }));
     }),
     /** Demo only: names for ids. Real data resolves users through a users endpoint. */
-    demoPeople: (orgId: string) => read((w) => { org(w, orgId); readAny(me(w)); return { ...REPS, ...Object.fromEntries(w.members.map((x) => [x.userId, x.name])) } as Record<string, string>; }),
+    demoPeople: (orgId: string) => read((w) => { org(w, orgId); readAny(me(w)); return { ...Object.fromEntries(w.members.map((x) => [x.userId, x.name])) } as Record<string, string>; }),
   };
 }
 
@@ -280,6 +313,7 @@ export function makeClientApi({ read, write, me, nf }: Helpers) {
 export function seedClients(at: (daysAgo: number) => string, members: MemberRow[]): ClientRow[] {
   const maya = members[0].userId, sam = members[1].userId, riley = members[2].userId;
   void maya;
+  const jordan = members.find((x) => x.role === 'rep')!.userId;
   const conns = (state: 'live' | 'simulated' | 'needs_approval', tested: string | null): DemoConnection[] => [
     { channel: 'mailbox', state, lastTest: tested, note: state === 'live' ? 'Gmail connected' : state === 'simulated' ? 'Simulated until the client connects' : 'Waiting on the client to approve access' },
     { channel: 'calendar', state: state === 'live' ? 'live' : 'simulated', lastTest: null, note: state === 'live' ? 'Calendar connected' : 'Simulated until the client connects' },
@@ -294,7 +328,7 @@ export function seedClients(at: (daysAgo: number) => string, members: MemberRow[
   const mk = (id: string, name: string, niche: string, status: ClientStatus, contactName: string, contactEmail: string, level: DealLevel, priceCents: number, days: number, notes: string): ClientRow => {
     const c: ClientRow = {
       id, name, status, statusChangedAt: at(days), ownerUserId: status === 'closed' ? null : sam,
-      deal: { repId: 'rep-jordan', level, priceCents, priceIsDraft: true, closedAt: at(days) }, workspaceId: 'ws-' + id.slice(3),
+      deal: { repId: jordan, level, priceCents, priceIsDraft: true, closedAt: at(days) }, workspaceId: 'ws-' + id.slice(3),
       profile: { niche, contactName, contactEmail, notes }, checklist: [], versions: [], events: [],
       connections: conns('needs_approval', null), replyDrafts: drafts(id, name, niche, 'pending'),
       health: { replyMedianMinutes: null, replyWindowMinutes: 30, openDrafts: 0, openHandoffs: 0, alertFailures: 0, sendErrors: 0 },

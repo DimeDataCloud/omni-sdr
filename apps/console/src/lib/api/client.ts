@@ -4,7 +4,7 @@ import type {
   Me, Settings, Members, ApprovalsList, ApprovalCard, InboxItem, Meeting, Agent, ChatMessage, Routine, Capacity,
   Analytics, Credits, Connector, Contact, ContactDetail, Role, ModelTier, DraftStatus, Id, About, AskMode, Pipeline,
   Autonomy, AgentStats, Dataset, HandoffItem, HandoffCard, HandoffDraft, HandoffReason, HandoffOutcome,
-  Playbook, PlaybookReply, PlaybookCategory, ReplyDraft, ClientRecord, ClientSummary, ClientHealth, ClientStatus, ChecklistItem, ChecklistState, ClientEvent, SetupConfig, SetupVersion, SetupDraft, DemoConnection, DemoReplyDraft, ConnChannel,
+  Playbook, PlaybookReply, PlaybookCategory, ReplyDraft, ClientRecord, ClientSummary, ClientHealth, PriceConfig, SalesDeal, CloseSaleInput, Prospect, ProspectPatch, SalesLog, SalesLogInput, ClientStatus, ChecklistItem, ChecklistState, ClientEvent, SetupConfig, SetupVersion, SetupDraft, DemoConnection, DemoReplyDraft, ConnChannel,
   Asset, AssetKind, AssetStatus, Aspect, Edits, GenMode, Ingredient, MotionKey, Product, Project, Scene, SequenceClip, StudioCaps,
 } from './types';
 
@@ -91,6 +91,15 @@ export interface Client {
   setupAction(orgId: Id, id: Id, version: number, action: 'submit' | 'approve' | 'reject' | 'apply' | 'rollback', reason?: string): Promise<SetupVersion>;
   clientEvents(orgId: Id, id: Id, q?: { kind?: string; after?: string }): Promise<{ items: ClientEvent[]; next: string | null }>;
   clientHealth(orgId: Id): Promise<ClientHealth[]>;   // 6d rollup, not 6a: GET clients/health
+  // Rep portal (DESIGN-frontend-4-sales-portal): proposals for Backend, not in 6a.
+  priceConfig(orgId: Id): Promise<PriceConfig>;
+  putPriceConfig(orgId: Id, config: PriceConfig): Promise<PriceConfig>;
+  salesDeals(orgId: Id): Promise<SalesDeal[]>;   // a rep gets only their own; the server must enforce that, not the UI
+  closeSale(orgId: Id, input: CloseSaleInput): Promise<SalesDeal>;
+  prospects(orgId: Id): Promise<Prospect[]>;   // own only for a rep, enforced server-side
+  patchProspect(orgId: Id, id: Id, patch: ProspectPatch): Promise<Prospect>;
+  salesLog(orgId: Id, date: string): Promise<SalesLog>;   // the caller's own day; zeros if nothing logged
+  putSalesLog(orgId: Id, input: SalesLogInput): Promise<SalesLog>;   // creates the client record with status closed
   // Demo only, not in 6a.
   demoConnections(orgId: Id, id: Id): Promise<DemoConnection[]>;
   demoTestConnection(orgId: Id, id: Id, channel: ConnChannel): Promise<DemoConnection[]>;

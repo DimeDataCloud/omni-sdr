@@ -8,6 +8,7 @@ import type { Dataset, ApprovalCard, Agent, ChatMessage, Contact, InboxItem, Mee
 import { addBusinessMinutes, SLA_MINUTES } from '@rules/reply-rules.mjs';
 import { PLAYBOOK_CATEGORIES, unknownFields, render, firstName, AUTONOMY_WINDOW, AUTONOMY_RATE } from '@rules/playbook.mjs';
 import { makeClientApi } from './clients';
+import { makeSalesApi } from './sales';
 import { load, save, gate, newId, personaEmail, convertOnMeeting, recordReply } from './store';
 import { think } from './brain';
 import { studioDemo, mediaCounts } from './studio';
@@ -839,6 +840,7 @@ export const demoClient: Client = {
   }),
 
   ...makeClientApi({ read, write, me, nf }),
+  ...makeSalesApi({ read, write, me, nf }),
 
   agentStats: (s, id, days = 30) => read((w) => {
     tenant(w, s, 'reports_view');
@@ -881,4 +883,4 @@ export const demoClient: Client = {
   ...studioDemo({ tenant, read, write, audit }),
 };
 
-export const ROLE_LABEL: Record<Role, string> = { admin: 'Admin', operator: 'Operator', reviewer: 'Reviewer', client_viewer: 'Client', closer: 'Closer' };
+export const ROLE_LABEL: Record<Role, string> = { admin: 'Admin', operator: 'Operator', reviewer: 'Reviewer', client_viewer: 'Client', closer: 'Closer', rep: 'Sales rep' };
