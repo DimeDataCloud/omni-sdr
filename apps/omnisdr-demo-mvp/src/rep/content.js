@@ -7,9 +7,10 @@ export const PRICES = {
   effectiveDate: null,
   // SALES-DECK-COPY slide 13 and CREDIT-ALLOWANCE-MODEL (2026-10-27). A rep quotes and closes Level 1 only until Christian
   // marks prices final; Levels 2 to 4 carry no closable amount here, so only an admin can record them.
+  // Level 1: amountCents is the floor. Christian 2026-10-27: the rep may set any pilot price at or above it (see PILOT).
   levels: [
     { level: 0, label: 'Free proof', what: 'Missed-call audit and response-time test, then a 20-minute results call', amountCents: 0, unit: 'free', quotable: true },
-    { level: 1, label: 'Pilot', what: 'One system, 30 days, results report at day 14. No setup fee', amountCents: 49900, unit: 'one_time', quotable: true },
+    { level: 1, label: 'Pilot', what: 'One system, 30 days, results report at day 14. No setup fee. $499 is the minimum; a bigger pilot carries a bigger allowance', amountCents: 49900, unit: 'one_time', quotable: true },
     { level: 2, label: 'Usage plan', what: 'Lite, Standard or Plus, chosen from the pilot numbers. Internal: $299, $499 or $899 a month. Do not quote', amountCents: null, unit: 'per_month', quotable: false },
     { level: 3, label: 'Outcome pricing', what: 'Remodelers first. A fee per kept appointment plus a monthly floor. Do not quote', amountCents: null, unit: 'per_kept_appointment', quotable: false },
     { level: 4, label: 'Agency and custom', what: "Multi-location or larger jobs, $999 a month and up, ACH only. Christian quotes it; send him the owner's needs", amountCents: null, unit: 'per_month', quotable: false },
@@ -23,11 +24,21 @@ export const PAY = {
   note: "You earn 50% of the pay pool every month the client stays: the price minus payment fees and the client's credit allowance (their usage budget at our cost). Sales tax is added to the client's bill, so it never comes out of your pay. All figures are draft until prices are final.",
   table: [
     { plan: 'Pilot or Standard ($499)', allowance: '$175', each: 'about $151' },
+    { plan: 'Bigger pilot (you set it, above $499)', allowance: '35% of the price', each: 'half of what is left after fees and allowance' },
     { plan: 'Lite ($299)', allowance: '$105', each: 'about $90' },
     { plan: 'Plus ($899)', allowance: '$330', each: 'about $264' },
     { plan: 'Agency ($999 a month and up)', allowance: 'Built per quote', each: '$150 for the first location, $100 for each added one' },
   ],
 };
+// Pilot pricing (Christian 2026-10-27): $499 floor, the rep sets any price above it, and the credit allowance is 35% of
+// price rounded to $5 (the confirmed rule; $175 at $499). Fees use the card gross-up from CREDIT-ALLOWANCE-MODEL (about 4.54%).
+// maxCents only catches typos; a bigger job is an agency or custom quote for Christian.
+export const PILOT = { minCents: 49900, maxCents: 500000, allowanceRate: 0.35, feeRate: 0.0454 };
+export function pilotSplit(priceCents) {
+  const allowanceCents = Math.round((priceCents * PILOT.allowanceRate) / 500) * 500;
+  const eachCents = Math.round((priceCents - priceCents * PILOT.feeRate - allowanceCents) / 2);
+  return { allowanceCents, eachCents };
+}
 export const TAX_NOTE = "Prices are before sales tax. Tax is added to the client's bill.";
 
 // Rep guide "Pricing" chapter (v5). Who may quote what.
@@ -35,7 +46,7 @@ export const PRICING_GUIDE = {
   lede: 'Every price is a draft until Christian sets the final price at go-live. Confirm with Christian before quoting any number.',
   quote: [
     { level: 0, rule: 'Yes. Offer it on every first touch.' },
-    { level: 1, rule: 'Yes, as "$499 plus tax (draft, I will confirm with Christian)".' },
+    { level: 1, rule: 'Yes. $499 plus tax is the minimum. For a busier business, quote more; the allowance grows with the price (35% of it). Never go below $499.' },
     { level: 2, rule: 'Not yet. Say: "After the pilot we look at your numbers and set a monthly plan that fits your trade."' },
     { level: 3, rule: 'Not yet. Do not say a number.' },
     { level: 4, rule: "No. Send the owner's needs to Christian; he quotes it." },
@@ -49,7 +60,7 @@ export const PATH = [
   { title: 'First touch: book the demo', body: 'Short, about their business, one question. The only goal is a time on the calendar for the demo. Never a pitch in the first message.' },
   { title: 'Audit and demo prep', body: 'Research the business from public sources: website, Google reviews and Maps, ads, socials. Note every number you can find: hours, lead sources, review count, slow-reply complaints. Run the free check: call their line once and submit their form once at a busy time, and time the reply. Set up the demo with their trade and services.' },
   { title: 'Demo and free proof', body: 'Show their own numbers first: what a caller heard and how long a lead waited. Then run the demo so they watch a lead get answered. Ask what a lost job is worth and do the math with their number, labelled as an estimate.' },
-  { title: 'Same call: discovery, proposal, sign prep', body: 'Stay on the call. Find who decides and where leads come from. Offer the Level 1 pilot, $499 plus tax, 30 days. If yes, confirm the details you need to send the agreement and invoice.' },
+  { title: 'Same call: discovery, proposal, sign prep', body: 'Stay on the call. Find who decides and where leads come from. Offer the Level 1 pilot, 30 days, from $499 plus tax, sized to their lead volume. If yes, confirm the details you need to send the agreement and invoice.' },
   { title: 'Scope and invoice', body: 'Write down what the pilot covers for this business, then send the pilot agreement and the invoice. Payment comes first. Consent language is agreed before anything goes live.' },
   { title: 'Onboard', body: 'Fill the onboarding tab with the owner, then a 45-minute setup call, every channel tested, and week one in approval mode.' },
 ];
@@ -111,7 +122,7 @@ export const SWAPS = [
   { instead: 'We guarantee more bookings', say: 'We measure booked jobs and show you at day 14.' },
   { instead: 'Studies show fast replies win far more leads', say: 'We will time your own leads.' },
   { instead: 'We do Instagram and texting', say: 'Those channels need approval from the platform or carrier. They are coming, and they are added when cleared. Here is what is ready now.' },
-  { instead: 'I can do it for less', say: 'The draft pilot price is $499. I do not set prices. Let me confirm the final price with Christian.' },
+  { instead: 'I can do it for less', say: 'The pilot starts at $499 plus tax. That is the floor. What changes the price is how much it handles.' },
   { instead: 'Try it free for a week', say: 'The free proof is the free part. The pilot is the proof you pay for.' },
   { instead: 'We are cheaper than X', say: 'We price against one job, not against software.' },
   { instead: 'It is fully compliant', say: 'It is built around consent and opt-out, and you approve every message in week one.' },

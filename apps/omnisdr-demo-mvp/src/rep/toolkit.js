@@ -9,7 +9,7 @@ export const TEMPLATES = [
   { id: 'dm1', kind: 'text', label: 'First touch, social DM', body: "Hi {name}, {rep} here with OmniSDR. Saw the {business} page. When someone messages you while you're teaching or on a job, who answers? We time that for free if you want the number." },
   { id: 'book1', kind: 'email', label: 'Demo booked, confirmation', body: "Hi {name}, thanks for the time. We're set for [day and time]. Before then I'll run the free check on {business}: one call to your main line and one test through your web form, so I can show you your own numbers. Nothing else will be contacted. Talk soon, {rep}" },
   { id: 'follow1', kind: 'text', label: 'Follow-up, no reply', body: "Hi {name}, {rep} again. Still happy to time your form and phone for {business}, free, and send you the numbers. Want me to?" },
-  { id: 'recap1', kind: 'email', label: 'After the demo, recap', body: "Hi {name},\n\nThanks for the call. Your numbers from the free check:\n- Phone: [what happened]\n- Web form: first reply after [time]\n\nYou said a typical job is worth [amount]. By your numbers, that is what one missed lead costs.\n\nThe next step is the 30-day pilot, $499 plus tax, measured in booked jobs with a report at day 14. I'll send the agreement and invoice once you say go.\n\n{rep}\nOmniSDR" },
+  { id: 'recap1', kind: 'email', label: 'After the demo, recap', body: "Hi {name},\n\nThanks for the call. Your numbers from the free check:\n- Phone: [what happened]\n- Web form: first reply after [time]\n\nYou said a typical job is worth [amount]. By your numbers, that is what one missed lead costs.\n\nThe next step is the 30-day pilot, [price] plus tax, measured in booked jobs with a report at day 14. I'll send the agreement and invoice once you say go.\n\n{rep}\nOmniSDR" },
 ];
 
 export const QUALIFY = {
@@ -69,7 +69,7 @@ export const RESULTS_CALL = [
   'Ask what a lost job is worth to them, and how many leads slip in a month.',
   'Do the math out loud: job value times leads missed. Say whose numbers they are: theirs.',
   'Run the demo so they watch a lead get answered and handed off.',
-  'Offer the Level 1 pilot: 30 days, $499 plus tax, measured in booked jobs, report at day 14.',
+  'Offer the Level 1 pilot: 30 days, from $499 plus tax, sized to their lead volume, measured in booked jobs, report at day 14.',
 ];
 export const RESULTS_SAY = 'The proof is free so the price conversation starts from your numbers, not mine.';
 export const RESULTS_DONT = 'Do not say the audit predicts bookings. It shows the gap, nothing more. If every channel is fast, say so honestly; the filter fails and we move on.';

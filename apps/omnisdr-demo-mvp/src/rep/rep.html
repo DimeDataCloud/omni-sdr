@@ -234,8 +234,8 @@ const screens = {
       <div data-p="5" hidden class="stack"><p class="sub">Starter wording with this account filled in. Adjust it, copy it, send it from your own phone or email, then log it.</p>${tpls({ business: a.business, name: ((d.contacts.find((c) => c.is_primary) || d.contacts[0] || {}).name || '').split(' ')[0] || 'there', rep: (ME.name || '').split(' ')[0], account: true })}</div>
       <form data-p="2" hidden class="card" id="of"><p class="sub">Fill this in with the owner on the call after the yes. The developer starts from it.</p><div class="fields">${K.onboarding.map((f) => `<div class="full"><label for="o_${f.key}">${esc(f.label)}</label><textarea id="o_${f.key}" name="${f.key}" rows="2" maxlength="1000">${esc(a.onboarding[f.key])}</textarea></div>`).join('')}</div><button class="btn">Save onboarding</button></form>
       <div data-p="3" hidden class="card stack">${d.deals.length ? `<p>Closed: ${d.deals.map((x) => `Level ${x.level}, ${money(x.price_cents)}${x.price_is_draft ? ' (draft price)' : ''}, ${when(x.closed_at)}`).join('; ')}</p>` : ''}
-        ${['signed', 'onboarding', 'live'].includes(a.stage) ? '<p class="muted">This account is signed. Next is the Onboarding tab.</p>' : `<form id="df" class="stack"><label for="lv">What they bought</label><select id="lv" name="level">${levels.map((l) => `<option value="${l.level}">${esc(l.label)}: ${l.amountCents != null ? money(l.amountCents) : 'priced by Christian'}</option>`).join('')}</select>
-          <div id="pbox" hidden><label for="pc">Agreed price in dollars (admin)</label><input id="pc" name="price" inputmode="decimal"></div>
+        ${['signed', 'onboarding', 'live'].includes(a.stage) ? '<p class="muted">This account is signed. Next is the Onboarding tab.</p>' : `<form id="df" class="stack"><label for="lv">What they bought</label><select id="lv" name="level">${levels.map((l) => `<option value="${l.level}">${esc(l.label)}: ${l.level === 1 ? 'from ' + money(l.amountCents) : l.amountCents != null ? money(l.amountCents) : 'priced by Christian'}</option>`).join('')}</select>
+          <div id="pbox" hidden><label for="pc" id="plbl">Agreed price in dollars (admin)</label><input id="pc" name="price" inputmode="decimal"><p class="note" id="psplit"></p></div>
           <label for="dn">Notes</label><input id="dn" name="notes" maxlength="1000"><p class="note">${K.prices.isFinal ? '' : 'Prices are DRAFT until Christian sets them. '}${esc(K.taxNote)} No discounts.</p><button class="btn">Close the sale</button></form>`}</div>`;
     const tabs = $$('.tab'); tabs.forEach((t) => (t.onclick = () => { tabs.forEach((x) => x.setAttribute('aria-selected', String(x === t))); $$('[data-p]').forEach((p) => (p.hidden = p.dataset.p !== t.dataset.t)); }));
     const save = (body, msg) => api('/accounts/' + a.id, { method: 'PATCH', body }).then(() => { toast(msg); route(); }, fail);
@@ -253,7 +253,15 @@ const screens = {
     $('#nt').onsubmit = (e) => { e.preventDefault(); api(`/accounts/${a.id}/notes`, { method: 'POST', body: form(e.target) }).then(() => { toast('Added'); route(); }, fail); };
     const df = $('#df');
     if (df) {
-      const sync = () => { const l = levels.find((x) => x.level === Number($('#lv').value)); $('#pbox').hidden = !(l.amountCents == null && ME.role === 'admin'); };
+      const sync = () => { const l = levels.find((x) => x.level === Number($('#lv').value)), pilot = l.level === 1;
+        $('#pbox').hidden = !(pilot || (l.amountCents == null && ME.role === 'admin'));
+        $('#plbl').textContent = pilot ? 'Pilot price in dollars, $499 minimum' : 'Agreed price in dollars (admin)';
+        if (pilot && !$('#pc').value) $('#pc').value = String(K.pilot.minCents / 100); split(); };
+      const split = () => { const c = Math.round(parseFloat($('#pc').value) * 100), pilot = Number($('#lv').value) === 1;
+        if (!pilot || !(c >= K.pilot.minCents)) { $('#psplit').textContent = pilot ? 'The pilot starts at $499.' : ''; return; }
+        const al = Math.round((c * K.pilot.allowanceRate) / 500) * 500, each = Math.round((c - c * K.pilot.feeRate - al) / 2);
+        $('#psplit').textContent = `Allowance ${money(al)}. You and the developer, about ${money(Math.round(each / 100) * 100)} each (draft).`; };
+      $('#pc').oninput = split;
       $('#lv').onchange = sync; sync();
       df.onsubmit = (e) => { e.preventDefault(); const f = form(df), cents = f.price ? Math.round(parseFloat(f.price) * 100) : undefined;
         api('/deals', { method: 'POST', body: { accountId: a.id, level: Number(f.level), notes: f.notes, priceCents: cents } }).then(() => { toast('Sale closed. Fill in onboarding next.'); route(); }, fail); };
@@ -274,7 +282,7 @@ const screens = {
 
   async deals() {
     const { deals } = await api('/deals'), admin = ME.role === 'admin';
-    const pay = (x) => x.level === 1 ? (K.pay.table[0] || {}).each || '' : 'Set when Christian prices it';
+    const pay = (x) => x.level === 1 && x.eachCents != null ? 'about ' + money(Math.round(x.eachCents / 100) * 100) : 'Set when Christian prices it';
     view.innerHTML = `<h1>My deals</h1><p class="sub">Every sale you closed, newest first. Pay figures are draft until prices are final.</p>
       <div class="stats"><div class="card stat"><b>${deals.length}</b><span>Closed</span></div><div class="card stat"><b>${deals.filter((x) => x.stage === 'live').length}</b><span>Live</span></div><div class="card stat"><b>${money(deals.reduce((n, x) => n + x.price_cents, 0))}</b><span>Sold, before tax</span></div></div>
       <section class="card"><div class="tbl"><table><thead><tr><th>Business</th><th>Level</th><th>Price</th><th>Closed</th><th>Stage</th><th>Your pay, each (draft)</th>${admin ? '<th>Rep</th>' : ''}</tr></thead><tbody>${deals.length ? deals.map((x) => `<tr><td><a class="lnk" href="#account/${esc(x.account_id)}">${esc(x.business)}</a></td><td>${x.level}</td><td>${money(x.price_cents)}</td><td>${when(x.closed_at)}</td><td>${STAGE_LABEL[x.stage] || ''}</td><td>${esc(pay(x))}</td>${admin ? `<td>${esc(x.rep_email)}</td>` : ''}</tr>`).join('') : `<tr><td colspan="${admin ? 7 : 6}" class="muted">No closed deals yet. The pilot is the first yes.</td></tr>`}</tbody></table></div>
@@ -304,7 +312,7 @@ const screens = {
       <section class="card stack"><h2>The path to a yes</h2><ol class="path">${K.path.map((s) => `<li><b>${esc(s.title)}</b><span class="muted">${esc(s.body)}</span></li>`).join('')}</ol><p class="note">${esc(K.pathGate)}</p></section>
       <div class="grid two">
       <section class="card stack"><h2>Pricing guide</h2><p class="note">${esc(G.lede)}</p>
-        <div class="tbl"><table><thead><tr><th>Level</th><th>What</th><th>Price (draft)</th><th>Can you quote it?</th></tr></thead><tbody>${K.prices.levels.map((l) => `<tr><td>${l.level}. ${esc(l.label)}</td><td>${esc(l.what)}</td><td>${l.amountCents === 0 ? 'Free' : l.amountCents != null ? money(l.amountCents) + (l.unit === 'one_time' ? ' plus tax' : '') : l.level === 4 ? '$999 a month and up' : 'Not quoted yet'}</td><td>${esc(quoteRule(l.level))}</td></tr>`).join('')}</tbody></table></div>
+        <div class="tbl"><table><thead><tr><th>Level</th><th>What</th><th>Price (draft)</th><th>Can you quote it?</th></tr></thead><tbody>${K.prices.levels.map((l) => `<tr><td>${l.level}. ${esc(l.label)}</td><td>${esc(l.what)}</td><td>${l.amountCents === 0 ? 'Free' : l.amountCents != null ? (l.level === 1 ? 'From ' : '') + money(l.amountCents) + (l.unit === 'one_time' ? ' plus tax' : '') : l.level === 4 ? '$999 a month and up' : 'Not quoted yet'}</td><td>${esc(quoteRule(l.level))}</td></tr>`).join('')}</tbody></table></div>
         <p><b>The rule.</b> ${esc(G.rule)}</p><p><b>Say this.</b> ${esc(G.say)}</p><p class="muted">${esc(K.taxNote)}</p></section>
       <section class="card stack"><h2>Opener</h2><p class="script">${esc(K.opener)}</p><h2>Objections</h2><p class="muted">${esc(K.method)}</p><div>${K.objections.map((o) => `<details><summary>${esc(o.heard)}</summary><p>${esc(o.answer)}</p></details>`).join('')}</div></section>
       <section class="card stack"><h2>Never say</h2><ul>${K.never.map((n) => `<li>${esc(n)}</li>`).join('')}</ul><div class="tbl"><table><thead><tr><th>Instead of</th><th>Say</th></tr></thead><tbody>${K.swaps.map((s) => `<tr><td>${esc(s.instead)}</td><td>${esc(s.say)}</td></tr>`).join('')}</tbody></table></div></section>

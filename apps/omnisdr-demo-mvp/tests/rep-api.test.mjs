@@ -110,14 +110,25 @@ test('reps cannot set onboarding or live; those are admin moves', async () => {
   assert.equal((await call(DB, A, '/rep/api/accounts/' + a.id, { method: 'PATCH', body: { stage: 'proposed' } })).status, 200);
 });
 
-test('deals: a rep closes Level 1 at the list price only, never sets a price, and cannot close Level 2', async () => {
-  const DB = setup(), a = await newAccount(DB, A), b = await newAccount(DB, A, { business: 'Second' });
-  const r = await j(await call(DB, A, '/rep/api/deals', { method: 'POST', body: { accountId: a.id, level: 1, priceCents: 100 } }));
+test('deals: the pilot has a $499 floor the rep can price above, never below; Level 2 stays closed to reps', async () => {
+  // Christian 2026-10-27: "$499 minimum pilot, allowance higher tiers". Replaces the earlier list-price-only rule.
+  const DB = setup(), a = await newAccount(DB, A), b = await newAccount(DB, A, { business: 'Second' }), c = await newAccount(DB, A, { business: 'Third' });
+  assert.equal((await call(DB, A, '/rep/api/deals', { method: 'POST', body: { accountId: a.id, level: 1, priceCents: 100 } })).status, 400); // under the floor
+  assert.equal((await call(DB, A, '/rep/api/deals', { method: 'POST', body: { accountId: a.id, level: 1, priceCents: 49899 } })).status, 400);
+  assert.equal((await call(DB, A, '/rep/api/deals', { method: 'POST', body: { accountId: a.id, level: 1, priceCents: 79900.5 } })).status, 400);
+  assert.equal((await call(DB, A, '/rep/api/deals', { method: 'POST', body: { accountId: a.id, level: 1, priceCents: 500001 } })).status, 400); // typo guard
+  assert.equal(DB.db.prepare('SELECT stage FROM accounts WHERE id = ?').get(a.id).stage, 'new'); // refused closes leave nothing behind
+  const r = await j(await call(DB, A, '/rep/api/deals', { method: 'POST', body: { accountId: a.id, level: 1 } }));
   assert.equal(r.status, 200);
   const d = DB.db.prepare('SELECT price_cents, price_is_draft FROM deals WHERE id = ?').get(r.body.id);
-  assert.equal(d.price_cents, 49900); assert.equal(d.price_is_draft, 1); // the rep's 100 was ignored
+  assert.equal(d.price_cents, 49900); assert.equal(d.price_is_draft, 1); // no price given: the floor
   assert.equal(DB.db.prepare('SELECT stage FROM accounts WHERE id = ?').get(a.id).stage, 'signed');
   assert.equal((await call(DB, A, '/rep/api/deals', { method: 'POST', body: { accountId: a.id, level: 1 } })).status, 409);
+  assert.equal((await j(await call(DB, A, '/rep/api/deals', { method: 'POST', body: { accountId: c.id, level: 1, priceCents: 89900 } }))).status, 200);
+  const list = (await j(await call(DB, A, '/rep/api/deals'))).body.deals;
+  const floor = list.find((x) => x.price_cents === 49900), big = list.find((x) => x.price_cents === 89900);
+  assert.equal(floor.allowanceCents, 17500); assert.equal(Math.round(floor.eachCents / 100), 151); // matches the confirmed $499 table
+  assert.equal(big.allowanceCents, 31500); assert.ok(big.eachCents > floor.eachCents);
   assert.equal((await call(DB, A, '/rep/api/deals', { method: 'POST', body: { accountId: b.id, level: 2, priceCents: 50000 } })).status, 403);
   assert.equal((await call(DB, A, '/rep/api/deals', { method: 'POST', body: { accountId: b.id, level: 0 } })).status, 400);
 });
