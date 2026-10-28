@@ -218,7 +218,8 @@ const screens = {
   },
 
   // Accounts and Leads in one list. Reps see their own rows; admins see everyone, or one rep through the Viewing switch,
-  // which the Rep filter drives. Admin-only controls are not rendered for reps, and the server refuses them anyway.
+  // which the Rep filter drives. Reps can bulk-set the category on their own rows; assign, split, archive and Import for
+  // are admin only. Controls a role cannot use are not rendered, and the server refuses them anyway.
   async accounts() {
     const admin = ME.role === 'admin', picked = new Set();
     let rows = [], facets = { niche: [], state: [], owner: [], pool: 0, total: 0 };
@@ -235,12 +236,12 @@ const screens = {
         ${admin ? '<div><p class="muted">Rep</p><div class="chips" id="fOwner"></div></div>' : ''}
         <div class="row"><button class="btn" id="add" type="button">New account</button><label class="btn ghost" for="csv">Import CSV</label><input id="csv" type="file" accept=".csv,text/csv" class="sr"><button class="btn ghost" id="exp" type="button">Export CSV</button>${admin ? `<label for="impOwner" class="muted">Import for</label><select id="impOwner" class="grow">${repOptions(ME.email)}</select>` : ''}</div></section>
       <section class="card"><p class="muted" id="count" aria-live="polite"></p>
-        <div class="tbl"><table><thead><tr>${admin ? '<th class="sel"><input type="checkbox" id="selAll" aria-label="Select all shown"></th>' : ''}<th>Business</th><th>Stage</th><th class="hide-sm">Next</th><th class="hide-sm">Phone</th>${admin ? '<th>Rep</th>' : ''}</tr></thead><tbody id="rows"></tbody></table></div></section>
-      ${admin ? `<section class="card stack bulk" id="bulk" hidden><div class="row"><b id="selN"></b><button class="btn ghost sm" id="selNone" type="button">Clear</button></div>
-        <div class="row"><label for="assignTo" class="muted">Assign to</label><select id="assignTo" class="grow"><option value="">Pick a rep</option>${repOptions('')}</select><button class="btn" id="doAssign" type="button">Assign</button></div>
-        <details><summary>Split evenly between reps</summary><div class="splitlist" id="split">${REPS.filter((r) => r.active).map((r) => `<label class="row"><input type="checkbox" value="${esc(r.email)}"> ${esc(r.name)}</label>`).join('')}</div><button class="btn ghost" id="splitGo" type="button">Split</button></details>
-        <div class="row"><label for="cat" class="muted">Set category</label><input id="cat" class="grow" list="cats" maxlength="80" placeholder="Remodeler, Generator dealer"><datalist id="cats"></datalist><button class="btn ghost" id="catGo" type="button">Set</button><button class="btn ghost" id="arch" type="button">Archive</button></div>
-        <div class="row" id="archAsk" hidden><span id="archQ"></span><button class="btn danger" id="archGo" type="button">Archive</button><button class="btn ghost" id="archNo" type="button">Cancel</button></div></section>` : ''}
+        <div class="tbl"><table><thead><tr><th class="sel"><input type="checkbox" id="selAll" aria-label="Select all shown"></th><th>Business</th><th>Stage</th><th class="hide-sm">Next</th><th class="hide-sm">Phone</th>${admin ? '<th>Rep</th>' : ''}</tr></thead><tbody id="rows"></tbody></table></div></section>
+      <section class="card stack bulk" id="bulk" hidden><div class="row"><b id="selN"></b><button class="btn ghost sm" id="selNone" type="button">Clear</button></div>
+        ${admin ? `<div class="row"><label for="assignTo" class="muted">Assign to</label><select id="assignTo" class="grow"><option value="">Pick a rep</option>${repOptions('')}</select><button class="btn" id="doAssign" type="button">Assign</button></div>
+        <details><summary>Split evenly between reps</summary><div class="splitlist" id="split">${REPS.filter((r) => r.active).map((r) => `<label class="row"><input type="checkbox" value="${esc(r.email)}"> ${esc(r.name)}</label>`).join('')}</div><button class="btn ghost" id="splitGo" type="button">Split</button></details>` : ''}
+        <div class="row"><label for="cat" class="muted">Set category</label><input id="cat" class="grow" list="cats" maxlength="80" placeholder="Remodeler, Generator dealer"><datalist id="cats"></datalist><button class="btn ghost" id="catGo" type="button">Set</button>${admin ? '<button class="btn ghost" id="arch" type="button">Archive</button>' : ''}</div>
+        ${admin ? '<div class="row" id="archAsk" hidden><span id="archQ"></span><button class="btn danger" id="archGo" type="button">Archive</button><button class="btn ghost" id="archNo" type="button">Cancel</button></div>' : ''}</section>
       <dialog id="dlg"><form id="nf" class="stack"><h2>New account</h2><div class="fields">
         <div class="full"><label for="nb">Business name</label><input id="nb" name="business" required maxlength="160"></div>
         <div><label for="nn">Category</label><input id="nn" name="niche" maxlength="80" placeholder="Remodeler, HVAC, med spa"></div>
@@ -252,12 +253,8 @@ const screens = {
         <div class="full"><label for="ng">Why we are calling (the signal)</label><input id="ng" name="signal" maxlength="300" placeholder="Form went unanswered 6 hours on a Tuesday"></div>
       </div><div class="row"><button class="btn">Save</button><button class="btn ghost" type="button" id="cx">Cancel</button></div></form></dialog>`;
     const chip = (key, text, n, on) => `<button class="chip" type="button" data-k="${esc(key)}" aria-pressed="${on}">${esc(text)} <b>${n}</b></button>`;
-    const tally = (list, k) => Object.entries(list.reduce((m, a) => ((m[a[k] || ''] = (m[a[k] || ''] || 0) + 1), m), {})).map(([key, n]) => ({ key, n })).sort((x, y) => y.n - x.n || x.key.localeCompare(y.key));
-    // Reps have no facet endpoint (needs API), so their counts come from their own rows, which the list caps at 500.
-    const loadFacets = async () => {
-      if (admin) { facets = await api('/leads/facets', { noView: true }); return; }
-      const all = (await api('/accounts')).accounts; facets = { niche: tally(all, 'niche'), state: tally(all, 'state'), owner: [], pool: 0, total: all.length };
-    };
+    // The server counts: every lead for an admin, the rep's own rows for a rep.
+    const loadFacets = async () => { facets = await api('/leads/facets', { noView: true }); };
     // A filter restored from the session but missing from the counts still shows as pressed, so it is never invisible.
     const drawFacets = () => {
       const x = facets, ni = x.niche.map((r) => ({ k: r.key || '(none)', t: r.key || 'No category', n: r.n }));
@@ -265,18 +262,17 @@ const screens = {
       $('#fNiche').innerHTML = chip('', 'All', x.total, F.ni === '') + ni.map((r) => chip(r.k, r.t, r.n, F.ni === r.k)).join('');
       const sa = $('#sa'); sa.innerHTML = '<option value="">All states</option>' + x.state.filter((r) => r.key).map((r) => `<option value="${esc(r.key)}">${esc(r.key)} (${r.n})</option>`).join('');
       if (F.sa && ![...sa.options].some((o) => o.value === F.sa)) sa.add(new Option(F.sa, F.sa)); sa.value = F.sa;
+      $('#cats').innerHTML = x.niche.filter((r) => r.key).map((r) => `<option value="${esc(r.key)}">`).join('');
       if (!admin) return;
       $('#tiles').innerHTML = [['Leads', x.total], ['Waiting to hand out', x.pool], ['Categories', x.niche.filter((r) => r.key).length], ['Reps with leads', x.owner.filter((r) => (REPS.find((p) => p.email === r.key) || {}).role !== 'admin').length]]
         .map(([k, v]) => `<div class="card stat"><b>${v}</b><span>${k}</span></div>`).join('');
       const own = x.owner.map((r) => ({ k: r.key, n: r.n })); if (VIEW && !own.some((r) => r.k === VIEW)) own.push({ k: VIEW, n: 0 });
       $('#fOwner').innerHTML = chip('', 'All', x.total, !VIEW && !F.pool) + chip('pool', 'Waiting to hand out', x.pool, F.pool) + own.map((r) => chip(r.k, repName(r.k), r.n, VIEW === r.k)).join('');
-      $('#cats').innerHTML = x.niche.filter((r) => r.key).map((r) => `<option value="${esc(r.key)}">`).join('');
     };
     const sync = () => {
-      if (!admin) return;
       $$('[data-sel]').forEach((c) => (c.checked = picked.has(c.dataset.sel)));
       $('#selAll').checked = rows.length > 0 && rows.every((a) => picked.has(a.id));
-      $('#bulk').hidden = !picked.size; $('#archAsk').hidden = true; $('#selN').textContent = picked.size + ' selected';
+      $('#bulk').hidden = !picked.size; if (admin) $('#archAsk').hidden = true; $('#selN').textContent = picked.size + ' selected';
     };
     // Category and place under the name; on a phone the Phone column folds in here instead of wrapping over three lines.
     const line = (a) => { const t = esc([a.niche, [a.city, a.state].filter(Boolean).join(', ')].filter(Boolean).join(' · ')); return t + (a.phone ? `<span class="show-sm">${t ? ' · ' : ''}${esc(a.phone)}</span>` : ''); };
@@ -286,7 +282,7 @@ const screens = {
       rows = (await api('/accounts?' + p)).accounts;
       for (const id of [...picked]) if (!rows.some((a) => a.id === id)) picked.delete(id); // bulk actions only ever touch rows on screen
       $('#count').textContent = rows.length === 500 ? '500 shown. Narrow the filter to see the rest.' : rows.length + ' shown';
-      $('#rows').innerHTML = rows.length ? rows.map((a) => `<tr data-id="${esc(a.id)}">${admin ? `<td class="sel"><input type="checkbox" data-sel="${esc(a.id)}" aria-label="Select ${esc(a.business)}"></td>` : ''}<td><a class="lnk" href="#account/${esc(a.id)}">${esc(a.business)}</a><br><small class="muted">${line(a)}</small></td><td>${STAGE_LABEL[a.stage] || ''}</td><td class="hide-sm">${esc(a.next_step)}<br><small class="muted">${when(a.next_action_at)}</small></td><td class="hide-sm">${esc(a.phone)}</td>${admin ? `<td>${esc(repName(a.owner_email))}</td>` : ''}</tr>`).join('') : `<tr><td colspan="${admin ? 6 : 4}" class="muted">No accounts match.</td></tr>`;
+      $('#rows').innerHTML = rows.length ? rows.map((a) => `<tr data-id="${esc(a.id)}"><td class="sel"><input type="checkbox" data-sel="${esc(a.id)}" aria-label="Select ${esc(a.business)}"></td><td><a class="lnk" href="#account/${esc(a.id)}">${esc(a.business)}</a><br><small class="muted">${line(a)}</small></td><td>${STAGE_LABEL[a.stage] || ''}</td><td class="hide-sm">${esc(a.next_step)}<br><small class="muted">${when(a.next_action_at)}</small></td><td class="hide-sm">${esc(a.phone)}</td>${admin ? `<td>${esc(repName(a.owner_email))}</td>` : ''}</tr>`).join('') : `<tr><td colspan="${admin ? 6 : 5}" class="muted">No accounts match.</td></tr>`;
       sync();
     };
     const refresh = () => Promise.all([loadFacets().then(drawFacets), load()]);
@@ -298,11 +294,13 @@ const screens = {
     $('#fNiche').onclick = (e) => { const b = e.target.closest('[data-k]'); if (!b) return; F.ni = b.dataset.k; keep(); drawFacets(); load().catch(fail); };
     $('#rows').onclick = (e) => { const c = e.target.closest('[data-sel]'); if (c) { c.checked ? picked.add(c.dataset.sel) : picked.delete(c.dataset.sel); sync(); return; }
       const tr = e.target.closest('tr[data-id]'); if (tr && !e.target.closest('a')) location.hash = 'account/' + tr.dataset.id; };
+    const ids = () => [...picked], done = async (msg) => { toast(msg); picked.clear(); await refresh(); };
+    $('#selAll').onchange = (e) => { rows.forEach((a) => (e.target.checked ? picked.add(a.id) : picked.delete(a.id))); sync(); };
+    $('#selNone').onclick = () => { picked.clear(); sync(); };
+    $('#catGo').onclick = async () => { const v = $('#cat').value.trim();
+      try { const r = await api('/bulk', { method: 'POST', body: { accountIds: ids(), niche: v } }); await done(v ? `${r.updated} set to ${v}` : `Category cleared on ${r.updated}`); } catch (er) { fail(er); } };
     if (admin) {
-      const ids = () => [...picked], done = async (msg) => { toast(msg); picked.clear(); await refresh(); };
       $('#fOwner').onclick = (e) => { const b = e.target.closest('[data-k]'); if (!b) return; F.pool = b.dataset.k === 'pool'; setView(F.pool ? '' : b.dataset.k); keep(); drawFacets(); load().catch(fail); };
-      $('#selAll').onchange = (e) => { rows.forEach((a) => (e.target.checked ? picked.add(a.id) : picked.delete(a.id))); sync(); };
-      $('#selNone').onclick = () => { picked.clear(); sync(); };
       $('#doAssign').onclick = async () => { const to = $('#assignTo').value; if (!to) return toast('Pick a rep');
         try { const r = await api('/assign', { method: 'POST', body: { accountIds: ids(), owner: to } }); await done(`Assigned ${r.assigned} to ${repName(to)}`); } catch (er) { fail(er); } };
       // Round-robin in the order shown, so each rep gets a fair mix of the list.
@@ -312,8 +310,6 @@ const screens = {
         order.forEach((id, i) => share[to[i % to.length]].push(id));
         try { for (const [e, list] of Object.entries(share)) if (list.length) await api('/assign', { method: 'POST', body: { accountIds: list, owner: e } });
           await done(`Split ${order.length} between ${to.map(repName).join(', ')}`); } catch (er) { fail(er); refresh().catch(fail); } };
-      $('#catGo').onclick = async () => { const v = $('#cat').value.trim();
-        try { const r = await api('/bulk', { method: 'POST', body: { accountIds: ids(), niche: v } }); await done(v ? `${r.updated} set to ${v}` : `Category cleared on ${r.updated}`); } catch (er) { fail(er); } };
       $('#arch').onclick = () => { const n = picked.size; $('#archQ').textContent = `Archive ${n} ${n === 1 ? 'account' : 'accounts'}? ${n === 1 ? 'It' : 'They'} will no longer show in any list.`; $('#archAsk').hidden = false; $('#archGo').focus(); };
       $('#archNo').onclick = () => { $('#archAsk').hidden = true; $('#arch').focus(); };
       $('#archGo').onclick = async () => { try { const r = await api('/bulk', { method: 'POST', body: { accountIds: ids(), archived: true } }); await done(`Archived ${r.updated}`); } catch (er) { fail(er); } };
