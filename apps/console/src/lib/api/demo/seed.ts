@@ -1,7 +1,7 @@
 // The demo world: the SPEC §1 agency story ("Northside Growth"), the same people as packages/api/src/seed-demo.mjs,
 // plus 30 days of history so Analytics has real rows behind every number. Everyone and every company is fictional;
 // every address is on a reserved .example domain.
-import type { Role, ClientRecord, ClientStatus, ChecklistGroup, ChecklistState, ChecklistItem } from '../types';
+import type { Role, ClientSetup, ClientRecord, ClientStatus, ChecklistGroup, ChecklistState, ChecklistItem } from '../types';
 
 export interface Row { id: string }
 export interface WorkspaceRow extends Row { name: string; timezone: string; trustLevel: 1 | 2 | 3; clientApprovalsEnabled: boolean; autoAdjustEnabled: boolean;
@@ -52,7 +52,7 @@ export interface World {
   playbook: PlaybookRow[]; questions: QuestionRow[]; replyDrafts: ReplyDraftRow[]; clients: ClientRecord[];
 }
 
-export const WORLD_VERSION = 11;
+export const WORLD_VERSION = 12;
 
 // Deterministic randomness so the demo looks the same on every device.
 function rng(seed: number) {
@@ -310,11 +310,32 @@ const CHECKLIST_TEMPLATE: [ChecklistGroup, string, string][] = [
 ];
 export const checklistFor = (clientId: string): ChecklistItem[] => CHECKLIST_TEMPLATE.map(([group, label, owner], i) => (
   { id: `${clientId}-c${i + 1}`, group, label, owner, state: 'todo' as ChecklistState, blockedBy: null, evidence: null }));
+function setupFor(id: string, name: string, niche: string, status: ClientStatus): ClientSetup {
+  const live = status === 'live';
+  return {
+    profile: { hours: live ? 'Mon to Sat, 7am to 7pm' : '', timezone: 'America/Chicago', services: live ? 'Generator sales, installs and service plans' : '', ownerContacts: live ? 'owner@' + id.slice(3) + '.example' : '', consentBasis: live ? 'Existing customers and web inquiries' : '' },
+    handoff: { booking: live ? 'Book on the owner calendar' : '', payment: live ? 'Send the payment link' : '', resolution: live ? 'Owner calls back same day' : '', unknown: 'Ask a human', closers: live ? 'Tom Alvarez' : '', quietHours: live ? '9pm to 7am' : '' },
+    customizations: { tone: 'warm', followUpDays: [2, 5, 9], replyNotes: live ? 'Always mention the storm-season install slots.' : '' },
+    connections: [
+      { channel: 'mailbox', state: live ? 'live' : 'needs_approval', lastTest: live ? new Date().toISOString() : null, note: live ? 'Gmail connected' : 'Waiting on the client to approve access' },
+      { channel: 'calendar', state: live ? 'live' : 'simulated', lastTest: null, note: live ? 'Calendar connected' : 'Simulated until the client connects' },
+      { channel: 'phone', state: live ? 'live' : 'needs_approval', lastTest: null, note: live ? 'Number active' : 'Texting shows as pending (carrier review)' },
+      { channel: 'voice', state: 'simulated', lastTest: null, note: 'Demo voice line' },
+      { channel: 'crm', state: 'simulated', lastTest: null, note: 'No CRM yet' },
+    ],
+    drafts: [
+      { id: id + '-d1', subject: 'Thanks for reaching out to ' + name, body: 'Hi {first_name}, thanks for contacting ' + name + '. We can help with ' + niche.toLowerCase() + ' questions. What day works for a quick call?', state: live ? 'approved' : 'pending' },
+      { id: id + '-d2', subject: 'Following up', body: 'Hi {first_name}, checking in on your question. Happy to help whenever you are ready.', state: live ? 'approved' : 'pending' },
+    ],
+    changesSinceApproved: 0,
+  };
+}
 function seedClients(now: Date): ClientRecord[] {
   const at = (d: number) => iso(ago(now, 60 * 24 * d));
   const mk = (id: string, name: string, niche: string, status: ClientStatus, contactName: string, contactEmail: string, level: ClientRecord['deal']['level'], price: number, days: number, notes: string): ClientRecord => ({
     id, name, niche, status, contactName, contactEmail, setupVersion: status === 'live' ? 3 : null,
     deal: { rep: 'Jordan Reyes', level, price, priceDraft: true, closedAt: at(days), notes }, checklist: status === 'closed' ? [] : checklistFor(id),
+    setup: status === 'closed' ? null : setupFor(id, name, niche, status),
     audit: [{ id: `${id}-a1`, at: at(days), actor: 'Jordan Reyes', action: 'closed', detail: `Sold ${level} at $${price} (draft price)` }],
   });
   const live = mk('cl-ridgeline', 'Ridgeline Generators', 'Generator dealer', 'live', 'Tom Alvarez', 'tom@ridgeline.example', 'L2 recurring', 499, 40, 'Storm season rush, wants after-hours coverage.');

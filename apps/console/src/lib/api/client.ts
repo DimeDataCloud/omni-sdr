@@ -4,7 +4,7 @@ import type {
   Me, Settings, Members, ApprovalsList, ApprovalCard, InboxItem, Meeting, Agent, ChatMessage, Routine, Capacity,
   Analytics, Credits, Connector, Contact, ContactDetail, Role, ModelTier, DraftStatus, Id, About, AskMode, Pipeline,
   Autonomy, AgentStats, Dataset, HandoffItem, HandoffCard, HandoffDraft, HandoffReason, HandoffOutcome,
-  Playbook, PlaybookReply, PlaybookCategory, ReplyDraft, ClientRecord, ChecklistState,
+  Playbook, PlaybookReply, PlaybookCategory, ReplyDraft, ClientRecord, ChecklistState, ClientSetupPatch, ConnChannel,
   Asset, AssetKind, AssetStatus, Aspect, Edits, GenMode, Ingredient, MotionKey, Product, Project, Scene, SequenceClip, StudioCaps,
 } from './types';
 
@@ -80,6 +80,9 @@ export interface Client {
   clients(orgId: Id): Promise<ClientRecord[]>;
   startOnboarding(orgId: Id, id: Id): Promise<ClientRecord>;
   setChecklistItem(orgId: Id, id: Id, itemId: Id, state: ChecklistState): Promise<ClientRecord>;
+  updateClientSetup(orgId: Id, id: Id, patch: ClientSetupPatch): Promise<ClientRecord>;
+  testClientConnection(orgId: Id, id: Id, channel: ConnChannel): Promise<ClientRecord>;
+  decideClientDraft(orgId: Id, id: Id, draftId: Id, decision: 'approved' | 'rejected'): Promise<ClientRecord>;
   /** PROPOSED (WORKSPACE-PLAN.md): every dataset agents can read, with size, freshness and readers. */
   datasets(s: Scope): Promise<Dataset[]>;
   archiveAgent(s: Scope, id: Id): Promise<void>;

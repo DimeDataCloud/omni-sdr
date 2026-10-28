@@ -252,4 +252,17 @@ export interface ClientRecord {
   id: Id; name: string; niche: string; status: ClientStatus; contactName: string; contactEmail: string;
   deal: { rep: string; level: 'L1 pilot' | 'L2 recurring' | 'L3 outcome'; price: number; priceDraft: boolean; closedAt: Iso; notes: string };
   checklist: ChecklistItem[]; audit: ClientAudit[]; setupVersion: number | null;
+  setup: ClientSetup | null;   // the draft setup, edited in Dev onboarding; null until onboarding starts
 }
+// Dev onboarding (step 2). Saving edits the DRAFT setup; nothing the client runs changes until a version is approved (step 3).
+export type ConnState = 'live' | 'simulated' | 'needs_approval';
+export type ConnChannel = 'mailbox' | 'calendar' | 'phone' | 'voice' | 'crm';
+export interface ClientSetup {
+  profile: { hours: string; timezone: string; services: string; ownerContacts: string; consentBasis: string };
+  handoff: { booking: string; payment: string; resolution: string; unknown: string; closers: string; quietHours: string };
+  customizations: { tone: 'warm' | 'direct' | 'formal'; followUpDays: number[]; replyNotes: string };
+  connections: { channel: ConnChannel; state: ConnState; lastTest: Iso | null; note: string }[];
+  drafts: { id: Id; subject: string; body: string; state: 'pending' | 'approved' | 'rejected' }[];
+  changesSinceApproved: number;
+}
+export type ClientSetupPatch = { profile?: Partial<ClientSetup['profile']>; handoff?: Partial<ClientSetup['handoff']>; customizations?: Partial<ClientSetup['customizations']> };

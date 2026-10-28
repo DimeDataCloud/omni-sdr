@@ -8,6 +8,7 @@ import type { ChecklistGroup, ChecklistItem, ChecklistState, ClientRecord, Clien
 import type { Scope } from '@/lib/api/client';
 import { useQuery, prefetchQuery } from '@/lib/hooks';
 import { useWorkspace } from '@/lib/session';
+import { SETUP_TABS, SetupPanel, type SetupTab } from './SetupTabs';
 import { Badge, Banner, Button, EmptyState, ErrorState, NoAccess, Page, PageHeader, Segmented, Sheet, SkeletonList } from '@/components/ui';
 
 type Tone = 'neutral' | 'success' | 'warning' | 'danger' | 'info';
@@ -87,6 +88,7 @@ export default function ClientsPage() {
 
 function ClientSheet({ client: c, scope, onClose }: { client: ClientRecord; scope: Scope; onClose: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
+  const [tab, setTab] = useState<'checklist' | SetupTab>('checklist');
   const run = async (key: string, fn: () => Promise<unknown>, ok: string) => {
     setBusy(key);
     try { await fn(); toast.success(ok); } catch (e) { toast.error((e as Error).message); } finally { setBusy(null); }
@@ -105,7 +107,14 @@ function ClientSheet({ client: c, scope, onClose }: { client: ClientRecord; scop
         {c.deal.notes && <p>{c.deal.notes}</p>}
       </section>
       {c.status === 'closed' && <p className="mt-4 text-sm text-muted"><Lock className="mr-1 inline size-4" aria-hidden />The checklist is created when you start onboarding.</p>}
-      {c.checklist.length > 0 && (
+      {c.setup && (
+        <div className="mt-6">
+          <Segmented id="cl-tab" label="Record section" value={tab} onChange={setTab}
+            options={[{ value: 'checklist', label: 'Checklist' }, ...SETUP_TABS]} />
+        </div>
+      )}
+      {c.setup && tab !== 'checklist' && <div className="mt-4"><SetupPanel client={c} scope={scope} tab={tab} /></div>}
+      {c.checklist.length > 0 && tab === 'checklist' && (
         <section aria-label="Checklist" className="mt-6 space-y-4">
           <h3 className="section-title">Checklist, {p.done} of {p.total} done</h3>
           {GROUPS.map((g) => {
