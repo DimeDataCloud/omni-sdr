@@ -1,21 +1,15 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow"><meta name="theme-color" content="#F7F5F0"><title>Demo · OmniSDR</title>
 <style nonce="__NONCE__">__CSS__
-.bubble{max-width:88%;padding:10px 12px;border-radius:12px;margin:0 0 8px;white-space:pre-wrap}
-.bubble.a{background:var(--ok-soft);color:var(--text);border-bottom-left-radius:4px}
-.bubble.u{background:var(--bg);border:1px solid var(--line);margin-left:auto;border-bottom-right-radius:4px}
-#log{height:min(52vh,420px);overflow:auto;padding:4px 2px;display:flex;flex-direction:column}
 .row{display:flex;gap:8px;margin-top:10px}.row input{flex:1}
 .timer{font-variant-numeric:tabular-nums;font-weight:600}
 .sms{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:0 0 8px}
 .sms small{display:block;color:var(--muted);margin-bottom:2px}
 .stack>*+*{margin-top:12px}
 .sim{border:1px dashed var(--control);border-radius:8px;padding:2px 8px;font-size:12px;color:var(--muted);display:inline-block}
-@keyframes pop{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 .vgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin:0 0 8px}.vgrid>div{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-width:0}.vgrid small{display:block}.vgrid b{font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.vtx{max-height:220px;overflow:auto;display:flex;flex-direction:column;gap:6px}.vtx div{padding:6px 10px;border-radius:10px;max-width:92%}.vtx .a{background:var(--ok-soft)}.vtx .u{background:var(--bg);border:1px solid var(--line);align-self:flex-end}
-.bubble.in,.sms.in,#vsms:not([hidden]){animation:pop .2s ease both}
-#p1:not([hidden]),#p2:not([hidden]),#p3:not([hidden]){animation:fadeIn .2s ease}
+.sms.in,#vsms:not([hidden]){animation:pop var(--t-enter) ease both}
+#p1:not([hidden]),#p2:not([hidden]),#p3:not([hidden]){animation:enter var(--t-enter) ease}
 @media (max-width:600px){.tabs{gap:0}.tabs .tab{flex:1 1 0;min-width:0;padding:0 6px;line-height:18px}}
 .ctl{flex-wrap:wrap}.ctl .btn{flex:1 1 auto;white-space:nowrap}
 

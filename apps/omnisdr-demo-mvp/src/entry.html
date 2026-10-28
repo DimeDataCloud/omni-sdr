@@ -1,22 +1,11 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow"><meta name="theme-color" content="#F7F5F0"><title>OmniSDR</title>
 <style nonce="__NONCE__">__CSS__
-.bubble{max-width:88%;padding:10px 12px;border-radius:12px;margin:0 0 8px;white-space:pre-wrap;align-self:flex-start}
-.bubble.a{background:var(--ok-soft);color:var(--text);border-bottom-left-radius:4px}
-.bubble.u{background:var(--bg);border:1px solid var(--line);align-self:flex-end;border-bottom-right-radius:4px}
-.bubble.t{display:flex;gap:5px;align-items:center;min-height:42px}.bubble.t i{width:7px;height:7px;border-radius:50%;background:var(--control);animation:hop .5s ease infinite alternate}.bubble.t i:nth-child(2){animation-delay:.12s}.bubble.t i:nth-child(3){animation-delay:.24s}
-.bubble.in{animation:pop .25s ease both}
-#log{height:min(52vh,420px);overflow:auto;padding:4px 2px;display:flex;flex-direction:column}
-#log>:first-child{margin-top:auto} /* messages sit just above the input; unlike justify-content:flex-end this still scrolls */
-.row{display:flex;gap:8px;margin-top:10px}.row input{flex:1}
-.chat{max-width:480px;margin:6vh auto 0;animation:open .25s ease both}
-.replies{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 8px;animation:pop .2s ease both}
-.rb{min-height:44px;padding:0 18px;border:1px solid var(--ink);border-radius:999px;background:var(--surface);color:var(--text);font-weight:600;cursor:pointer;transition:background-color .15s ease,transform .1s ease}.rb:hover{background:var(--ok-soft)}.rb:active{transform:scale(.96)}
+.row{display:flex;gap:var(--sp-2);margin-top:10px}.row input{flex:1}
+.chat{max-width:480px;margin:6vh auto 0;animation:rise var(--t-enter) ease both}
+.replies{display:flex;flex-wrap:wrap;gap:var(--sp-2);margin:var(--sp-1) 0 var(--sp-2);animation:pop var(--t-enter) ease both}
+.rb{min-height:44px;padding:0 18px;border:1px solid var(--ink);border-radius:999px;background:var(--surface);color:var(--text);font-weight:600;cursor:pointer;transition:background-color var(--t-hover) ease,transform var(--t-press) ease}.rb:hover{background:var(--ok-soft)}.rb:active{transform:scale(.96)}
 .out-row{margin-top:10px;text-align:right}
-@keyframes pop{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-@keyframes open{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}
-@keyframes hop{to{transform:translateY(-4px)}}
-@media (prefers-reduced-motion:reduce){.chat,.bubble.in{animation:none}.bubble.t i{animation:none}}
 </style></head><body data-mode="__MODE__"><div class="wrap">
 <header class="top"><div class="brand">__LOGO__<b>OmniSDR</b></div></header>
 <main class="card chat"><div id="log" role="log" aria-live="polite"></div>__PANEL__</main>
