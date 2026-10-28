@@ -13,7 +13,7 @@ const { handleRep } = await import('../src/rep/index.js');
 
 function d1() {
   const db = new DatabaseSync(':memory:');
-  db.exec('PRAGMA foreign_keys = ON;' + readFileSync(new URL('../migrations/rep/0001_init.sql', import.meta.url), 'utf8'));
+  db.exec('PRAGMA foreign_keys = ON;' + readFileSync(new URL('../migrations/rep/0001_init.sql', import.meta.url), 'utf8') + readFileSync(new URL('../migrations/rep/0002_audit.sql', import.meta.url), 'utf8'));
   const stmt = (sql, args = []) => ({
     bind: (...a) => stmt(sql, a),
     first: async () => db.prepare(sql).get(...args) ?? null,
@@ -160,4 +160,30 @@ test('content carries the six-step path, How it works and the pricing guide, wit
   assert.match(k.path[3].body, /\$499 plus tax/);
   for (const l of k.prices.levels) assert.ok(k.pricingGuide.quote.some((q) => q.level === l.level), 'quote rule for level ' + l.level);
   assert.doesNotMatch(JSON.stringify(k), /—/); // house style: no em dashes in rep copy
+});
+
+test('audit: saves only known keys, caps length, stays rep-scoped, and can mark the free check run', async () => {
+  const DB = setup(), a = await newAccount(DB, A);
+  const r = await j(await call(DB, A, `/rep/api/accounts/${a.id}`, { method: 'PATCH', body: { audit: { callResult: 'Voicemail after 6 rings, no callback', jobValue: '8500', evil: 'x' }, stage: 'audit_run' } }));
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body.account.audit, { callResult: 'Voicemail after 6 rings, no callback', jobValue: '8500' });
+  assert.equal(r.body.account.stage, 'audit_run');
+  assert.equal((await call(DB, A, `/rep/api/accounts/${a.id}`, { method: 'PATCH', body: { audit: ['x'] } })).status, 400);
+  assert.equal((await call(DB, A, `/rep/api/accounts/${a.id}`, { method: 'PATCH', body: { audit: { other: 'x'.repeat(1001) } } })).status, 400);
+  assert.equal((await call(DB, B, `/rep/api/accounts/${a.id}`, { method: 'PATCH', body: { audit: { other: 'mine now' } } })).status, 404);
+  const fresh = await newAccount(DB, A, { business: 'Blank Audit Co' });
+  assert.deepEqual(fresh.audit, {});
+});
+
+test('content carries the rep toolkit: templates, discovery, qualifying, after the yes, glossary', async () => {
+  const DB = setup(), { body: k } = await j(await call(DB, A, '/rep/api/content'));
+  assert.ok(k.templates.length >= 5 && k.templates.every((t) => t.id && t.label && t.body && ['text', 'email', 'call'].includes(t.kind)));
+  assert.ok(k.templates.every((t) => !/\{(?!business\}|name\}|rep\})[^}]*\}/.test(t.body)), 'only {business}, {name}, {rep} are auto-filled');
+  assert.ok(k.discovery.questions.length >= 5 && k.qualify.red.length && k.qualify.green.length && k.qualify.niches.length);
+  assert.ok(k.auditFields.some((f) => f.key === 'jobValue' && f.num) && k.auditFields.some((f) => f.key === 'missed' && f.num));
+  assert.ok(k.afterYes.golive.length && k.glossary.length && k.daily.log.length && k.safety.line);
+  const all = JSON.stringify(k);
+  assert.doesNotMatch(all, /\u2014/, 'no em dashes');
+  assert.doesNotMatch(all, /Omni SDR/, 'spelled OmniSDR');
+  assert.doesNotMatch(all, /guarantee(d)? (results|bookings)/i);
 });

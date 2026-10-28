@@ -38,12 +38,14 @@ dialog{border:1px solid var(--line);border-radius:16px;background:var(--surface)
 .timeline li{display:block}.timeline small{color:var(--muted)}
 .flow{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin:0 0 16px}.flow .card ul{margin:0;padding-left:18px;color:var(--muted)}.flow .core{border-color:var(--ink)}
 main>.card,main>section.card,main>.grid{margin-bottom:16px}
+.tpl{white-space:pre-wrap;overflow-wrap:anywhere;margin:0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);font:inherit;user-select:text}
+.est{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}.tight{margin:0;padding-left:20px}
 ol.path{margin:0;padding-left:22px;display:grid;gap:10px}ol.path li b{display:block}ol.path li span{display:block;max-width:72ch}
 </style></head>
 <body><div class="wrap">
 <header class="top"><div class="brand">__LOGO__<b>OmniSDR · Rep</b></div><span class="muted" id="who"></span></header>
 <nav class="main" id="nav" aria-label="Rep portal">
-  <a href="#today">Today</a><a href="#calls">Call Room</a><a href="#pipeline">Pipeline</a><a href="#accounts">Accounts</a><a href="#calendar">Calendar</a><a href="#playbook">Playbook</a><a href="#how">How it works</a><a href="#team" hidden id="navTeam">Team</a>
+  <a href="#today">Today</a><a href="#calls">Call Room</a><a href="#pipeline">Pipeline</a><a href="#accounts">Accounts</a><a href="#calendar">Calendar</a><a href="#deals">My deals</a><a href="#playbook">Playbook</a><a href="#kit">Toolkit</a><a href="#how">How it works</a><a href="#team" hidden id="navTeam">Team</a>
 </nav>
 <main id="view" aria-live="polite"><p class="muted">Loading…</p></main>
 </div>
@@ -73,6 +75,30 @@ const label = (code) => String(code).replace(/_/g, ' ').replace(/^\w/, (c) => c.
 const STAGE_LABEL = { new: 'New', contacted: 'Contacted', audit_run: 'Free check run', results_call: 'Results call', proposed: 'Proposed', signed: 'Signed', onboarding: 'Onboarding', live: 'Live', lost: 'Lost' };
 const money = (c) => '$' + (c / 100).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const form = (f) => Object.fromEntries(new FormData(f).entries());
+const ul = (items, cls = 'tight') => `<ul class="${cls}">${items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>`;
+const ol = (items) => `<ol class="tight">${items.map((i) => `<li>${esc(i)}</li>`).join('')}</ol>`;
+// Fill {business}, {name} and {rep}; anything in [brackets] is left for the rep to fill in.
+const fill = (body, v) => body.replace(/\{(business|name|rep)\}/g, (m, k) => v[k] || m);
+const tpls = (v) => K.templates.map((t) => `<section class="card stack"><h2>${esc(t.label)}</h2><pre class="tpl" id="tp_${t.id}">${esc(fill(t.body, v))}</pre>
+  <div class="row"><button class="btn ghost sm" type="button" data-copy="tp_${t.id}">Copy</button>${v.account ? `<button class="btn ghost sm" type="button" data-sent="${t.id}">Log it as sent</button>` : ''}</div></section>`).join('');
+async function copyText(id) {
+  const el = document.getElementById(id); if (!el) return;
+  try { await navigator.clipboard.writeText(el.textContent); toast('Copied'); }
+  catch { const r = document.createRange(); r.selectNodeContents(el); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); toast('Selected. Copy it now.'); }
+}
+document.addEventListener('click', (e) => { const b = e.target.closest('[data-copy]'); if (b) copyText(b.dataset.copy); });
+
+// The lost-job estimate on the Audit tab, from the owner's own numbers (strings as typed, maybe empty).
+// Return the sentence to show, or '' when there is not enough to say anything.
+// Christian 2026-10-27: no doubt words and no promises. State the owner's own math and call it theirs.
+function lostJobs(jobValue, missed) {
+  // "$8,500" -> 8500; a range like "3-4" takes the low end so the figure never overstates.
+  const num = (v) => { const m = String(v || '').replace(/[$,\s]/g, '').match(/\d+(\.\d+)?/); return m ? Number(m[0]) : 0; };
+  const value = Math.round(num(jobValue)), leads = Math.floor(num(missed)); // whole dollars, whole leads
+  if (!value || !leads) return '';
+  const cents = Math.round(value * leads * 100);
+  return `By your numbers: ${leads} missed ${leads === 1 ? 'lead' : 'leads'} a month × ${money(Math.round(value * 100))} a job = ${money(cents)} a month in jobs at stake.`;
+}
 
 // Which accounts the Today screen calls "hot": open deals worth a call today.
 // a has: stage, last_touch_at, next_action_at, updated_at, created_at (ISO strings or null), signal, next_step.
@@ -184,7 +210,7 @@ const screens = {
     const d = await api('/accounts/' + encodeURIComponent(id)), a = d.account;
     const levels = K.prices.levels.filter((l) => l.level > 0);
     view.innerHTML = `<p><a class="lnk" href="#accounts">All accounts</a></p><h1>${esc(a.business)}</h1><p class="sub"><span class="pill">${STAGE_LABEL[a.stage]}</span> ${esc([a.niche, a.city, a.state].filter(Boolean).join(' · '))}</p>
-      <div class="tabs" role="tablist">${['Details', 'Timeline', 'Onboarding', 'Close'].map((t, k) => `<button class="tab" role="tab" data-t="${k}" aria-selected="${k === 0}">${t}</button>`).join('')}</div>
+      <div class="tabs" role="tablist">${[['Details', 0], ['Audit', 4], ['Messages', 5], ['Timeline', 1], ['Onboarding', 2], ['Close', 3]].map(([t, k]) => `<button class="tab" role="tab" data-t="${k}" aria-selected="${k === 0}">${t}</button>`).join('')}</div>
       <div data-p="0" class="grid two"><form class="card" id="ef"><div class="fields">
         ${[['business', 'Business name', 'full'], ['niche', 'Niche'], ['phone', 'Phone'], ['email', 'Email'], ['website', 'Website', 'full'], ['address', 'Address', 'full'], ['city', 'City'], ['state', 'State'], ['signal', 'Why we are calling', 'full'], ['next_step', 'Next step', 'full']]
           .map(([k, l, c]) => `<div class="${c || ''}"><label for="f_${k}">${l}</label><input id="f_${k}" name="${k}" value="${esc(a[k])}"></div>`).join('')}
@@ -198,6 +224,14 @@ const screens = {
         <section class="card"><h2>Open tasks</h2><ul class="list">${d.tasks.map((k) => `<li><div class="t">${esc(k.title)}<small>${when(k.due_at)}</small></div></li>`).join('') || '<li class="muted">None.</li>'}</ul></section></div></div>
       <div data-p="1" hidden class="card stack"><form id="nt" class="row"><select name="kind" aria-label="Kind" class="grow"><option value="note">Note</option><option value="email">Email sent</option><option value="text">Text sent</option><option value="demo">Demo given</option></select><input name="body" class="grow" required maxlength="2000" placeholder="What happened" aria-label="Note"><button class="btn">Add</button></form>
         <ul class="list timeline">${d.activities.map((v) => `<li><small>${when(v.created_at)} · ${esc(label(v.kind))}</small><div>${esc(v.body)}</div></li>`).join('')}</ul></div>
+      <form data-p="4" hidden class="card stack" id="af"><p class="sub">Step 2 of the path: research the business and run the free check before the demo. Their numbers, not ours.</p>
+        <details><summary>How to run the free check</summary>${ol(K.auditSteps)}</details>
+        ${[...new Set(K.auditFields.map((x) => x.group))].map((g) => `<h2>${esc(g)}</h2><div class="fields">${K.auditFields.filter((x) => x.group === g).map((x) => x.num
+          ? `<div><label for="u_${x.key}">${esc(x.label)}</label><input id="u_${x.key}" name="${x.key}" inputmode="decimal" maxlength="40" value="${esc(a.audit[x.key])}"></div>`
+          : `<div class="full"><label for="u_${x.key}">${esc(x.label)}</label><textarea id="u_${x.key}" name="${x.key}" rows="2" maxlength="1000">${esc(a.audit[x.key])}</textarea></div>`).join('')}</div>`).join('')}
+        <p class="est" id="est"></p><p class="note">${esc(K.resultsDont)}</p>
+        <div class="row"><button class="btn">Save audit</button>${['new', 'contacted'].includes(a.stage) ? '<button class="btn ghost" type="button" id="aRun">Save and mark free check run</button>' : ''}</div></form>
+      <div data-p="5" hidden class="stack"><p class="sub">Starter wording with this account filled in. Adjust it, copy it, send it from your own phone or email, then log it.</p>${tpls({ business: a.business, name: ((d.contacts.find((c) => c.is_primary) || d.contacts[0] || {}).name || '').split(' ')[0] || 'there', rep: (ME.name || '').split(' ')[0], account: true })}</div>
       <form data-p="2" hidden class="card" id="of"><p class="sub">Fill this in with the owner on the call after the yes. The developer starts from it.</p><div class="fields">${K.onboarding.map((f) => `<div class="full"><label for="o_${f.key}">${esc(f.label)}</label><textarea id="o_${f.key}" name="${f.key}" rows="2" maxlength="1000">${esc(a.onboarding[f.key])}</textarea></div>`).join('')}</div><button class="btn">Save onboarding</button></form>
       <div data-p="3" hidden class="card stack">${d.deals.length ? `<p>Closed: ${d.deals.map((x) => `Level ${x.level}, ${money(x.price_cents)}${x.price_is_draft ? ' (draft price)' : ''}, ${when(x.closed_at)}`).join('; ')}</p>` : ''}
         ${['signed', 'onboarding', 'live'].includes(a.stage) ? '<p class="muted">This account is signed. Next is the Onboarding tab.</p>' : `<form id="df" class="stack"><label for="lv">What they bought</label><select id="lv" name="level">${levels.map((l) => `<option value="${l.level}">${esc(l.label)}: ${l.amountCents != null ? money(l.amountCents) : 'priced by Christian'}</option>`).join('')}</select>
@@ -208,6 +242,12 @@ const screens = {
     $('#ef').onsubmit = (e) => { e.preventDefault(); const f = form(e.target); f.next_action_at = fromLocal(f.next_action_at); save(f, 'Saved'); };
     if ($('#lost')) $('#lost').onclick = () => save({ stage: 'lost' }, 'Marked lost');
     $('#of').onsubmit = (e) => { e.preventDefault(); save({ onboarding: form(e.target) }, 'Onboarding saved'); };
+    const est = () => { $('#est').textContent = lostJobs($('#u_jobValue').value, $('#u_missed').value); };
+    $('#af').oninput = est; est();
+    $('#af').onsubmit = (e) => { e.preventDefault(); save({ audit: form(e.target) }, 'Audit saved'); };
+    if ($('#aRun')) $('#aRun').onclick = () => save({ audit: form($('#af')), stage: 'audit_run' }, 'Audit saved. Stage: free check run');
+    $('[data-p="5"]').onclick = (e) => { const b = e.target.closest('[data-sent]'); if (!b) return; const t = K.templates.find((x) => x.id === b.dataset.sent);
+      api(`/accounts/${a.id}/notes`, { method: 'POST', body: { kind: t.kind === 'call' ? 'note' : t.kind, body: 'Sent: ' + t.label } }).then(() => toast('Logged on the timeline'), fail); };
     $('#cf').onsubmit = (e) => { e.preventDefault(); const f = form(e.target); api(`/accounts/${a.id}/contacts`, { method: 'POST', body: { ...f, isPrimary: !!f.isPrimary } }).then(() => { toast('Added'); route(); }, fail); };
     $('#ppl').onclick = (e) => { const b = e.target.closest('[data-del]'); if (b) api('/contacts/' + b.dataset.del, { method: 'DELETE' }).then(() => { toast('Removed'); route(); }, fail); };
     $('#nt').onsubmit = (e) => { e.preventDefault(); api(`/accounts/${a.id}/notes`, { method: 'POST', body: form(e.target) }).then(() => { toast('Added'); route(); }, fail); };
@@ -230,6 +270,32 @@ const screens = {
       <div id="days">${Object.keys(byDay).length ? Object.entries(byDay).map(([k, list]) => `<section class="day"><h2>${day(list[0].due_at)}</h2><div class="card"><ul class="list">${list.map((t) => `<li><div class="t">${esc(t.title)}<small>${new Date(t.due_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}${t.business ? ' · ' + esc(t.business) : ''}</small></div><span class="row">${t.account_id ? `<a class="btn ghost sm" href="#account/${esc(t.account_id)}">Open</a>` : ''}<button class="btn sm" data-done="${esc(t.id)}">Done</button></span></li>`).join('')}</ul></div></section>`).join('') : '<p class="muted">Nothing scheduled.</p>'}</div>`;
     $('#tf').onsubmit = (e) => { e.preventDefault(); const f = form(e.target); api('/tasks', { method: 'POST', body: { ...f, dueAt: fromLocal(f.dueAt) } }).then(() => { toast('Added'); route(); }, fail); };
     $('#days').onclick = (e) => { const b = e.target.closest('[data-done]'); if (b) api('/tasks/' + b.dataset.done, { method: 'PATCH', body: { status: 'done' } }).then(() => { toast('Done'); route(); }, fail); };
+  },
+
+  async deals() {
+    const { deals } = await api('/deals'), admin = ME.role === 'admin';
+    const pay = (x) => x.level === 1 ? (K.pay.table[0] || {}).each || '' : 'Set when Christian prices it';
+    view.innerHTML = `<h1>My deals</h1><p class="sub">Every sale you closed, newest first. Pay figures are draft until prices are final.</p>
+      <div class="stats"><div class="card stat"><b>${deals.length}</b><span>Closed</span></div><div class="card stat"><b>${deals.filter((x) => x.stage === 'live').length}</b><span>Live</span></div><div class="card stat"><b>${money(deals.reduce((n, x) => n + x.price_cents, 0))}</b><span>Sold, before tax</span></div></div>
+      <section class="card"><div class="tbl"><table><thead><tr><th>Business</th><th>Level</th><th>Price</th><th>Closed</th><th>Stage</th><th>Your pay, each (draft)</th>${admin ? '<th>Rep</th>' : ''}</tr></thead><tbody>${deals.length ? deals.map((x) => `<tr><td><a class="lnk" href="#account/${esc(x.account_id)}">${esc(x.business)}</a></td><td>${x.level}</td><td>${money(x.price_cents)}</td><td>${when(x.closed_at)}</td><td>${STAGE_LABEL[x.stage] || ''}</td><td>${esc(pay(x))}</td>${admin ? `<td>${esc(x.rep_email)}</td>` : ''}</tr>`).join('') : `<tr><td colspan="${admin ? 7 : 6}" class="muted">No closed deals yet. The pilot is the first yes.</td></tr>`}</tbody></table></div>
+      <p class="note">${esc(K.pay.note)}</p></section>`;
+  },
+
+  async kit() {
+    const Q = K.qualify, D = K.discovery, Y = K.afterYes, W = K.daily;
+    view.innerHTML = `<h1>Toolkit</h1><p class="sub">Messages, who to sell to, discovery, the free check, after the yes, and your day.</p>
+      <section class="card stack"><h2>Who we sell to</h2><div class="tbl"><table><thead><tr><th>Niche</th><th>The outcome to sell</th></tr></thead><tbody>${Q.niches.map((n) => `<tr><td>${esc(n.niche)}</td><td>${esc(n.line)}</td></tr>`).join('')}</tbody></table></div>
+        <div class="grid two"><div><h2>Signals to look for</h2>${ul(Q.signals)}</div><div><h2>Skip</h2>${ul(Q.skip)}</div><div><h2>Green flags</h2>${ul(Q.green)}</div><div><h2>Red flags</h2>${ul(Q.red)}<p class="note">${esc(Q.redRule)}</p></div></div></section>
+      <h2>Message templates</h2><p class="muted">Open an account and use its Messages tab to get these with the name and business filled in.</p>
+      <div class="grid two">${tpls({ rep: (ME.name || '').split(' ')[0] })}</div>
+      <section class="card stack"><h2>Discovery</h2><p class="script">${esc(D.opener)}</p><div class="tbl"><table><thead><tr><th>Ask</th><th>What it tells you</th></tr></thead><tbody>${D.questions.map((q) => `<tr><td>${esc(q.ask)}</td><td>${esc(q.tells)}</td></tr>`).join('')}</tbody></table></div><p class="note">${esc(D.tip)}</p></section>
+      <div class="grid two"><section class="card stack"><h2>The free check</h2>${ol(K.auditSteps)}</section>
+        <section class="card stack"><h2>The results call</h2>${ol(K.resultsCall)}<p><b>Say this.</b> ${esc(K.resultsSay)}</p><p class="note">${esc(K.resultsDont)}</p></section>
+        <section class="card stack"><h2>When the owner is nervous</h2><p>${esc(K.safety.line)}</p><p class="note">${esc(K.safety.dont)}</p></section>
+        <section class="card stack"><h2>After the yes</h2><p class="muted">What the owner provides</p>${ul(Y.owner)}<p class="muted">Go-live checklist</p>${ul(Y.golive)}<p>${esc(Y.timeline)}</p><p class="note">${esc(Y.rule)}</p></section>
+        <section class="card stack"><h2>Your day</h2><p>${esc(W.day)}</p><p class="muted">Log every day</p>${ul(W.log)}<div class="tbl"><table><thead><tr><th>For</th><th>Ask</th></tr></thead><tbody>${W.who.map((x) => `<tr><td>${esc(x.what)}</td><td>${esc(x.who)}</td></tr>`).join('')}</tbody></table></div></section>
+        <section class="card stack"><h2>Brand</h2>${ul(K.brand)}<h2>Links</h2><div class="row">${K.resources.map((r) => `<a class="btn ghost sm" href="${esc(r.href)}" target="_blank" rel="noopener">${esc(r.label)}</a>`).join('')}</div></section></div>
+      <section class="card"><h2>Words you will hear</h2><div class="tbl"><table><tbody>${K.glossary.map(([t, d]) => `<tr><td><b>${esc(t)}</b></td><td>${esc(d)}</td></tr>`).join('')}</tbody></table></div></section>`;
   },
 
   async playbook() {
