@@ -253,6 +253,17 @@ export interface ClientRecord {
   deal: { rep: string; level: 'L1 pilot' | 'L2 recurring' | 'L3 outcome'; price: number; priceDraft: boolean; closedAt: Iso; notes: string };
   checklist: ChecklistItem[]; audit: ClientAudit[]; setupVersion: number | null;
   setup: ClientSetup | null;   // the draft setup, edited in Dev onboarding; null until onboarding starts
+  versions: SetupVersion[];    // reviewed, numbered setup changes (step 3); the one with status 'live' is what the client runs
+}
+// CI/CD (step 3). A version is a named, reviewed snapshot of the setup. Rollback is a new version, so the trail stays linear.
+export type Risk = 'low' | 'medium' | 'high';
+export type SetupSnapshot = Pick<ClientSetup, 'profile' | 'handoff' | 'customizations'>;
+export interface SetupChange { area: 'profile' | 'handoff' | 'customizations'; field: string; label: string; before: string; after: string; risk: Risk }
+export type VersionStatus = 'in_review' | 'sent_back' | 'approved' | 'live' | 'failed' | 'retired';
+export interface SetupVersion {
+  id: Id; number: number; title: string; author: string; createdAt: Iso; status: VersionStatus; risk: Risk; changes: SetupChange[]; snapshot: SetupSnapshot;
+  reviewer: string | null; reviewNote: string | null; selfApproved: boolean; rollbackOf: number | null;
+  checks: { label: string; ok: boolean; why: string | null }[] | null;   // post-rollout checks, null until a rollout runs
 }
 // Dev onboarding (step 2). Saving edits the DRAFT setup; nothing the client runs changes until a version is approved (step 3).
 export type ConnState = 'live' | 'simulated' | 'needs_approval';

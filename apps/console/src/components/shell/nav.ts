@@ -21,7 +21,7 @@ export const SECTIONS: Section[] = [
 ];
 
 // The dev portal is for the operator team. packages/db has no client-record action yet, so the role is checked here.
-const OPERATORS: Role[] = ['admin', 'operator'];
+const OPERATORS: Role[] = ['admin', 'operator', 'reviewer'];   // reviewers open the page to review versions only
 
 // Outside parties see only their own screens: a client viewer their results, a closer their handoffs (0015).
 const OUTSIDE: Role[] = ['client_viewer', 'closer'];

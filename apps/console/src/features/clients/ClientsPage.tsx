@@ -2,7 +2,7 @@
 // One record, one status field. Sales lists closed deals; Onboarding lists clients being set up, with the checklist.
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { Briefcase, ListChecks, Lock, TriangleAlert } from 'lucide-react';
+import { Briefcase, GitPullRequest, ListChecks, Lock, TriangleAlert } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { ChecklistGroup, ChecklistItem, ChecklistState, ClientRecord, ClientStatus } from '@/lib/api/types';
 import type { Scope } from '@/lib/api/client';
@@ -27,19 +27,23 @@ const NEXT: Record<Exclude<ChecklistState, 'blocked'>, { to: ChecklistState; lab
 const money = (n: number) => `$${n.toLocaleString('en-US')}`;
 const progress = (c: ClientRecord) => ({ done: c.checklist.filter((i) => i.state === 'done').length, total: c.checklist.length });
 const nextBlocked = (c: ClientRecord) => c.checklist.find((i) => i.state === 'blocked');
+/** Versions that need a person: waiting for review, or approved and not rolled out. */
+const waiting = (c: ClientRecord) => c.versions.filter((v) => v.status === 'in_review' || v.status === 'approved').length;
 
 /** Warmed on hover of the Clients nav link. */
 export const prefetch = (s: Scope) => prefetchQuery(`clients:${s.orgId}`, () => api.clients(s.orgId));
 
 export default function ClientsPage() {
   const { scope, role } = useWorkspace();
-  const operator = role === 'admin' || role === 'operator';
-  const [view, setView] = useState<'sales' | 'onboarding'>('sales');
+  const operator = role === 'admin' || role === 'operator' || role === 'reviewer';
+  const reviewer = role === 'reviewer';
+  const [view, setView] = useState<'sales' | 'onboarding' | 'changes'>(reviewer ? 'changes' : 'sales');
   const [openId, setOpenId] = useState<string | null>(null);
   const q = useQuery(() => api.clients(scope.orgId), [scope.orgId], { key: `clients:${scope.orgId}`, enabled: operator });
-  const rows = useMemo(() => (q.data ?? []).filter((c) => (view === 'sales' ? c.status === 'closed' : c.status === 'onboarding')), [q.data, view]);
+  const rows = useMemo(() => (q.data ?? []).filter((c) => (view === 'sales' ? c.status === 'closed' : view === 'onboarding' ? c.status === 'onboarding' : c.versions.length > 0))
+    .sort((a, b) => (view === 'changes' ? waiting(b) - waiting(a) : 0)), [q.data, view]);
   const open = (q.data ?? []).find((c) => c.id === openId) ?? null;
-  const counts = useMemo(() => ({ sales: (q.data ?? []).filter((c) => c.status === 'closed').length, onboarding: (q.data ?? []).filter((c) => c.status === 'onboarding').length }), [q.data]);
+  const counts = useMemo(() => ({ changes: (q.data ?? []).reduce((n, c) => n + waiting(c), 0), sales: (q.data ?? []).filter((c) => c.status === 'closed').length, onboarding: (q.data ?? []).filter((c) => c.status === 'onboarding').length }), [q.data]);
 
   if (!operator) return <Page><NoAccess what="the dev portal" /></Page>;
   const anyDraft = (q.data ?? []).some((c) => c.deal.priceDraft);
@@ -49,14 +53,17 @@ export default function ClientsPage() {
       <PageHeader title="Clients" subtitle="Every client is one record with one status. Sales and Onboarding are two views of it.">
         <div className="w-full">
           <Segmented id="cl" label="Section" value={view} onChange={setView}
-            options={[{ value: 'sales', label: 'Sales', count: counts.sales }, { value: 'onboarding', label: 'Onboarding', count: counts.onboarding }]} />
+            options={reviewer ? [{ value: 'changes' as const, label: 'Changes', count: counts.changes }]
+              : [{ value: 'sales' as const, label: 'Sales', count: counts.sales }, { value: 'onboarding' as const, label: 'Onboarding', count: counts.onboarding }, { value: 'changes' as const, label: 'Changes', count: counts.changes }]} />
         </div>
       </PageHeader>
       <Banner tone="info" title="Demo data">These clients are fictional and live in this browser only.</Banner>
       {anyDraft && <Banner tone="warning" title="Prices are not final">Every price here is a draft until Christian sets the final flag.</Banner>}
       <ErrorState error={q.error} onRetry={q.reload} />
       {q.loading && !q.data ? <SkeletonList rows={3} /> : !rows.length ? (
-        view === 'sales'
+        view === 'changes'
+          ? <EmptyState icon={<GitPullRequest className="size-5" aria-hidden />} title="No setup versions yet" body="Propose a version from a client's Versions tab and it shows here for review." />
+          : view === 'sales'
           ? <EmptyState icon={<Briefcase className="size-5" aria-hidden />} title="No closed deals waiting" body="When a rep closes a sale it appears here with a Start onboarding action." />
           : <EmptyState icon={<ListChecks className="size-5" aria-hidden />} title="Nobody is in onboarding" body="Start onboarding from a closed deal in Sales." />
       ) : (
@@ -73,6 +80,7 @@ export default function ClientsPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     {view === 'onboarding' && <span className="tabular text-sm text-muted">{p.done} of {p.total} done</span>}
+                    {view === 'changes' && <span className="text-sm text-muted">{waiting(c) ? `${waiting(c)} waiting` : c.setupVersion ? `Live on v${c.setupVersion}` : 'No live version'}</span>}
                     <Badge tone={STATUS[c.status].tone}>{STATUS[c.status].label}</Badge>
                   </div>
                 </button>
@@ -81,20 +89,20 @@ export default function ClientsPage() {
           })}
         </ul>
       )}
-      {open && <ClientSheet client={open} scope={scope} onClose={() => setOpenId(null)} />}
+      {open && <ClientSheet client={open} scope={scope} reviewer={reviewer} startTab={view === 'changes' ? 'versions' : 'checklist'} onClose={() => setOpenId(null)} />}
     </Page>
   );
 }
 
-function ClientSheet({ client: c, scope, onClose }: { client: ClientRecord; scope: Scope; onClose: () => void }) {
+function ClientSheet({ client: c, scope, reviewer, startTab, onClose }: { client: ClientRecord; scope: Scope; reviewer: boolean; startTab: 'checklist' | SetupTab; onClose: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
-  const [tab, setTab] = useState<'checklist' | SetupTab>('checklist');
+  const [tab, setTab] = useState<'checklist' | SetupTab>(c.setup ? startTab : 'checklist');
   const run = async (key: string, fn: () => Promise<unknown>, ok: string) => {
     setBusy(key);
     try { await fn(); toast.success(ok); } catch (e) { toast.error((e as Error).message); } finally { setBusy(null); }
   };
   const p = progress(c);
-  const footer = c.status === 'closed'
+  const footer = c.status === 'closed' && !reviewer
     ? <Button variant="primary" loading={busy === 'start'} onClick={() => run('start', () => api.startOnboarding(scope.orgId, c.id), `Onboarding started for ${c.name}`)}>Start onboarding</Button>
     : undefined;
   return (
@@ -110,7 +118,7 @@ function ClientSheet({ client: c, scope, onClose }: { client: ClientRecord; scop
       {c.setup && (
         <div className="mt-6">
           <Segmented id="cl-tab" label="Record section" value={tab} onChange={setTab}
-            options={[{ value: 'checklist', label: 'Checklist' }, ...SETUP_TABS]} />
+            options={reviewer ? SETUP_TABS.filter((t) => t.value === 'versions') : [{ value: 'checklist' as const, label: 'Checklist' }, ...SETUP_TABS]} />
         </div>
       )}
       {c.setup && tab !== 'checklist' && <div className="mt-4"><SetupPanel client={c} scope={scope} tab={tab} /></div>}

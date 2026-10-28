@@ -83,6 +83,11 @@ export interface Client {
   updateClientSetup(orgId: Id, id: Id, patch: ClientSetupPatch): Promise<ClientRecord>;
   testClientConnection(orgId: Id, id: Id, channel: ConnChannel): Promise<ClientRecord>;
   decideClientDraft(orgId: Id, id: Id, draftId: Id, decision: 'approved' | 'rejected'): Promise<ClientRecord>;
+  // CI/CD (step 3). Propose, roll out and roll back: operator, admin. Review: reviewer, operator, admin (the author cannot approve their own medium or high change).
+  proposeVersion(orgId: Id, id: Id, title: string): Promise<ClientRecord>;
+  reviewVersion(orgId: Id, id: Id, versionId: Id, decision: 'approve' | 'send_back', note: string): Promise<ClientRecord>;
+  rolloutVersion(orgId: Id, id: Id, versionId: Id): Promise<ClientRecord>;
+  rollbackVersion(orgId: Id, id: Id): Promise<ClientRecord>;
   /** PROPOSED (WORKSPACE-PLAN.md): every dataset agents can read, with size, freshness and readers. */
   datasets(s: Scope): Promise<Dataset[]>;
   archiveAgent(s: Scope, id: Id): Promise<void>;

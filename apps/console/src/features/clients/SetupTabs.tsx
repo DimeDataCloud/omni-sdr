@@ -5,11 +5,12 @@ import { api } from '@/lib/api';
 import type { Scope } from '@/lib/api/client';
 import type { ClientRecord, ClientSetup, ClientSetupPatch, ConnChannel, ConnState } from '@/lib/api/types';
 import { Badge, Banner, Button, Field, Input, Select, Textarea } from '@/components/ui';
+import { VersionsTab } from './VersionsTab';
 
-export type SetupTab = 'profile' | 'handoff' | 'custom' | 'connections' | 'drafts';
+export type SetupTab = 'profile' | 'handoff' | 'custom' | 'connections' | 'drafts' | 'versions';
 export const SETUP_TABS: { value: SetupTab; label: string }[] = [
   { value: 'profile', label: 'Profile' }, { value: 'handoff', label: 'Handoff' }, { value: 'custom', label: 'Customizations' },
-  { value: 'connections', label: 'Connections' }, { value: 'drafts', label: 'First drafts' },
+  { value: 'connections', label: 'Connections' }, { value: 'drafts', label: 'First drafts' }, { value: 'versions', label: 'Versions' },
 ];
 
 export function SetupPanel({ client: c, scope, tab }: { client: ClientRecord; scope: Scope; tab: SetupTab }) {
@@ -26,6 +27,7 @@ export function SetupPanel({ client: c, scope, tab }: { client: ClientRecord; sc
       {tab === 'custom' && <CustomForm key={c.id} client={c} scope={scope} />}
       {tab === 'connections' && <Connections client={c} scope={scope} />}
       {tab === 'drafts' && <Drafts client={c} scope={scope} />}
+      {tab === 'versions' && <VersionsTab client={c} scope={scope} />}
     </div>
   );
 }
@@ -108,7 +110,7 @@ function CustomForm({ client: c, scope }: { client: ClientRecord; scope: Scope }
   const { saving, error, save } = useSave(c, scope);
   const parsed = days.split(',').map((x) => x.trim()).filter(Boolean).map(Number);
   const daysBad = parsed.some((d) => !Number.isInteger(d) || d < 1 || d > 30) ? 'Use whole days from 1 to 30, like 2, 5, 9' : null;
-  const dirty = tone !== base.tone || days !== base.followUpDays.join(', ') || notes !== base.replyNotes;
+  const dirty = tone !== base.tone || JSON.stringify(parsed) !== JSON.stringify(base.followUpDays) || notes !== base.replyNotes;
   return (
     <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); if (!daysBad) void save({ customizations: { tone, followUpDays: parsed, replyNotes: notes } }); }}>
       <Field label="Tone">
