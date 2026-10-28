@@ -13,6 +13,7 @@
 .sim{border:1px dashed var(--control);border-radius:8px;padding:2px 8px;font-size:12px;color:var(--muted);display:inline-block}
 @keyframes pop{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.vgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin:0 0 8px}.vgrid>div{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-width:0}.vgrid small{display:block}.vgrid b{font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.vtx{max-height:220px;overflow:auto;display:flex;flex-direction:column;gap:6px}.vtx div{padding:6px 10px;border-radius:10px;max-width:92%}.vtx .a{background:var(--ok-soft)}.vtx .u{background:var(--bg);border:1px solid var(--line);align-self:flex-end}
 .bubble.in,.sms.in,#vsms:not([hidden]){animation:pop .2s ease both}
 #p1:not([hidden]),#p2:not([hidden]),#p3:not([hidden]){animation:fadeIn .2s ease}
 @media (max-width:600px){.tabs{gap:0}.tabs .tab{flex:1 1 0;min-width:0;padding:0 6px;line-height:18px}}
@@ -60,6 +61,11 @@
  <div class="card"><h2>Talk to the OmniSDR assistant</h2><p class="muted u-m0-0-12">A live voice call with the same assistant that answers our line. Ask it what OmniSDR does, what happens after the waitlist form, or how speed to lead helps a small business. Calls end after 3 minutes. Your microphone is only used during the call. Audio is sent to our voice provider and the call may be recorded and transcribed to improve the demo. Please use made-up details.</p>
   <div id="vgate"><div id="ts" class="u-mb12"></div><button class="btn" id="vstart" type="button">Start the voice call</button> <span id="vErr" class="err" hidden role="alert"></span></div>
   <div id="vlive" hidden><p class="u-m0-0-8"><span class="timer" id="vtimer">3:00</span> <span class="muted" id="vstate">Connecting...</span></p><button class="btn ghost" id="vend" type="button">Hang up</button></div>
+  <div id="vstats" hidden class="u-mt12"><h3 class="u-m0-0-8">Live call panel</h3>
+   <div class="vgrid"><div><small class="muted">Response gap (last)</small><b id="vgap">-</b></div><div><small class="muted">Average gap</small><b id="vavg">-</b></div><div><small class="muted">Routing</small><b id="vroute">Listening</b></div></div>
+   <div id="vtx" class="vtx" aria-live="polite"></div>
+   <p class="muted u-m8-0-0" id="vlat" hidden></p>
+   <p class="muted u-m8-0-0"><small>The gap is the time between you finishing a sentence and the assistant's reply appearing here, so it runs a little above the true speech latency. Routing is read from what the assistant says.</small></p></div>
   <div id="vover" hidden class="note u-mt12">The call has ended. Reload the page to run it again.</div>
   <div id="vsms" hidden class="u-mt12"><div class="sms"><small>Simulated text from OmniSDR, shown after the call. Nothing was actually sent.</small>Hi, it's OmniSDR. Here is the waitlist link we talked about: omnisdr.com. It takes about a minute. Reply here if you have questions.</div></div></div>
  <div class="card"><h2>What to try</h2><ul class="muted u-pl18"><li>What does OmniSDR do for a small business?</li><li>What happens after I join the waitlist?</li><li>Is there a free way to see the gap in my own numbers?</li></ul>
@@ -190,14 +196,29 @@ var VOICE=!!document.querySelector('meta[name=voice]');
 if(!VOICE){$('vstart').disabled=true;$('vErr').textContent='The voice demo is not available right now.';$('vErr').hidden=false}
 if(VOICE){
  if(TSKEY&&TSKEY.content)$('vstart').disabled=true;
- var vc=null,vt=null,vleft=180;
+ var vc=null,vt=null,vleft=180,vsrc=null,vSid=null;
+ var vseen={},vlastU=0,vgaps=[];
+ var vRoute=function(t){t=t.toLowerCase();return /omnisdr dot com|omnisdr\.com|web ?form|waitlist|text you the link|link/.test(t)?'Waitlist form':/free proof|discovery|results call|pilot|your numbers/.test(t)?'Free proof path':/team member|someone from|call you back|callback|human/.test(t)?'Human follow-up':null};
+ var vStream=function(){
+  if(!window.EventSource||!vSid)return;$('vstats').hidden=false;
+  vsrc=new EventSource('/api/voice/stream?sid='+encodeURIComponent(vSid));
+  vsrc.onmessage=function(e){var m;try{m=JSON.parse(e.data)}catch(x){return}
+   if(m.t==='tx'){var el=vseen[m.id];
+    if(!el){el=document.createElement('div');el.className=m.role==='agent'?'a':'u';vseen[m.id]=el;$('vtx').appendChild(el);
+     if(m.role==='agent'&&vlastU){var g=Date.now()-vlastU;vlastU=0;vgaps.push(g);$('vgap').textContent=(g/1000).toFixed(1)+' s';$('vavg').textContent=(vgaps.reduce(function(a,b){return a+b},0)/vgaps.length/1000).toFixed(1)+' s'}}
+    el.textContent=m.text;if(m.role==='user')vlastU=Date.now();
+    if(m.role==='agent'){var r=vRoute(m.text);if(r)$('vroute').textContent=r}
+    $('vtx').scrollTop=$('vtx').scrollHeight}
+   else if(m.t==='lat'){var l=$('vlat');l.hidden=false;l.textContent='Reported by the voice platform after the call, median per turn: total '+m.e2e+' ms (speech recognition '+m.asr+', model '+m.llm+', voice '+m.tts+').'}
+   else if(m.t==='end'||m.t==='err'){if(m.t==='end')$('vstate').textContent='Ended'}};
+  vsrc.onerror=function(){if(vsrc&&vsrc.readyState===2)vsrc=null}};
  var vErr=function(m){var e=$('vErr');e.textContent=m;e.hidden=false;$('vstart').disabled=false};
- var vDone=function(){clearInterval(vt);$('vlive').hidden=true;$('vover').hidden=false;$('vsms').hidden=false;if(vc){try{vc.end()}catch(x){}}};
+ var vDone=function(){clearInterval(vt);/* the stream stays open after hang-up so the latency report can arrive; the Worker closes it */$('vlive').hidden=true;$('vover').hidden=false;$('vsms').hidden=false;if(vc){try{vc.end()}catch(x){}}};
  $('vstart').addEventListener('click',function(){
   var b=$('vstart');b.disabled=true;$('vErr').hidden=true;
   post('/api/session',{tenant:'riverbend',turnstile:tsTok}).then(function(r){
    if(!r.ok)throw new Error(r.message||'Could not start the demo.');
-   return post('/api/voice',{sid:r.sid})}).then(function(v){
+   vSid=r.sid;return post('/api/voice',{sid:r.sid})}).then(function(v){
    if(!v.ok)throw new Error(v.message||'Could not start the voice call.');
    vleft=v.maxSeconds;
    return import('https://cdn.jsdelivr.net/npm/retell-client-js-sdk@3.0.2/+esm').then(function(m){
@@ -207,7 +228,7 @@ if(VOICE){
      onStatus:function(s){$('vstate').textContent=s==='live'?'Connected. Say hello.':s==='ended'?'Ended':'Connecting...'},
      onEnd:vDone,onError:function(){vDone()}}});
     return vc.ready})}).then(function(){
-   $('vgate').hidden=true;$('vlive').hidden=false;
+   $('vgate').hidden=true;$('vlive').hidden=false;vStream();
    vt=setInterval(function(){vleft--;if(vleft<0){vDone();return}$('vtimer').textContent=Math.floor(vleft/60)+':'+String(vleft%60).padStart(2,'0')},1000)}).catch(function(e){
    vErr(e&&e.message&&!/Failed to fetch|import|module/i.test(e.message)?e.message:'The voice call could not start. Check your microphone permission and try again.')})});
  $('vend').addEventListener('click',vDone)}
