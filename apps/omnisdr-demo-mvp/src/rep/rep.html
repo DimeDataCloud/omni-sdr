@@ -4,6 +4,8 @@
 nav.main{display:flex;gap:4px;overflow-x:auto;margin:0 0 16px;border-bottom:1px solid var(--line);scrollbar-width:none}nav.main::-webkit-scrollbar{display:none}
 nav.main a{flex:0 0 auto;min-height:44px;display:flex;align-items:center;padding:0 12px;color:var(--muted);font-weight:600;text-decoration:none;border-bottom:3px solid transparent}
 nav.main a[aria-current=page]{color:var(--text);border-color:var(--ink)}
+#hCal{margin-top:24px}
+nav.tier2[hidden],nav.main a[hidden]{display:none}nav.tier2{margin-top:-8px;font-size:14px}nav.tier2 a{min-height:40px}
 .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.row>*{min-width:0}.grow{flex:1 1 200px}
 .stack{display:grid;gap:12px}.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px}
 .stat b{display:block;font-size:26px;line-height:32px;font-variant-numeric:tabular-nums}.stat span{color:var(--muted);font-size:13px}
@@ -54,8 +56,9 @@ ol.path{margin:0;padding-left:22px;display:grid;gap:10px}ol.path li b{display:bl
 <body><div class="wrap">
 <header class="top"><div class="brand">__LOGO__<b>OmniSDR · Rep</b></div><span class="muted" id="who"></span></header>
 <nav class="main" id="nav" aria-label="Rep portal">
-  <a href="#today">Today</a><a href="#calls">Call Room</a><a href="#pipeline">Pipeline</a><a href="#accounts">Accounts</a><a href="#calendar">Calendar</a><a href="#deals">My deals</a><a href="#playbook">Playbook</a><a href="#kit">Toolkit</a><a href="#how">How it works</a><a href="#leads" hidden id="navLeads">Leads</a><a href="#team" hidden id="navTeam">Team</a>
+  <a href="#today" data-g="home">Home</a><a href="#calls" data-g="sales">Sales</a><a href="#playbook" data-g="learn">Learn</a><a href="#deals" data-g="deals">My deals</a><a href="#team" hidden id="navTeam" data-g="team">Team</a>
 </nav>
+<nav class="main tier2" id="subnav" aria-label="Section" hidden></nav>
 <div class="row viewbar" id="viewbar" hidden><label for="vw">Viewing</label><select id="vw"></select></div>
 <main id="view" aria-live="polite"><p class="muted">Loading…</p></main>
 </div>
@@ -126,10 +129,16 @@ function isHot(a, now = Date.now()) {
 
 /* ---------- screens ---------- */
 const screens = {
-  async today() {
+  async today() { // the front page: today and the calendar in one panel
+    view.innerHTML = '<div id="hToday"></div><div id="hCal"></div>';
+    await Promise.all([screens.todayPanel($('#hToday')), screens.calendarPanel($('#hCal'))]);
+  },
+  calendar() { return screens.today(); },
+
+  async todayPanel(host) {
     const [t, all] = await Promise.all([api('/today'), api('/accounts')]);
     const hot = all.accounts.filter((a) => isHot(a)).slice(0, 8);
-    view.innerHTML = `<h1>Today</h1><p class="sub">Calls, callbacks and follow-ups due by end of day.</p>
+    host.innerHTML = `<h1>Today</h1><p class="sub">Calls, callbacks and follow-ups due by end of day.</p>
       <div class="stats" id="stats"></div>
       <div class="grid two"><section class="card"><h2>Due today (${t.tasks.length})</h2><ul class="list" id="due"></ul></section>
       <section class="card"><h2>Hot accounts</h2><ul class="list" id="hot"></ul></section></div>`;
@@ -320,10 +329,10 @@ const screens = {
     }
   },
 
-  async calendar() {
+  async calendarPanel(host) {
     const { tasks } = await api('/tasks');
     const byDay = {}; for (const k of tasks) (byDay[new Date(k.due_at).toDateString()] ||= []).push(k);
-    view.innerHTML = `<h1>Calendar</h1><p class="sub">Open tasks, last week through the next five.</p>
+    host.innerHTML = `<h2>Calendar</h2><p class="sub">Open tasks, last week through the next five.</p>
       <form class="card fields" id="tf"><div class="full"><label for="t_t">New task</label><input id="t_t" name="title" required maxlength="200" placeholder="Send the results summary"></div>
         <div><label for="t_d">Due</label><input id="t_d" name="dueAt" type="datetime-local" required></div><div><label for="t_k">Kind</label><select id="t_k" name="kind"><option value="follow_up">Follow-up</option><option value="callback">Callback</option><option value="demo">Demo</option><option value="onboarding">Onboarding</option></select></div>
         <div class="full"><button class="btn">Add task</button></div></form>
@@ -468,10 +477,22 @@ const screens = {
 function fillView() { if (ME.role !== 'admin') return; $('#vw').innerHTML = `<option value="">All reps</option>${repOptions(VIEW, false)}`; $('#vw').value = VIEW; }
 function setView(v) { VIEW = v; try { localStorage.setItem('rep.view', v); } catch {} fillView(); }
 
+// Top-level groups. Hash routes are unchanged; a tab's third value marks it admin only.
+const GROUPS = [
+  { key: 'home', tabs: [['today', 'Today']] },
+  { key: 'sales', tabs: [['calls', 'Call Room'], ['pipeline', 'Pipeline'], ['accounts', 'Accounts'], ['leads', 'Leads', 'admin']] },
+  { key: 'learn', tabs: [['playbook', 'Playbook'], ['kit', 'Toolkit'], ['how', 'How it works']] },
+  { key: 'deals', tabs: [['deals', 'My deals']] },
+  { key: 'team', tabs: [['team', 'Team']] },
+];
 async function route() {
   const [name, arg] = (location.hash.slice(1) || 'today').split('/');
-  const fn = screens[name] || screens.today;
-  $$('#nav a').forEach((l) => { if (l.getAttribute('href') === '#' + (name === 'account' ? 'accounts' : name)) l.setAttribute('aria-current', 'page'); else l.removeAttribute('aria-current'); });
+  const fn = screens[name] && !name.endsWith('Panel') ? screens[name] : screens.today;
+  const tab = name === 'account' ? 'accounts' : name === 'calendar' ? 'today' : name, g = GROUPS.find((x) => x.tabs.some((t) => t[0] === tab));
+  $$('#nav a').forEach((l) => { if (g && l.dataset.g === g.key) l.setAttribute('aria-current', 'page'); else l.removeAttribute('aria-current'); });
+  const tabs = g ? g.tabs.filter((t) => !t[2] || ME.role === 'admin') : [];
+  $('#subnav').hidden = tabs.length < 2;
+  $('#subnav').innerHTML = tabs.length < 2 ? '' : tabs.map(([k, label]) => `<a href="#${k}"${k === tab ? ' aria-current="page"' : ''}>${label}</a>`).join('');
   try { await fn(arg); } catch (e) { view.innerHTML = `<div class="err">${esc(e.message)}</div>`; }
   scrollTo(0, 0);
 }
@@ -479,7 +500,7 @@ async function route() {
 (async () => {
   try { [ME, K] = await Promise.all([api('/me'), api('/content')]); }
   catch (e) { view.innerHTML = `<div class="err">${esc(e.message)}</div>`; return; }
-  $('#who').textContent = ME.name; $('#navTeam').hidden = ME.role !== 'admin'; $('#navLeads').hidden = ME.role !== 'admin';
+  $('#who').textContent = ME.name; $('#navTeam').hidden = ME.role !== 'admin';
   if (ME.role === 'admin') {
     try { VIEW = localStorage.getItem('rep.view') || ''; } catch { VIEW = ''; }
     try { REPS = (await api('/reps')).reps; } catch { REPS = []; }
