@@ -13,7 +13,7 @@ const { handleRep } = await import('../src/rep/index.js');
 
 function d1() {
   const db = new DatabaseSync(':memory:');
-  db.exec('PRAGMA foreign_keys = ON;' + readFileSync(new URL('../migrations/rep/0001_init.sql', import.meta.url), 'utf8') + readFileSync(new URL('../migrations/rep/0002_audit.sql', import.meta.url), 'utf8') + readFileSync(new URL('../migrations/rep/0003_stages.sql', import.meta.url), 'utf8'));
+  db.exec('PRAGMA foreign_keys = ON;' + readFileSync(new URL('../migrations/rep/0001_init.sql', import.meta.url), 'utf8') + readFileSync(new URL('../migrations/rep/0002_audit.sql', import.meta.url), 'utf8') + readFileSync(new URL('../migrations/rep/0003_stages.sql', import.meta.url), 'utf8') + readFileSync(new URL('../migrations/rep/0004_mix.sql', import.meta.url), 'utf8'));
   const stmt = (sql, args = []) => ({
     bind: (...a) => stmt(sql, a),
     first: async () => db.prepare(sql).get(...args) ?? null,
@@ -287,4 +287,54 @@ test('lead dashboard: facets, pool and category filters, bulk category and archi
   await call(DB, BOSS, '/rep/api/bulk', { method: 'POST', body: { accountIds: [p2.id], archived: true } });
   assert.equal((await j(await call(DB, BOSS, '/rep/api/leads/facets'))).body.total, 3);
   assert.equal(DB.db.prepare("SELECT COUNT(*) n FROM audit WHERE action = 'bulk'").get().n, 3);
+});
+
+test('mix slider: at every step of every pilot size, price, allowance and pay are unchanged, and the mix round-trips through D1', async () => {
+  const DB = setup(), { pilotSplit } = await import('../src/rep/content.js'), { mixSteps } = await import('../src/rep/mix.js');
+  let closes = 0;
+  for (const price of [49900, 89900, 120000]) {
+    const steps = (await j(await call(DB, A, '/rep/api/mix?priceCents=' + price))).body;
+    assert.equal(steps.allowanceCents, pilotSplit(price).allowanceCents);
+    assert.deepEqual(steps.steps, mixSteps(steps.allowanceCents).steps); // the route is the module, not a second copy
+    // Baseline: closed with no slider touch. Everything the slider must not move is read back from this one.
+    const base = await newAccount(DB, A, { business: 'Base ' + price });
+    const b = await j(await call(DB, A, '/rep/api/deals', { method: 'POST', body: { accountId: base.id, level: 1, priceCents: price } }));
+    assert.equal(b.status, 200);
+    const baseRow = DB.db.prepare('SELECT price_cents, price_is_draft, level FROM deals WHERE id = ?').get(b.body.id);
+    const baseMix = JSON.parse(DB.db.prepare('SELECT mix FROM deals WHERE id = ?').get(b.body.id).mix);
+    assert.equal(baseMix.position, steps.defaultPosition); // untouched slider saves the default
+    if (price === 49900) assert.deepEqual([baseMix.minutes, baseMix.texts, baseMix.threads], [300, 3000, 1000]);
+    if (price === 89900) assert.deepEqual([baseMix.minutes, baseMix.texts, baseMix.threads], [600, 6000, 2000]);
+    const baseline = (await j(await call(DB, A, '/rep/api/deals'))).body.deals.find((x) => x.id === b.body.id);
+    for (const s of steps.steps) {
+      const acc = await newAccount(DB, A, { business: `Mix ${price} p${s.p}` });
+      const r = await j(await call(DB, A, '/rep/api/deals', { method: 'POST', body: { accountId: acc.id, level: 1, priceCents: price, mixPosition: s.p } }));
+      assert.equal(r.status, 200, `p${s.p}`); closes++;
+      const row = DB.db.prepare('SELECT price_cents, price_is_draft, level, mix FROM deals WHERE id = ?').get(r.body.id);
+      assert.deepEqual({ ...row, mix: undefined }, { ...baseRow, mix: undefined }); // price and flags equal the baseline
+      assert.deepEqual(JSON.parse(row.mix), { position: s.p, minutes: s.minutes, texts: s.texts, threads: s.threads, plan: steps.plan }); // round trip
+      const au = JSON.parse(DB.db.prepare("SELECT after FROM audit WHERE action = 'create' AND entity = 'deal' AND entity_id = ?").get(r.body.id).after);
+      assert.deepEqual(au.mix, JSON.parse(row.mix)); assert.equal(au.price_cents, price); // the audit trail carries the mix
+    }
+    const list = (await j(await call(DB, A, '/rep/api/deals'))).body.deals;
+    for (const d of list.filter((x) => x.price_cents === price)) {
+      assert.equal(d.allowanceCents, baseline.allowanceCents); assert.equal(d.eachCents, baseline.eachCents); // allowance and pay never move
+      assert.ok(d.mix && Number.isInteger(d.mix.minutes));
+    }
+  }
+  assert.ok(closes > 200, 'swept ' + closes + ' closes');
+});
+
+test('mix slider: bad positions are refused and leave nothing behind; level 2 takes no mix; /mix guards the price', async () => {
+  const DB = setup(), a = await newAccount(DB, A), post = (body) => call(DB, A, '/rep/api/deals', { method: 'POST', body: { accountId: a.id, ...body } });
+  const m = (await j(await call(DB, A, '/rep/api/mix?priceCents=49900'))).body;
+  for (const bad of [m.lo - 1, m.hi + 1, -1, 101, 50.5, '51', true]) assert.equal((await post({ level: 1, mixPosition: bad })).status, 400, String(bad));
+  assert.equal((await post({ level: 2, priceCents: 50000, mixPosition: 51 })).status, 403); // a rep still cannot close Level 2
+  assert.equal((await call(DB, BOSS, '/rep/api/deals', { method: 'POST', env: { REP_ADMIN_EMAIL: BOSS }, body: { accountId: a.id, level: 2, priceCents: 50000, mixPosition: 51 } })).status, 400);
+  assert.equal(DB.db.prepare('SELECT COUNT(*) n FROM deals').get().n, 0);
+  assert.equal(DB.db.prepare('SELECT stage FROM accounts WHERE id = ?').get(a.id).stage, 'new');
+  for (const q of ['', '?priceCents=49899', '?priceCents=500001', '?priceCents=abc', '?priceCents=79900.5']) assert.equal((await call(DB, A, '/rep/api/mix' + q)).status, 400, q);
+  assert.equal((await call(DB, 'nobody@example.test', '/rep/api/mix?priceCents=49900')).status, 403); // same sign-in rules as every route
+  assert.equal((await post({ level: 1, priceCents: 49900, mixPosition: m.lo })).status, 200);
+  const d = DB.db.prepare('SELECT mix FROM deals').get(); assert.equal(JSON.parse(d.mix).minutes, 60);
 });
