@@ -43,15 +43,14 @@ test('every step: cost plus the fixed cost stays inside the allowance, never ove
   }
 });
 
-test('the floors hold at both ends, and the default sits inside the range', () => {
+test('the slider runs from all texts to all calls, and the default sits inside it', () => {
   for (const a of everyAllowance) {
     const m = mixSteps(a), first = m.steps[0], last = m.steps[m.steps.length - 1];
-    assert.ok(first.minutes >= MIX.minMinutes && last.texts >= MIX.minTexts, `${a} ends`);
-    for (const s of m.steps) assert.ok(s.minutes >= MIX.minMinutes && s.texts >= MIX.minTexts, `${a} p${s.p}`);
+    assert.equal(m.lo, 0); assert.equal(m.hi, MIX.positions);
+    assert.deepEqual([first.minutes, first.threads > 0 && first.texts > 0], [0, true], `${a} left end is all texts`);
+    assert.deepEqual([last.texts, last.threads, last.minutes > 0], [0, 0, true], `${a} right end is all calls`);
     assert.ok(m.defaultPosition >= m.lo && m.defaultPosition <= m.hi);
   }
-  assert.equal(mixAt(budgetFor(17500).units, 0).minutes, 0); // the raw math would break the floor; the range hides those steps
-  assert.ok(mixSteps(17500).lo > 0 && mixSteps(17500).hi < MIX.positions);
 });
 
 test('steps are whole units, move one way, and trade at about 105 texts a minute-ten', () => {
@@ -71,6 +70,6 @@ test('resolveMix only accepts a position that is on the slider', () => {
   const m = mixSteps(17500);
   assert.equal(resolveMix(17500, m.lo - 1), undefined); assert.equal(resolveMix(17500, m.hi + 1), undefined);
   for (const bad of [1.5, '50', NaN, -1, 101, {}, true]) assert.equal(resolveMix(17500, bad), undefined, String(bad));
-  assert.equal(resolveMix(17500, m.lo).minutes, 60);
-  assert.equal(resolveMix(2000, null), null); // an allowance this small has no mix that meets the floors
+  assert.deepEqual([resolveMix(17500, 0).minutes, resolveMix(17500, 100).texts], [0, 0]);
+  assert.equal(resolveMix(0, null), null); // no allowance, nothing to split
 });

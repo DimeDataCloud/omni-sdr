@@ -336,7 +336,8 @@ test('mix slider: bad positions are refused and leave nothing behind; level 2 ta
   for (const q of ['', '?priceCents=49899', '?priceCents=500001', '?priceCents=abc', '?priceCents=79900.5']) assert.equal((await call(DB, A, '/rep/api/mix' + q)).status, 400, q);
   assert.equal((await call(DB, 'nobody@example.test', '/rep/api/mix?priceCents=49900')).status, 403); // same sign-in rules as every route
   assert.equal((await post({ level: 1, priceCents: 49900, mixPosition: m.lo })).status, 200);
-  const d = DB.db.prepare('SELECT mix FROM deals').get(); assert.equal(JSON.parse(d.mix).minutes, 60);
+  const d = DB.db.prepare('SELECT mix FROM deals').get(); assert.equal(JSON.parse(d.mix).minutes, 0); // the all-texts end saves with no minutes
+  assert.equal([m.lo, m.hi].join(), '0,100');
 });
 
 test('rep isolation: a rep never sees another rep by id, by ?owner=, by admin route, or in the history of a handed-over lead', async () => {
