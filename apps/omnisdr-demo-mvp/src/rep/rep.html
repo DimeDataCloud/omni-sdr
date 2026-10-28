@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="robots" content="noindex, nofollow"><title>Rep portal · OmniSDR</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="robots" content="noindex, nofollow"><meta name="theme-color" content="#F7F5F0" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#0F100E" media="(prefers-color-scheme: dark)"><title>Rep portal · OmniSDR</title>
 <style nonce="__NONCE__">__CSS__
 nav.main{display:flex;gap:4px;overflow-x:auto;margin:0 0 16px;border-bottom:1px solid var(--line);scrollbar-width:none}nav.main::-webkit-scrollbar{display:none}
 nav.main a{flex:0 0 auto;min-height:44px;display:flex;align-items:center;padding:0 12px;color:var(--muted);font-weight:600;text-decoration:none;border-bottom:3px solid transparent}
@@ -14,11 +14,24 @@ a.lnk,button.lnk{color:var(--ink);font-weight:600;background:none;border:0;paddi
 .board{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(230px,1fr);gap:12px;overflow-x:auto;padding-bottom:8px}
 .col{background:color-mix(in srgb,var(--surface) 70%,transparent);border:1px solid var(--line);border-radius:12px;padding:10px;display:grid;gap:8px;align-content:start}
 .col h2{display:flex;justify-content:space-between;margin:0 0 2px}.col h2 span{color:var(--muted);font-variant-numeric:tabular-nums}
-.mini{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px;display:grid;gap:6px}.mini select{min-height:36px;padding:4px 8px;font-size:14px}
+.mini{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px;display:grid;gap:6px}.mini select{min-height:40px;padding:4px 8px;font-size:16px}
 .outcomes{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}.outcomes .btn[aria-pressed=true]{outline:2px solid var(--ink);outline-offset:1px}
 .script{white-space:pre-wrap}details{border-top:1px solid var(--line);padding:8px 0}details summary{cursor:pointer;font-weight:600;min-height:32px;display:flex;align-items:center}
 .phone{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums;user-select:all}
-.tbl{overflow-x:auto}.tbl tr[data-id]{cursor:pointer}.tbl tr[data-id]:hover td{background:color-mix(in srgb,var(--fill) 12%,transparent)}
+.tbl{overflow-x:auto;overscroll-behavior-x:contain}.tbl tr[data-id]{cursor:pointer}
+@media (hover:hover){.tbl tr[data-id]:hover td{background:color-mix(in srgb,var(--fill) 12%,transparent)}}
+/* iOS Safari */
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{-webkit-tap-highlight-color:transparent;padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
+@supports (-webkit-touch-callout:none){body{background-attachment:scroll}} /* fixed backgrounds jank and repaint on iOS */
+header.top{padding-top:calc(8px + env(safe-area-inset-top))}
+input[type=checkbox]{width:22px;height:22px;min-height:0;padding:0;margin:0;accent-color:var(--ink);flex:0 0 auto}
+input[type=datetime-local],input[type=date]{-webkit-appearance:none;appearance:none;text-align:left;display:block}
+input::-webkit-date-and-time-value{text-align:left;min-height:22px}
+input[type=search]{-webkit-appearance:none;appearance:none}
+@media (pointer:coarse){.btn.sm{min-height:44px;padding:0 14px}nav.main a{min-height:48px}a.lnk,button.lnk{padding:6px 0}}
+nav.main,.board{-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity}nav.main a,.board .col{scroll-snap-align:start}
+dialog{max-height:calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));overflow:auto;overscroll-behavior:contain}
 .day h2{margin:12px 0 4px}.toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--text);color:var(--bg);padding:10px 16px;border-radius:8px;font-weight:600;max-width:calc(100% - 32px);z-index:5}
 .fields{display:grid;gap:0 16px}@media(min-width:700px){.fields{grid-template-columns:1fr 1fr}}.fields .full{grid-column:1/-1}
 dialog{border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--text);width:min(560px,calc(100% - 32px));padding:20px}dialog::backdrop{background:rgba(0,0,0,.4)}

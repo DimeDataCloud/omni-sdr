@@ -52,7 +52,7 @@ const get = (u, h = {}) => fetch(BASE + u, { redirect: 'manual', headers: h });
   ok('correct passcode returns 200', lg.status === 200);
   ok('cookie is HttpOnly, Secure, SameSite=Strict, 8h', /HttpOnly/.test(sc) && /Secure/.test(sc) && /SameSite=Strict/.test(sc) && /Max-Age=28800/.test(sc), sc.replace(/=[a-f0-9]{64}/, '=<id>'));
   const pr = await (await get('/', { cookie: ck })).text();
-  ok('with the cookie / is the portal chat: no password form, reply buttons target /tryme and /sales', /data-mode="portal"/.test(pr) && !/id="lf"/.test(pr) && /'Try me','\/tryme'/.test(pr) && /'Sales','\/sales'/.test(pr));
+  ok('with the cookie / is the portal chat: no password form, reply buttons target /tryme and /rep, and no longer /sales (Christian 2026-10-27)', /data-mode="portal"/.test(pr) && !/id="lf"/.test(pr) && /'Try me','\/tryme'/.test(pr) && /'Rep dashboard','\/rep'/.test(pr) && !/'Sales','\/sales'/.test(pr));
   ok('with the cookie /tryme serves the demo', /id="start"/.test(await (await get('/tryme', { cookie: ck })).text()));
   const d = await get('/sales', { cookie: ck }); const dt = await d.text();
   ok('with the cookie /sales serves the deck', d.status === 200 && /id="slide"/.test(dt) && /id="sd"/.test(dt));
