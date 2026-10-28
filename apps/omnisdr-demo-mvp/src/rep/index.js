@@ -338,7 +338,8 @@ async function api(req, env, me, path, m) {
   }
 
   // Hand leads to a rep (admin only). The rep's open tasks on those leads move with them; calls, notes and closed deals stay
-  // credited to whoever did them. One batch: every lead moves or none do.
+  // credited to whoever did them. Everything is validated before the first write (an unknown id or rep writes nothing);
+  // the writes then go out in D1 batches of 92 statements, so a move of more than 23 leads spans several batches.
   if (m === 'POST' && path === '/assign') {
     if (!isAdmin(me)) throw forbidden();
     const b = await body(req), ids = Array.isArray(b.accountIds) ? [...new Set(b.accountIds)] : [];
