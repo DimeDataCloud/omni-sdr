@@ -9,6 +9,7 @@ import { accessVerifier, AccessError, ACCESS_HEADER, identityFor } from './acces
 import { afterCall, RULES, STAGES, OUTCOMES, addDays } from './rules.js';
 import * as C from './content.js';
 import * as K from './toolkit.js';
+import * as M from './mix.js';
 
 const json = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'content-type': 'application/json', 'cache-control': 'no-store', 'x-robots-tag': 'noindex', 'x-content-type-options': 'nosniff' } });
 class Bad extends Error { constructor(status, msg) { super(msg); this.status = status; } }
@@ -140,7 +141,7 @@ async function api(req, env, me, path, m) {
   const s = scope(me, '', view);
 
   if (m === 'GET' && path === '/me') return { email: me.email, name: me.name, role: me.role };
-  if (m === 'GET' && path === '/content') return { prices: C.PRICES, pay: C.PAY, taxNote: C.TAX_NOTE, pricingGuide: C.PRICING_GUIDE, path: C.PATH, pathGate: C.PATH_GATE, how: C.HOW, objections: C.OBJECTIONS, method: C.OBJECTION_METHOD, never: C.NEVER_SAY, swaps: C.SWAPS, opener: C.OPENER, demoSteps: C.DEMO_STEPS, demoLimits: C.DEMO_LIMITS, onboarding: C.ONBOARDING_FIELDS, stages: STAGES, outcomes: OUTCOMES, pilot: C.PILOT,
+  if (m === 'GET' && path === '/content') return { prices: C.PRICES, pay: C.PAY, taxNote: C.TAX_NOTE, pricingGuide: C.PRICING_GUIDE, path: C.PATH, pathGate: C.PATH_GATE, how: C.HOW, objections: C.OBJECTIONS, method: C.OBJECTION_METHOD, never: C.NEVER_SAY, swaps: C.SWAPS, opener: C.OPENER, demoSteps: C.DEMO_STEPS, demoLimits: C.DEMO_LIMITS, onboarding: C.ONBOARDING_FIELDS, stages: STAGES, outcomes: OUTCOMES, pilot: C.PILOT, mix: { overage: M.MIX.overage, minMinutes: M.MIX.minMinutes, minTexts: M.MIX.minTexts },
     templates: K.TEMPLATES, qualify: K.QUALIFY, discovery: K.DISCOVERY, auditSteps: K.AUDIT_STEPS, auditFields: K.AUDIT_FIELDS, resultsCall: K.RESULTS_CALL, resultsSay: K.RESULTS_SAY, resultsDont: K.RESULTS_DONT,
     afterYes: K.AFTER_YES, safety: K.SAFETY, daily: K.DAILY, glossary: K.GLOSSARY, brand: K.BRAND, resources: K.RESOURCES };
 
@@ -284,10 +285,19 @@ async function api(req, env, me, path, m) {
     }
   }
 
+  // The slider's steps for a pilot price. The price only picks the allowance; nothing on this route can change either.
+  if (m === 'GET' && path === '/mix') {
+    const price = Number(new URL(req.url).searchParams.get('priceCents'));
+    if (!Number.isInteger(price) || price < C.PILOT.minCents || price > C.PILOT.maxCents) throw bad('Pick a pilot price first');
+    const steps = M.mixSteps(C.pilotSplit(price).allowanceCents);
+    if (!steps) throw bad('That allowance is too small for a mix');
+    return { allowanceCents: C.pilotSplit(price).allowanceCents, ...steps };
+  }
+
   if (path === '/deals') {
     if (m === 'GET') {
       const r = await D.prepare(`SELECT d.*, a.business, a.niche, a.stage FROM deals d JOIN accounts a ON a.id = d.account_id WHERE ${who(me, 'd.rep_email', view).sql} ORDER BY d.closed_at DESC LIMIT 200`).bind(...who(me, 'd.rep_email', view).args).all();
-      return { deals: r.results.map((d) => (d.level === 1 ? { ...d, ...C.pilotSplit(d.price_cents) } : d)) };
+      return { deals: r.results.map((d) => ({ ...(d.level === 1 ? { ...d, ...C.pilotSplit(d.price_cents) } : d), mix: d.mix ? obj(d.mix) : null })) };
     }
     if (m === 'POST') {
       const b = await body(req), a = await account(env, me, str(b.accountId, 64, 'Account', { required: true }));
@@ -303,13 +313,19 @@ async function api(req, env, me, path, m) {
       } else if (lvl.quotable && lvl.amountCents != null) price = lvl.amountCents;
       else if (isAdmin(me) && Number.isInteger(b.priceCents) && b.priceCents > 0 && b.priceCents <= 10_000_000) price = b.priceCents;
       else throw isAdmin(me) ? bad('Enter the agreed price for this level') : forbidden();
+      // The usage mix is chosen by a slider position. A rep may move it freely: it never touches price, allowance or pay.
+      let mix = null;
+      if (lvl.level === 1) {
+        mix = M.resolveMix(C.pilotSplit(price).allowanceCents, b.mixPosition ?? null);
+        if (mix === undefined) throw bad('That is not a position on the mix slider');
+      } else if (b.mixPosition != null) throw bad('The mix slider is for pilots');
       const id = uid(), t = now(), notes = str(b.notes, 1000, 'Notes') ?? '';
       await D.batch([
-        D.prepare('INSERT INTO deals (id, account_id, rep_email, level, price_cents, price_is_draft, notes, closed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').bind(id, a.id, a.owner_email, lvl.level, price, C.PRICES.isFinal ? 0 : 1, notes, t),
+        D.prepare('INSERT INTO deals (id, account_id, rep_email, level, price_cents, price_is_draft, notes, closed_at, mix) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(id, a.id, a.owner_email, lvl.level, price, C.PRICES.isFinal ? 0 : 1, notes, t, mix && JSON.stringify(mix)),
         D.prepare("UPDATE accounts SET stage = 'onboarding', updated_at = ?, last_touch_at = ? WHERE id = ?").bind(t, t, a.id),
-        D.prepare("INSERT INTO activities (id, account_id, rep_email, kind, body, created_at) VALUES (?, ?, ?, 'deal', ?, ?)").bind(uid(), a.id, me.email, `Closed: ${lvl.label}, $${(price / 100).toFixed(2)}${C.PRICES.isFinal ? '' : ' (draft price)'}`, t),
+        D.prepare("INSERT INTO activities (id, account_id, rep_email, kind, body, created_at) VALUES (?, ?, ?, 'deal', ?, ?)").bind(uid(), a.id, me.email, `Closed: ${lvl.label}, ${(price / 100).toFixed(2)}${C.PRICES.isFinal ? '' : ' (draft price)'}${mix ? `, mix ${mix.minutes} min and ${mix.texts} texts` : ''}`, t),
         D.prepare("INSERT INTO tasks (id, account_id, rep_email, kind, title, due_at, status, created_at) VALUES (?, ?, ?, 'onboarding', 'Fill in the onboarding details with the owner', ?, 'open', ?)").bind(uid(), a.id, a.owner_email, addDays(t, 1), t),
-        audit(env, me.email, 'create', 'deal', id, null, { level: lvl.level, price_cents: price }),
+        audit(env, me.email, 'create', 'deal', id, null, { level: lvl.level, price_cents: price, ...(mix ? { mix } : {}) }),
       ]);
       return { ok: true, id };
     }

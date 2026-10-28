@@ -25,6 +25,10 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{-webkit-tap-highlight-color:transparent;padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
 @supports (-webkit-touch-callout:none){body{background-attachment:scroll}} /* fixed backgrounds jank and repaint on iOS */
 header.top{padding-top:calc(8px + env(safe-area-inset-top))}
+.mix{border:1px solid var(--line);border-radius:12px;padding:12px;display:grid;gap:10px;background:color-mix(in srgb,var(--surface) 70%,transparent)}.mix h3{margin:0;font-size:16px}
+.mixfixed{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin:0}.mixfixed div{display:grid;gap:2px}.mixfixed dt{color:var(--muted);font-size:12px}.mixfixed dd{margin:0;font-weight:600;font-variant-numeric:tabular-nums}
+.mixends{display:flex;justify-content:space-between;gap:8px;font-size:13px;font-weight:600}.mixread{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px}.mixread b{display:block;font-size:22px;line-height:28px;font-variant-numeric:tabular-nums}.mixread span{color:var(--muted);font-size:12px}
+input[type=range]{width:100%;min-height:44px;padding:0;accent-color:var(--ink)}.qsheet{white-space:pre-wrap;font-size:13px;margin:0}
 input[type=checkbox]{width:22px;height:22px;min-height:0;padding:0;margin:0;accent-color:var(--ink);flex:0 0 auto}
 input[type=datetime-local],input[type=date]{-webkit-appearance:none;appearance:none;text-align:left;display:block}
 input::-webkit-date-and-time-value{text-align:left;min-height:22px}
@@ -257,7 +261,14 @@ const screens = {
       <form data-p="2" hidden class="card" id="of"><p class="sub">Fill this in with the owner on the call after the yes. The developer starts from it.</p><div class="fields">${K.onboarding.map((f) => `<div class="full"><label for="o_${f.key}">${esc(f.label)}</label><textarea id="o_${f.key}" name="${f.key}" rows="2" maxlength="1000">${esc(a.onboarding[f.key])}</textarea></div>`).join('')}</div><button class="btn">Save onboarding</button></form>
       <div data-p="3" hidden class="card stack">${d.deals.length ? `<p>Closed: ${d.deals.map((x) => `Level ${x.level}, ${money(x.price_cents)}${x.price_is_draft ? ' (draft price)' : ''}, ${when(x.closed_at)}`).join('; ')}</p>` : ''}
         ${['onboarding', 'live'].includes(a.stage) ? '<p class="muted">This account is signed. Next is the Onboarding tab.</p>' : `<form id="df" class="stack"><label for="lv">What they bought</label><select id="lv" name="level">${levels.map((l) => `<option value="${l.level}">${esc(l.label)}: ${l.level === 1 ? 'from ' + money(l.amountCents) : l.amountCents != null ? money(l.amountCents) : 'priced by Christian'}</option>`).join('')}</select>
-          <div id="pbox" hidden><label for="pc" id="plbl">Agreed price in dollars (admin)</label><input id="pc" name="price" inputmode="decimal"><p class="note" id="psplit"></p></div>
+          <div id="pbox" hidden><label for="pc" id="plbl">Agreed price in dollars (admin)</label><input id="pc" name="price" inputmode="decimal"><p class="note" id="psplit"></p>
+            <div class="mix" id="mixbox" hidden><h3>Usage mix</h3><p class="note">Slide to trade calls for texts inside the same allowance. Price, allowance and your pay stay exactly as they are.</p>
+              <dl class="mixfixed"><div><dt>Price</dt><dd id="mxPrice"></dd></div><div><dt>Allowance</dt><dd id="mxAllow"></dd></div><div><dt>You and the developer, each</dt><dd id="mxPay"></dd></div></dl>
+              <div class="mixends"><span id="mxL">More calls</span><span id="mxR">More texts</span></div>
+              <input type="range" id="mx" min="0" max="0" step="1" value="0" aria-labelledby="mxL mxR">
+              <div class="mixread"><div><b id="mxMin"></b><span>voice minutes</span></div><div><b id="mxTxt"></b><span>texts</span></div><div><b id="mxThr"></b><span>AI conversations</span></div></div>
+              <p class="note" id="mxTrade"></p><div class="row"><button class="btn ghost sm" type="button" id="mxReset">Reset to plan default</button><button class="btn ghost sm" type="button" data-copy="qsheet">Copy quote sheet</button></div>
+              <pre class="qsheet card" id="qsheet"></pre></div></div>
           <label for="dn">Notes</label><input id="dn" name="notes" maxlength="1000"><p class="note">${K.prices.isFinal ? '' : 'Prices are DRAFT until Christian sets them. '}${esc(K.taxNote)} No discounts.</p><button class="btn">Close the sale</button></form>`}</div>`;
     const tabs = $$('.tab'); tabs.forEach((t) => (t.onclick = () => { tabs.forEach((x) => x.setAttribute('aria-selected', String(x === t))); $$('[data-p]').forEach((p) => (p.hidden = p.dataset.p !== t.dataset.t)); }));
     const save = (body, msg) => api('/accounts/' + a.id, { method: 'PATCH', body }).then(() => { toast(msg); route(); }, fail);
@@ -281,13 +292,31 @@ const screens = {
         $('#plbl').textContent = pilot ? 'Pilot price in dollars, $499 minimum' : 'Agreed price in dollars (admin)';
         if (pilot && !$('#pc').value) $('#pc').value = String(K.pilot.minCents / 100); split(); };
       const split = () => { const c = Math.round(parseFloat($('#pc').value) * 100), pilot = Number($('#lv').value) === 1;
-        if (!pilot || !(c >= K.pilot.minCents)) { $('#psplit').textContent = pilot ? 'The pilot starts at $499.' : ''; return; }
+        if (!pilot || !(c >= K.pilot.minCents)) { $('#psplit').textContent = pilot ? 'The pilot starts at $499.' : ''; FIX = null; mixFor = 0; $('#mixbox').hidden = true; return; }
         const r35 = Math.round((c * K.pilot.allowanceRate) / 500) * 500, al = c >= K.pilot.plusFromCents ? Math.max(r35, K.pilot.plusAllowanceCents) : r35, each = Math.round((c - c * K.pilot.feeRate - al) / 2);
-        $('#psplit').textContent = `Allowance ${money(al)}. You and the developer, about ${money(Math.round(each / 100) * 100)} each (draft).`; };
+        $('#psplit').textContent = `Allowance ${money(al)}. You and the developer, about ${money(Math.round(each / 100) * 100)} each (draft).`;
+        FIX = { price: c, allow: al, pay: Math.round(each / 100) * 100 }; loadMix(c); };
+      // The slider: steps come from the server (one copy of the math). Left is more calls, so the control value runs against position.
+      let FIX = null, MX = null, pos = null, mixFor = 0; const num = (v) => v.toLocaleString();
+      const loadMix = (c) => { if (mixFor === c) return paint(); mixFor = c;
+        api('/mix?priceCents=' + c).then((m) => { if (mixFor !== c) return; const keep = MX && MX.allowanceCents === m.allowanceCents && pos != null && pos >= m.lo && pos <= m.hi; MX = { ...m, forPrice: c }; if (!keep) pos = m.defaultPosition; paint(); }, () => { MX = null; $('#mixbox').hidden = true; }); };
+      const cur = () => MX.steps.find((s) => s.p === pos);
+      function paint() { if (!MX || !FIX || !FIX.price || MX.forPrice !== FIX.price) return; // never show one price's mix beside another price's allowance
+        const r = $('#mx'), n = MX.steps.length, s = cur();
+        $('#mixbox').hidden = false; r.max = String(n - 1); r.value = String(n - 1 - MX.steps.indexOf(s));
+        r.setAttribute('aria-valuetext', `${num(s.minutes)} minutes, ${num(s.texts)} texts`);
+        $('#mxPrice').textContent = money(FIX.price) + ' plus tax'; $('#mxAllow').textContent = money(FIX.allow); $('#mxPay').textContent = 'about ' + money(FIX.pay);
+        $('#mxMin').textContent = num(s.minutes); $('#mxTxt').textContent = num(s.texts); $('#mxThr').textContent = num(s.threads);
+        $('#mxTrade').textContent = `10 minutes is about ${MX.tradeTexts} texts.` + (s.p === MX.defaultPosition ? ' This is the plan default.' : '');
+        $('#qsheet').textContent = ['OmniSDR pilot quote (draft)', `Price: ${money(FIX.price)} plus tax`, `Credit allowance: ${money(FIX.allow)} a month`,
+          `Usage mix: ${num(s.minutes)} voice minutes, ${num(s.texts)} texts, ${num(s.threads)} AI conversations a month`,
+          `Overage: $${(K.mix.overage.minuteCents / 100).toFixed(2)} a minute, $${(K.mix.overage.textCents / 100).toFixed(2)} a text`].join('\n'); }
+      $('#mx').oninput = () => { if (!MX) return; pos = MX.steps[MX.steps.length - 1 - Number($('#mx').value)].p; paint(); };
+      $('#mxReset').onclick = () => { if (MX) { pos = MX.defaultPosition; paint(); } };
       $('#pc').oninput = split;
       $('#lv').onchange = sync; sync();
       df.onsubmit = (e) => { e.preventDefault(); const f = form(df), cents = f.price ? Math.round(parseFloat(f.price) * 100) : undefined;
-        api('/deals', { method: 'POST', body: { accountId: a.id, level: Number(f.level), notes: f.notes, priceCents: cents } }).then(() => { toast('Sale closed. Fill in onboarding next.'); route(); }, fail); };
+        api('/deals', { method: 'POST', body: { accountId: a.id, level: Number(f.level), notes: f.notes, priceCents: cents, ...(Number(f.level) === 1 && MX && pos != null ? { mixPosition: pos } : {}) } }).then(() => { toast('Sale closed. Fill in onboarding next.'); route(); }, fail); };
     }
   },
 
@@ -308,7 +337,7 @@ const screens = {
     const pay = (x) => x.level === 1 && x.eachCents != null ? 'about ' + money(Math.round(x.eachCents / 100) * 100) : 'Set when Christian prices it';
     view.innerHTML = `<h1>My deals</h1><p class="sub">Every sale you closed, newest first. Pay figures are draft until prices are final.</p>
       <div class="stats"><div class="card stat"><b>${deals.length}</b><span>Closed</span></div><div class="card stat"><b>${deals.filter((x) => x.stage === 'live').length}</b><span>Live</span></div><div class="card stat"><b>${money(deals.reduce((n, x) => n + x.price_cents, 0))}</b><span>Sold, before tax</span></div></div>
-      <section class="card"><div class="tbl"><table><thead><tr><th>Business</th><th>Level</th><th>Price</th><th>Closed</th><th>Stage</th><th>Your pay, each (draft)</th>${admin ? '<th>Rep</th>' : ''}</tr></thead><tbody>${deals.length ? deals.map((x) => `<tr><td><a class="lnk" href="#account/${esc(x.account_id)}">${esc(x.business)}</a></td><td>${x.level}</td><td>${money(x.price_cents)}</td><td>${when(x.closed_at)}</td><td>${STAGE_LABEL[x.stage] || ''}</td><td>${esc(pay(x))}</td>${admin ? `<td>${esc(x.rep_email)}</td>` : ''}</tr>`).join('') : `<tr><td colspan="${admin ? 7 : 6}" class="muted">No closed deals yet. The pilot is the first yes.</td></tr>`}</tbody></table></div>
+      <section class="card"><div class="tbl"><table><thead><tr><th>Business</th><th>Level</th><th>Price</th><th>Closed</th><th>Stage</th><th>Usage mix</th><th>Your pay, each (draft)</th>${admin ? '<th>Rep</th>' : ''}</tr></thead><tbody>${deals.length ? deals.map((x) => `<tr><td><a class="lnk" href="#account/${esc(x.account_id)}">${esc(x.business)}</a></td><td>${x.level}</td><td>${money(x.price_cents)}</td><td>${when(x.closed_at)}</td><td>${STAGE_LABEL[x.stage] || ''}</td><td>${x.mix ? `${x.mix.minutes} min, ${x.mix.texts.toLocaleString()} texts` : ''}</td><td>${esc(pay(x))}</td>${admin ? `<td>${esc(x.rep_email)}</td>` : ''}</tr>`).join('') : `<tr><td colspan="${admin ? 8 : 7}" class="muted">No closed deals yet. The pilot is the first yes.</td></tr>`}</tbody></table></div>
       <p class="note">${esc(K.pay.note)}</p></section>`;
   },
 
