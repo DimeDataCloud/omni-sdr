@@ -80,7 +80,9 @@ async function account(env, me, id) {
 }
 const obj = (v) => { try { const o = JSON.parse(v || '{}'); return o && typeof o === 'object' && !Array.isArray(o) ? o : {}; } catch { return {}; } };
 const shape = (a) => a && ({ ...a, onboarding: obj(a.onboarding), audit: obj(a.audit), archived: !!a.archived });
-const scope = (me, alias = '') => isAdmin(me) ? { sql: '1 = 1', args: [] } : { sql: `${alias}owner_email = ?`, args: [me.email] };
+// A rep always sees only their own rows. An admin sees everyone, or one rep when the page passes ?owner= (the Viewing switch).
+const who = (me, col, view = null) => !isAdmin(me) ? { sql: `${col} = ?`, args: [me.email] } : view ? { sql: `${col} = ?`, args: [view] } : { sql: '1 = 1', args: [] };
+const scope = (me, alias = '', view = null) => who(me, `${alias}owner_email`, view);
 
 /* ---------- routes ---------- */
 const ACCOUNT_FIELDS = { business: (v) => str(v, 160, 'Business name', { required: true }), niche: (v) => str(v, 80, 'Niche') ?? '', website, phone, email,
@@ -134,7 +136,8 @@ const EXPORT_COLS = ['business', 'niche', 'stage', 'phone', 'email', 'website', 
 
 async function api(req, env, me, path, m) {
   const D = env.REP_DB, seg = path.split('/').filter(Boolean); // e.g. ['accounts', ':id', 'contacts']
-  const s = scope(me);
+  const view = isAdmin(me) ? email(new URL(req.url).searchParams.get('owner') || null) : null;
+  const s = scope(me, '', view);
 
   if (m === 'GET' && path === '/me') return { email: me.email, name: me.name, role: me.role };
   if (m === 'GET' && path === '/content') return { prices: C.PRICES, pay: C.PAY, taxNote: C.TAX_NOTE, pricingGuide: C.PRICING_GUIDE, path: C.PATH, pathGate: C.PATH_GATE, how: C.HOW, objections: C.OBJECTIONS, method: C.OBJECTION_METHOD, never: C.NEVER_SAY, swaps: C.SWAPS, opener: C.OPENER, demoSteps: C.DEMO_STEPS, demoLimits: C.DEMO_LIMITS, onboarding: C.ONBOARDING_FIELDS, stages: STAGES, outcomes: OUTCOMES, pilot: C.PILOT,
@@ -144,10 +147,10 @@ async function api(req, env, me, path, m) {
   if (m === 'GET' && path === '/today') {
     await runRules(env, me);
     const end = new Date(); end.setUTCHours(23, 59, 59, 999); const dayStart = new Date(); dayStart.setUTCHours(0, 0, 0, 0);
-    const mine = isAdmin(me) ? [] : [me.email];
+    const wt = who(me, 't.rep_email', view), wc = who(me, 'rep_email', view);
     const [tasks, calls, stages] = await D.batch([
-      D.prepare(`SELECT t.*, a.business, a.stage FROM tasks t LEFT JOIN accounts a ON a.id = t.account_id WHERE t.status = 'open' AND t.due_at <= ? AND ${isAdmin(me) ? '1 = 1' : 't.rep_email = ?'} ORDER BY t.due_at LIMIT 200`).bind(end.toISOString(), ...mine),
-      D.prepare(`SELECT outcome, COUNT(*) n FROM calls WHERE created_at >= ? AND ${isAdmin(me) ? '1 = 1' : 'rep_email = ?'} GROUP BY outcome`).bind(dayStart.toISOString(), ...mine),
+      D.prepare(`SELECT t.*, a.business, a.stage FROM tasks t LEFT JOIN accounts a ON a.id = t.account_id WHERE t.status = 'open' AND t.due_at <= ? AND ${wt.sql} ORDER BY t.due_at LIMIT 200`).bind(end.toISOString(), ...wt.args),
+      D.prepare(`SELECT outcome, COUNT(*) n FROM calls WHERE created_at >= ? AND ${wc.sql} GROUP BY outcome`).bind(dayStart.toISOString(), ...wc.args),
       D.prepare(`SELECT stage, COUNT(*) n FROM accounts WHERE archived = 0 AND ${s.sql} GROUP BY stage`).bind(...s.args),
     ]);
     const by = Object.fromEntries(calls.results.map((r) => [r.outcome, r.n]));
@@ -158,7 +161,7 @@ async function api(req, env, me, path, m) {
 
   if (m === 'GET' && path === '/queue') {
     const r = await D.prepare(`SELECT a.*, (SELECT name FROM contacts c WHERE c.account_id = a.id ORDER BY is_primary DESC LIMIT 1) contact_name
-      FROM accounts a WHERE a.archived = 0 AND a.stage IN ('new','results_call','proposed') AND (a.next_action_at IS NULL OR a.next_action_at <= ?) AND ${scope(me, 'a.').sql}
+      FROM accounts a WHERE a.archived = 0 AND a.stage IN ('new','results_call','proposed') AND (a.next_action_at IS NULL OR a.next_action_at <= ?) AND ${scope(me, 'a.', view).sql}
       ORDER BY COALESCE(a.next_action_at, a.created_at) LIMIT 100`).bind(addDays(now(), 0.5), ...s.args).all();
     return { accounts: r.results.map(shape) };
   }
@@ -253,7 +256,7 @@ async function api(req, env, me, path, m) {
   if (seg[0] === 'tasks') {
     if (m === 'GET' && seg.length === 1) {
       const u = new URL(req.url), from = iso(u.searchParams.get('from'), 'From') ?? addDays(now(), -7), to = iso(u.searchParams.get('to'), 'To') ?? addDays(now(), 35);
-      const r = await D.prepare(`SELECT t.*, a.business FROM tasks t LEFT JOIN accounts a ON a.id = t.account_id WHERE t.status = 'open' AND t.due_at >= ? AND t.due_at <= ? AND ${isAdmin(me) ? '1 = 1' : 't.rep_email = ?'} ORDER BY t.due_at LIMIT 500`).bind(from, to, ...(isAdmin(me) ? [] : [me.email])).all();
+      const r = await D.prepare(`SELECT t.*, a.business FROM tasks t LEFT JOIN accounts a ON a.id = t.account_id WHERE t.status = 'open' AND t.due_at >= ? AND t.due_at <= ? AND ${who(me, 't.rep_email', view).sql} ORDER BY t.due_at LIMIT 500`).bind(from, to, ...who(me, 't.rep_email', view).args).all();
       return { tasks: r.results };
     }
     if (m === 'POST' && seg.length === 1) {
@@ -279,7 +282,7 @@ async function api(req, env, me, path, m) {
 
   if (path === '/deals') {
     if (m === 'GET') {
-      const r = await D.prepare(`SELECT d.*, a.business, a.niche, a.stage FROM deals d JOIN accounts a ON a.id = d.account_id WHERE ${isAdmin(me) ? '1 = 1' : 'd.rep_email = ?'} ORDER BY d.closed_at DESC LIMIT 200`).bind(...(isAdmin(me) ? [] : [me.email])).all();
+      const r = await D.prepare(`SELECT d.*, a.business, a.niche, a.stage FROM deals d JOIN accounts a ON a.id = d.account_id WHERE ${who(me, 'd.rep_email', view).sql} ORDER BY d.closed_at DESC LIMIT 200`).bind(...who(me, 'd.rep_email', view).args).all();
       return { deals: r.results.map((d) => (d.level === 1 ? { ...d, ...C.pilotSplit(d.price_cents) } : d)) };
     }
     if (m === 'POST') {
@@ -320,9 +323,10 @@ async function api(req, env, me, path, m) {
     const head = rows[0].map((h) => h.trim().toLowerCase().replace(/[\s-]+/g, '_'));
     if (!head.includes('business')) throw bad('The header row needs a "business" column');
     if (rows.length > 1001) throw bad('Import up to 1,000 accounts at a time');
-    const stmts = [], errors = [];
+    const stmts = [], errors = [], fileOwner = isAdmin(me) ? email(b.owner || null) : null;
     for (let i = 1; i < rows.length; i++) {
       const o = Object.fromEntries(head.map((h, k) => [h, (rows[i][k] ?? '').trim()]));
+      if (fileOwner && !o.owner_email) o.owner_email = fileOwner;
       try {
         const { stmts: s2 } = await createAccount(env, me, { ...o, next_action_at: undefined, contact: o.contact_name ? { name: o.contact_name, role: o.contact_role, phone: o.contact_phone, email: o.contact_email } : null }, 'csv');
         stmts.push(...s2);
@@ -333,9 +337,47 @@ async function api(req, env, me, path, m) {
     return { imported: rows.length - 1, errors: [] };
   }
 
+  // Hand leads to a rep (admin only). The rep's open tasks on those leads move with them; calls, notes and closed deals stay
+  // credited to whoever did them. One batch: every lead moves or none do.
+  if (m === 'POST' && path === '/assign') {
+    if (!isAdmin(me)) throw forbidden();
+    const b = await body(req), ids = Array.isArray(b.accountIds) ? [...new Set(b.accountIds)] : [];
+    if (!ids.length || ids.length > 500 || !ids.every((x) => typeof x === 'string' && x.length <= 64)) throw bad('Pick between 1 and 500 accounts');
+    const to = email(b.owner); if (!to) throw bad('Pick a rep');
+    const rep = await D.prepare('SELECT email, name FROM reps WHERE email = ? AND active = 1').bind(to).first();
+    if (!rep) throw bad('That rep is not active');
+    const found = (await D.prepare(`SELECT id, owner_email FROM accounts WHERE id IN (${ids.map(() => '?').join(',')})`).bind(...ids).all()).results;
+    if (found.length !== ids.length) throw notFound('account');
+    const t = now(), stmts = [];
+    for (const a of found) {
+      if (a.owner_email === to) continue;
+      stmts.push(D.prepare('UPDATE accounts SET owner_email = ?, updated_at = ? WHERE id = ?').bind(to, t, a.id),
+        D.prepare("UPDATE tasks SET rep_email = ? WHERE account_id = ? AND status = 'open'").bind(to, a.id),
+        D.prepare("INSERT INTO activities (id, account_id, rep_email, kind, body, created_at) VALUES (?, ?, ?, 'note', ?, ?)").bind(uid(), a.id, me.email, `Assigned to ${rep.name}`, t),
+        audit(env, me.email, 'assign', 'account', a.id, { owner_email: a.owner_email }, { owner_email: to }));
+    }
+    for (let i = 0; i < stmts.length; i += 92) await D.batch(stmts.slice(i, i + 92));
+    return { assigned: stmts.length / 4 };
+  }
+
   if (seg[0] === 'reps') {
     if (!isAdmin(me)) throw forbidden();
-    if (m === 'GET') return { reps: (await D.prepare('SELECT email, name, role, active, created_at FROM reps ORDER BY created_at').all()).results };
+    if (m === 'GET') {
+      const week = addDays(now(), -7);
+      const [reps, stages, tasks, calls, deals] = await D.batch([
+        D.prepare('SELECT email, name, role, active, created_at FROM reps ORDER BY created_at'),
+        D.prepare('SELECT owner_email e, stage, COUNT(*) n FROM accounts WHERE archived = 0 GROUP BY owner_email, stage'),
+        D.prepare("SELECT rep_email e, COUNT(*) n FROM tasks WHERE status = 'open' GROUP BY rep_email"),
+        D.prepare('SELECT rep_email e, COUNT(*) n FROM calls WHERE created_at >= ? GROUP BY rep_email').bind(week),
+        D.prepare('SELECT rep_email e, COUNT(*) n, SUM(price_cents) c FROM deals GROUP BY rep_email'),
+      ]);
+      const by = (rows) => Object.fromEntries(rows.results.map((r) => [r.e, r]));
+      const tk = by(tasks), cl = by(calls), dl = by(deals);
+      return { reps: reps.results.map((r) => {
+        const st = Object.fromEntries(stages.results.filter((x) => x.e === r.email).map((x) => [x.stage, x.n]));
+        return { ...r, stats: { leads: Object.values(st).reduce((n, v) => n + v, 0), stages: st, openTasks: tk[r.email]?.n || 0, calls7d: cl[r.email]?.n || 0, deals: dl[r.email]?.n || 0, soldCents: dl[r.email]?.c || 0 } };
+      }) };
+    }
     if (m === 'POST' && seg.length === 1) {
       const b = await body(req), e = email(b.email); if (!e) throw bad('Email is required');
       const role = b.role === 'admin' ? 'admin' : 'rep', name = str(b.name, 80, 'Name', { required: true });

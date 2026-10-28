@@ -216,3 +216,47 @@ test('stages: New, Demo booked, Proposed, Onboarding, Live, Lost; 0003 moves old
   const DB = setup(), a = await newAccount(DB, A);
   for (const old of ['contacted', 'audit_run', 'signed']) assert.equal((await call(DB, A, '/rep/api/accounts/' + a.id, { method: 'PATCH', body: { stage: old } })).status, 400);
 });
+
+test('assign: the admin hands leads to a rep; open tasks follow; each rep sees only their own; reps cannot assign', async () => {
+  // Christian 2026-10-27: share leads with specific reps, each rep gets their own view and data.
+  const DB = setup(); DB.db.prepare("INSERT INTO reps (email, name, role, active, created_at) VALUES (?, 'Boss', 'admin', 1, '2026-01-01')").run(BOSS);
+  const x = await newAccount(DB, BOSS, { business: 'Pool One' }), y = await newAccount(DB, BOSS, { business: 'Pool Two' }), z = await newAccount(DB, BOSS, { business: 'Pool Three' });
+  await call(DB, BOSS, '/rep/api/calls', { method: 'POST', body: { accountId: x.id, outcome: 'no_answer' } }); // an open follow-up on x
+  // reps cannot assign, not even to themselves
+  assert.equal((await call(DB, A, '/rep/api/assign', { method: 'POST', body: { accountIds: [x.id], owner: A } })).status, 403);
+  // all or nothing: one unknown id moves nothing
+  assert.equal((await call(DB, BOSS, '/rep/api/assign', { method: 'POST', body: { accountIds: [x.id, 'nope'], owner: A } })).status, 404);
+  assert.equal(DB.db.prepare('SELECT owner_email FROM accounts WHERE id = ?').get(x.id).owner_email, BOSS);
+  // inactive or unknown reps are refused
+  DB.db.prepare('UPDATE reps SET active = 0 WHERE email = ?').run(B);
+  assert.equal((await call(DB, BOSS, '/rep/api/assign', { method: 'POST', body: { accountIds: [x.id], owner: B } })).status, 400);
+  assert.equal((await call(DB, BOSS, '/rep/api/assign', { method: 'POST', body: { accountIds: [x.id], owner: 'stranger@example.test' } })).status, 400);
+  DB.db.prepare('UPDATE reps SET active = 1 WHERE email = ?').run(B);
+  const r = await j(await call(DB, BOSS, '/rep/api/assign', { method: 'POST', body: { accountIds: [x.id, y.id], owner: A } }));
+  assert.equal(r.status, 200); assert.equal(r.body.assigned, 2);
+  await call(DB, BOSS, '/rep/api/assign', { method: 'POST', body: { accountIds: [z.id], owner: B } });
+  assert.equal(DB.db.prepare("SELECT rep_email FROM tasks WHERE account_id = ? AND status = 'open'").get(x.id).rep_email, A); // the follow-up moved
+  assert.equal(DB.db.prepare('SELECT rep_email FROM calls WHERE account_id = ?').get(x.id).rep_email, BOSS); // history stays credited
+  const names = async (who, q = '') => (await j(await call(DB, who, '/rep/api/accounts' + q))).body.accounts.map((a) => a.business).sort();
+  assert.deepEqual(await names(A), ['Pool One', 'Pool Two']);
+  assert.deepEqual(await names(B), ['Pool Three']);
+  assert.deepEqual(await names(A, '?owner=' + encodeURIComponent(B)), ['Pool One', 'Pool Two']); // a rep cannot use the Viewing switch
+  assert.equal((await call(DB, B, `/rep/api/accounts/${x.id}`)).status, 404);
+  assert.deepEqual(await names(BOSS, '?owner=' + encodeURIComponent(B)), ['Pool Three']); // the admin views one rep
+  assert.equal((await names(BOSS)).length, 3);
+  const today = (await j(await call(DB, BOSS, '/rep/api/tasks?owner=' + encodeURIComponent(A)))).body.tasks;
+  assert.ok(today.length && today.every((t) => t.rep_email === A));
+  assert.equal(DB.db.prepare("SELECT COUNT(*) n FROM audit WHERE action = 'assign'").get().n, 3);
+  // the Team screen numbers
+  const team = (await j(await call(DB, BOSS, '/rep/api/reps'))).body.reps;
+  assert.equal(team.find((t) => t.email === A).stats.leads, 2); assert.equal(team.find((t) => t.email === B).stats.leads, 1);
+});
+
+test('import: the admin can give a whole file to one rep; a rep import is always their own', async () => {
+  const DB = setup(); DB.db.prepare("INSERT INTO reps (email, name, role, active, created_at) VALUES (?, 'Boss', 'admin', 1, '2026-01-01')").run(BOSS);
+  const csv = 'business,phone\nLake Roofing,615-555-0111\nHill Remodel,615-555-0112\n';
+  assert.equal((await j(await call(DB, BOSS, '/rep/api/import', { method: 'POST', body: { csv, owner: B } }))).body.imported, 2);
+  assert.equal(DB.db.prepare('SELECT COUNT(*) n FROM accounts WHERE owner_email = ?').get(B).n, 2);
+  assert.equal((await j(await call(DB, A, '/rep/api/import', { method: 'POST', body: { csv, owner: B } }))).body.imported, 2);
+  assert.equal(DB.db.prepare('SELECT COUNT(*) n FROM accounts WHERE owner_email = ?').get(A).n, 2); // owner ignored for reps
+});
