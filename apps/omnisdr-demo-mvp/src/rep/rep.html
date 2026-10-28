@@ -59,6 +59,7 @@ ol.path{margin:0;padding-left:22px;display:grid;gap:10px}ol.path li b{display:bl
 dialog[open]{animation:dlgIn .2s ease}dialog[open]::backdrop{animation:backdropIn .2s ease}
 @keyframes toastIn{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}
 .toast:not([hidden]){animation:toastIn .2s ease}
+.acts{margin:4px 0 16px}.acts label{margin:0}.acts select{width:auto;min-width:180px}
 </style></head>
 <body><div class="wrap">
 <header class="top"><div class="brand">__LOGO__<b>OmniSDR · Rep</b></div><span class="muted" id="who"></span></header>
@@ -99,6 +100,10 @@ const fromLocal = (v) => v ? new Date(v).toISOString() : null;
 const label = (code) => String(code).replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
 const STAGE_LABEL = { new: 'New', results_call: 'Demo booked', proposed: 'Proposed', onboarding: 'Onboarding', live: 'Live', lost: 'Lost' };
 const OUTCOME_LABEL = { interested: 'Demo booked' };
+// One stage picker for Pipeline cards and the account header. Onboarding and Live are admin moves; the server refuses them for reps too.
+const stageOptions = (cur) => K.stages.map((s) => `<option value="${s}"${s === cur ? ' selected' : ''}${['onboarding', 'live'].includes(s) && ME.role !== 'admin' ? ' disabled' : ''}>${STAGE_LABEL[s]}</option>`).join('');
+// Account tabs by name, for #account/<id>/<tab> links and for keeping the open tab across a save.
+const ACCOUNT_TAB = { details: '0', audit: '4', messages: '5', timeline: '1', onboarding: '2', close: '3' };
 const money = (c) => '$' + (c / 100).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const form = (f) => Object.fromEntries(new FormData(f).entries());
 const ul = (items, cls = 'tight') => `<ul class="${cls}">${items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>`;
@@ -206,7 +211,7 @@ const screens = {
     view.innerHTML = `<h1>Pipeline</h1><p class="sub">Change the stage on a card to move it. Onboarding and Live are set by Christian.</p><div class="board" id="board">${stages.map((st) => {
       const list = accounts.filter((a) => a.stage === st);
       return `<section class="col"><h2>${STAGE_LABEL[st]}<span>${list.length}</span></h2>${list.map((a) => `<div class="mini"><a class="lnk" href="#account/${esc(a.id)}">${esc(a.business)}</a>
-        <small class="muted">${esc(a.next_step || a.niche || '')}</small><select data-id="${esc(a.id)}" aria-label="Stage for ${esc(a.business)}">${K.stages.map((s) => `<option value="${s}"${s === a.stage ? ' selected' : ''}${['onboarding', 'live'].includes(s) && ME.role !== 'admin' ? ' disabled' : ''}>${STAGE_LABEL[s]}</option>`).join('')}</select></div>`).join('')}</section>`;
+        <small class="muted">${esc(a.next_step || a.niche || '')}</small><select data-id="${esc(a.id)}" aria-label="Stage for ${esc(a.business)}">${stageOptions(a.stage)}</select>${['results_call', 'proposed'].includes(a.stage) ? `<a class="lnk" href="#account/${esc(a.id)}/close">Close the sale</a>` : ''}</div>`).join('')}</section>`;
     }).join('')}</div>`;
     $('#board').onchange = (e) => { const s = e.target.closest('select[data-id]'); if (s) api('/accounts/' + s.dataset.id, { method: 'PATCH', body: { stage: s.value } }).then(() => { toast('Moved'); route(); }, fail); };
   },
@@ -235,7 +240,12 @@ const screens = {
       const { accounts } = await api('/accounts?' + p);
       $('#rows').innerHTML = accounts.length ? accounts.map((a) => `<tr data-id="${esc(a.id)}">${admin ? `<td class="sel"><input type="checkbox" data-sel="${esc(a.id)}" aria-label="Select ${esc(a.business)}"></td>` : ''}<td><a class="lnk" href="#account/${esc(a.id)}">${esc(a.business)}</a><br><small class="muted">${esc([a.niche, a.city].filter(Boolean).join(' · '))}</small></td><td>${STAGE_LABEL[a.stage]}</td><td>${esc(a.next_step)}<br><small class="muted">${when(a.next_action_at)}</small></td><td>${esc(a.phone)}</td>${admin ? `<td>${esc(repName(a.owner_email))}</td>` : ''}</tr>`).join('') : `<tr><td colspan="${admin ? 6 : 4}" class="muted">No accounts match.</td></tr>`; syncSel();
     };
-    let tq; $('#q').oninput = () => { clearTimeout(tq); tq = setTimeout(() => load().catch(fail), 250); }; $('#st').onchange = () => load().catch(fail);
+    // The search and stage filter survive opening an account and coming back. Per tab, never sent anywhere.
+    const KEEP = 'rep.accounts', keep = () => { try { sessionStorage.setItem(KEEP, JSON.stringify({ q: $('#q').value, st: $('#st').value })); } catch {} };
+    try { const k = JSON.parse(sessionStorage.getItem(KEEP) || '{}'); $('#q').value = k.q || ''; $('#st').value = k.st || ''; } catch {}
+    let tq; $('#q').oninput = () => { keep(); clearTimeout(tq); tq = setTimeout(() => load().catch(fail), 250); }; $('#st').onchange = () => { keep(); load().catch(fail); };
+    $('#q').onkeydown = (e) => { if (e.key === 'Escape' && $('#q').value) { $('#q').value = ''; keep(); load().catch(fail); } };
+    if (matchMedia('(pointer: fine)').matches) $('#q').focus(); // no keyboard popping up on a phone
     $('#rows').onclick = (e) => { const c = e.target.closest('[data-sel]'); if (c) { c.checked ? picked.add(c.dataset.sel) : picked.delete(c.dataset.sel); syncSel(); return; }
       const tr = e.target.closest('tr[data-id]'); if (tr && !e.target.closest('a')) location.hash = 'account/' + tr.dataset.id; };
     if (admin) {
@@ -259,7 +269,10 @@ const screens = {
   async account(id) {
     const d = await api('/accounts/' + encodeURIComponent(id)), a = d.account;
     const levels = K.prices.levels.filter((l) => l.level > 0);
-    view.innerHTML = `<p><a class="lnk" href="#accounts">All accounts</a></p><h1>${esc(a.business)}</h1><p class="sub"><span class="pill">${STAGE_LABEL[a.stage]}</span> ${esc([a.niche, a.city, a.state].filter(Boolean).join(' · '))}</p>
+    // The one next step for this stage, as a tab to open. Live and Lost have none, so no button.
+    const NEXT = { new: ['audit', 'Next: run the free check'], results_call: ['close', 'Next: close the sale'], proposed: ['close', 'Next: close the sale'], onboarding: ['onboarding', 'Next: onboarding'] }, next = NEXT[a.stage];
+    view.innerHTML = `<p><a class="lnk" href="#accounts">All accounts</a></p><h1>${esc(a.business)}</h1><p class="sub">${esc([a.niche, a.city, a.state].filter(Boolean).join(' · '))}</p>
+      <div class="row acts"><label for="stg" class="muted">Stage</label><select id="stg">${stageOptions(a.stage)}</select>${next ? `<button class="btn" type="button" id="nextGo" data-tab="${next[0]}">${next[1]}</button>` : ''}</div>
       <div class="tabs" role="tablist">${[['Details', 0], ['Audit', 4], ['Messages', 5], ['Timeline', 1], ['Onboarding', 2], ['Close', 3]].map(([t, k]) => `<button class="tab" role="tab" data-t="${k}" aria-selected="${k === 0}">${t}</button>`).join('')}</div>
       <div data-p="0" class="grid two"><form class="card" id="ef"><div class="fields">
         ${[['business', 'Business name', 'full'], ['niche', 'Niche'], ['phone', 'Phone'], ['email', 'Email'], ['website', 'Website', 'full'], ['address', 'Address', 'full'], ['city', 'City'], ['state', 'State'], ['signal', 'Why we are calling', 'full'], ['next_step', 'Next step', 'full']]
@@ -294,7 +307,13 @@ const screens = {
               <p class="note" id="mxTrade"></p><div class="row"><button class="btn ghost sm" type="button" id="mxReset">Reset to plan default</button><button class="btn ghost sm" type="button" data-copy="qsheet">Copy quote sheet</button></div>
               <pre class="qsheet card" id="qsheet"></pre></div></div>
           <label for="dn">Notes</label><input id="dn" name="notes" maxlength="1000"><p class="note">${K.prices.isFinal ? '' : 'Prices are DRAFT until Christian sets them. '}${esc(K.taxNote)} No discounts.</p><button class="btn">Close the sale</button></form>`}</div>`;
-    const tabs = $$('.tab'); tabs.forEach((t) => (t.onclick = () => { tabs.forEach((x) => x.setAttribute('aria-selected', String(x === t))); $$('[data-p]').forEach((p) => (p.hidden = p.dataset.p !== t.dataset.t)); }));
+    const tabs = $$('.tab'), show = (k) => { tabs.forEach((x) => x.setAttribute('aria-selected', String(x.dataset.t === k))); $$('[data-p]').forEach((p) => (p.hidden = p.dataset.p !== k)); };
+    // The open tab lives in the hash via replaceState (no hashchange, no reload), so a save that re-renders lands back on it.
+    tabs.forEach((t) => (t.onclick = () => { show(t.dataset.t); const n = Object.keys(ACCOUNT_TAB).find((k) => ACCOUNT_TAB[k] === t.dataset.t); history.replaceState(null, '', '#account/' + a.id + (n === 'details' ? '' : '/' + n)); }));
+    const want = location.hash.split('/')[2]; if (Object.hasOwn(ACCOUNT_TAB, want)) show(ACCOUNT_TAB[want]);
+    if ($('#nextGo')) $('#nextGo').onclick = () => $(`.tab[data-t="${ACCOUNT_TAB[$('#nextGo').dataset.tab]}"]`).click();
+    $('#stg').onchange = (e) => { const v = e.target.value;
+      api('/accounts/' + a.id, { method: 'PATCH', body: { stage: v } }).then(() => { toast('Stage: ' + STAGE_LABEL[v]); route(); }, (er) => { e.target.value = a.stage; fail(er); }); };
     const save = (body, msg) => api('/accounts/' + a.id, { method: 'PATCH', body }).then(() => { toast(msg); route(); }, fail);
     $('#ef').onsubmit = (e) => { e.preventDefault(); const f = form(e.target); f.next_action_at = fromLocal(f.next_action_at); save(f, 'Saved'); };
     if ($('#lost')) $('#lost').onclick = () => save({ stage: 'lost' }, 'Marked lost');
