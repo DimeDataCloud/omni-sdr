@@ -1,6 +1,6 @@
 # Omni SDR demo MVP (demo portal + dev portal)
 
-Cloudflare Worker, no build step, no paid services. Built to the Omni-SDR suite look
+Cloudflare Worker, no build step, no paid services. Built to the OmniSDR suite look
 (warm off-white, mint `#A3FFB4`, green ink `#166534`, system sans, strict nonce CSP).
 
 - `/` demo portal: inbound-call simulation for ONE fictional niche (bathroom remodeler, "Riverbend Bath").
