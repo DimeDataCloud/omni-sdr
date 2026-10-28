@@ -9,8 +9,8 @@
 #log{height:min(52vh,420px);overflow:auto;padding:4px 2px;display:flex;flex-direction:column}
 .row{display:flex;gap:8px;margin-top:10px}.row input{flex:1}
 .chat{max-width:480px;margin:6vh auto 0;animation:open .25s ease both}
-.replies{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 8px}
-.rb{min-height:44px;padding:0 18px;border:1px solid var(--ink);border-radius:999px;background:var(--surface);color:var(--text);font-weight:600;cursor:pointer}.rb:hover{background:var(--ok-soft)}
+.replies{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 8px;animation:pop .2s ease both}
+.rb{min-height:44px;padding:0 18px;border:1px solid var(--ink);border-radius:999px;background:var(--surface);color:var(--text);font-weight:600;cursor:pointer;transition:background-color .15s ease,transform .1s ease}.rb:hover{background:var(--ok-soft)}.rb:active{transform:scale(.96)}
 .out-row{margin-top:10px;text-align:right}
 @keyframes pop{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 @keyframes open{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}

@@ -52,6 +52,13 @@ main>.card,main>section.card,main>.grid{margin-bottom:16px}
 .bulk{position:sticky;bottom:calc(8px + env(safe-area-inset-bottom));z-index:3;box-shadow:0 6px 24px rgba(0,0,0,.18)}.splitlist{display:flex;flex-wrap:wrap;gap:4px 14px}
 @media (pointer:coarse){.chip{min-height:44px}}
 ol.path{margin:0;padding-left:22px;display:grid;gap:10px}ol.path li b{display:block}ol.path li span{display:block;max-width:72ch}
+@keyframes viewIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+#view.enter{animation:viewIn .2s ease}
+@keyframes dlgIn{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes backdropIn{from{opacity:0}to{opacity:1}}
+dialog[open]{animation:dlgIn .2s ease}dialog[open]::backdrop{animation:backdropIn .2s ease}
+@keyframes toastIn{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}
+.toast:not([hidden]){animation:toastIn .2s ease}
 </style></head>
 <body><div class="wrap">
 <header class="top"><div class="brand">__LOGO__<b>OmniSDR · Rep</b></div><span class="muted" id="who"></span></header>
@@ -165,7 +172,7 @@ const screens = {
         ${a.contact_name ? `<p>Ask for <b>${esc(a.contact_name)}</b></p>` : ''}
         ${a.signal ? `<p><span class="muted">Why we are calling:</span> ${esc(a.signal)}</p>` : ''}
         ${a.notes ? `<p class="muted script">${esc(a.notes)}</p>` : ''}
-        <div><h2>How did it go?</h2><div class="outcomes" id="oc">${K.outcomes.map((o) => `<button class="btn ghost" data-o="${o}" aria-pressed="false">${OUTCOME_LABEL[o] || label(o)}</button>`).join('')}</div></div>
+        <div><h2>How did it go?</h2><div class="outcomes" id="oc">${K.outcomes.map((o) => `<button class="btn ghost" data-o="${o}" aria-pressed="false">${OUTCOME_LABEL[o] || label(o)}</button>`).join('')}</div><p class="muted">Press 1 to ${K.outcomes.length} to pick, Enter to log.</p></div>
         <div id="cbBox" hidden><label for="cb">Callback time</label><input type="datetime-local" id="cb"></div>
         <div><label for="cn">Note</label><textarea id="cn" rows="3" maxlength="1000" placeholder="What they said, who to ask for, best time"></textarea></div>
         <div class="row"><button class="btn" id="log" disabled>Log call and next</button><button class="btn ghost" id="skip">Skip</button><a class="lnk" href="#account/${esc(a.id)}">Open account</a></div>
@@ -183,6 +190,14 @@ const screens = {
       };
     };
     draw();
+    clearCallsKey();
+    callsKeyHandler = (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest('input,textarea,select,[contenteditable]')) return;
+      if (/^[1-9]$/.test(e.key)) { const b = $$('#oc [data-o]')[Number(e.key) - 1]; if (b) b.click(); }
+      // A focused button, link or summary keeps its own Enter; logging on top of it could post the call twice.
+      else if (e.key === 'Enter' && !e.target.closest('button,a,summary')) { const lg = $('#log'); if (lg && !lg.disabled) { e.preventDefault(); lg.click(); } }
+    };
+    document.addEventListener('keydown', callsKeyHandler);
   },
 
   async pipeline() {
@@ -477,6 +492,10 @@ const screens = {
 function fillView() { if (ME.role !== 'admin') return; $('#vw').innerHTML = `<option value="">All reps</option>${repOptions(VIEW, false)}`; $('#vw').value = VIEW; }
 function setView(v) { VIEW = v; try { localStorage.setItem('rep.view', v); } catch {} fillView(); }
 
+// Call Room binds a keydown shortcut while it is the active screen; every other screen must not see it.
+let callsKeyHandler = null;
+function clearCallsKey() { if (callsKeyHandler) { document.removeEventListener('keydown', callsKeyHandler); callsKeyHandler = null; } }
+
 // Top-level groups. Hash routes are unchanged; a tab's third value marks it admin only.
 const GROUPS = [
   { key: 'home', tabs: [['today', 'Today']] },
@@ -487,6 +506,7 @@ const GROUPS = [
 ];
 async function route() {
   const [name, arg] = (location.hash.slice(1) || 'today').split('/');
+  if (name !== 'calls') clearCallsKey();
   const fn = screens[name] && !name.endsWith('Panel') ? screens[name] : screens.today;
   const tab = name === 'account' ? 'accounts' : name === 'calendar' ? 'today' : name, g = GROUPS.find((x) => x.tabs.some((t) => t[0] === tab));
   $$('#nav a').forEach((l) => { if (g && l.dataset.g === g.key) l.setAttribute('aria-current', 'page'); else l.removeAttribute('aria-current'); });
@@ -494,6 +514,7 @@ async function route() {
   $('#subnav').hidden = tabs.length < 2;
   $('#subnav').innerHTML = tabs.length < 2 ? '' : tabs.map(([k, label]) => `<a href="#${k}"${k === tab ? ' aria-current="page"' : ''}>${label}</a>`).join('');
   try { await fn(arg); } catch (e) { view.innerHTML = `<div class="err">${esc(e.message)}</div>`; }
+  view.classList.remove('enter'); void view.offsetWidth; view.classList.add('enter');
   scrollTo(0, 0);
 }
 
