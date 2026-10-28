@@ -117,6 +117,7 @@ export const httpClient: Client = {
   demoReplyDrafts: () => notBuilt('Client records'),
   demoDecideReplyDraft: () => notBuilt('Client records'),
   demoPeople: () => notBuilt('Client records'),
+  clientHealth: () => notBuilt('Client records'),
   datasets: () => notBuilt('Datasets'),
   archiveAgent: async (s, id) => { await write('DELETE', `${t(s)}/agents/${enc(id)}`); },
   messages: (s, agentId) => items<ChatMessage>(`${t(s)}/agents/${enc(agentId)}/messages`),

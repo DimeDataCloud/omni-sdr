@@ -4,7 +4,7 @@ import type {
   Me, Settings, Members, ApprovalsList, ApprovalCard, InboxItem, Meeting, Agent, ChatMessage, Routine, Capacity,
   Analytics, Credits, Connector, Contact, ContactDetail, Role, ModelTier, DraftStatus, Id, About, AskMode, Pipeline,
   Autonomy, AgentStats, Dataset, HandoffItem, HandoffCard, HandoffDraft, HandoffReason, HandoffOutcome,
-  Playbook, PlaybookReply, PlaybookCategory, ReplyDraft, ClientRecord, ClientSummary, ClientStatus, ChecklistItem, ChecklistState, ClientEvent, SetupConfig, SetupVersion, SetupDraft, DemoConnection, DemoReplyDraft, ConnChannel,
+  Playbook, PlaybookReply, PlaybookCategory, ReplyDraft, ClientRecord, ClientSummary, ClientHealth, ClientStatus, ChecklistItem, ChecklistState, ClientEvent, SetupConfig, SetupVersion, SetupDraft, DemoConnection, DemoReplyDraft, ConnChannel,
   Asset, AssetKind, AssetStatus, Aspect, Edits, GenMode, Ingredient, MotionKey, Product, Project, Scene, SequenceClip, StudioCaps,
 } from './types';
 
@@ -90,6 +90,7 @@ export interface Client {
   putSetupDraft(orgId: Id, id: Id, config: SetupConfig): Promise<SetupDraft>;
   setupAction(orgId: Id, id: Id, version: number, action: 'submit' | 'approve' | 'reject' | 'apply' | 'rollback', reason?: string): Promise<SetupVersion>;
   clientEvents(orgId: Id, id: Id, q?: { kind?: string; after?: string }): Promise<{ items: ClientEvent[]; next: string | null }>;
+  clientHealth(orgId: Id): Promise<ClientHealth[]>;   // 6d rollup, not 6a: GET clients/health
   // Demo only, not in 6a.
   demoConnections(orgId: Id, id: Id): Promise<DemoConnection[]>;
   demoTestConnection(orgId: Id, id: Id, channel: ConnChannel): Promise<DemoConnection[]>;

@@ -2,7 +2,7 @@
 // Fake data only. Role checks live here because packages/db has no client-record actions yet; in 6a the server checks each action and the database refuses again.
 import { ApiError } from '../client';
 import type {
-  ChecklistGroup, ChecklistItem, ChecklistState, ClientEvent, ClientRecord, ClientStatus, ClientSummary, ConnChannel, DealLevel, DemoConnection, DemoReplyDraft,
+  ChecklistGroup, ChecklistItem, ChecklistState, ClientEvent, ClientHealth, ClientRecord, ClientStatus, ClientSummary, ConnChannel, DealLevel, DemoConnection, DemoReplyDraft,
   SetupConfig, SetupDraft, SetupVersion, VersionStatus,
 } from '../types';
 import type { MemberRow, World } from './seed';
@@ -15,6 +15,8 @@ export interface ClientRow {
   workspaceId: string | null; profile: ClientRecord['profile'];
   checklist: ChecklistItem[]; versions: VersionRow[]; events: ClientEvent[];
   connections: DemoConnection[]; replyDrafts: DemoReplyDraft[];
+  /** Demo only: made-up health numbers for live and paused clients. The real rollup (6d) computes them from the system. */
+  health: { replyMedianMinutes: number | null; replyWindowMinutes: number; openDrafts: number; openHandoffs: number; alertFailures: number; sendErrors: number };
 }
 
 const REPS: Record<string, string> = { 'rep-jordan': 'Jordan Reyes' };   // demo only: real data resolves reps through users
@@ -132,7 +134,7 @@ export function makeClientApi({ read, write, me, nf }: Helpers) {
       if (!reason.trim()) throw bad('Say why in a few words');
       if (!EDGES[c.status].includes(to)) throw new ApiError(409, 'transition_not_allowed', `A ${c.status} client cannot move to ${to}`, { from: c.status, to });
       let unmet: string[] = [];
-      if (to === 'live') unmet = unmetForLive(c);
+      if (to === 'live' && c.status === 'ready') unmet = unmetForLive(c);   // resume from paused skips the launch guard
       if (to === 'ready' && !c.versions.some((v) => v.status === 'approved' || v.status === 'applied')) unmet = ['A setup version approved by a second person'];
       if (unmet.length) throw new ApiError(409, 'transition_not_allowed', 'Not ready yet', { from: c.status, to, unmet });
       if (c.status === 'closed' && to === 'onboarding') c.checklist = checklistFor();
@@ -229,6 +231,11 @@ export function makeClientApi({ read, write, me, nf }: Helpers) {
       return publicVersion(v);
     }),
 
+    clientHealth: (orgId: string) => read((w): ClientHealth[] => {
+      org(w, orgId); const m = me(w); opsOnly(m, 'client_read');
+      return w.clients.filter((c) => c.status === 'live' || c.status === 'paused').map((c) => ({
+        clientId: c.id, ...c.health, appliedVersion: appliedOf(c)?.version ?? null, pendingVersions: pendingOf(c), billing: { state: 'not_connected' as const } }));
+    }),
     clientEvents: (orgId: string, id: string, q?: { kind?: string; after?: string }) => read((w) => {
       const { c } = open(w, orgId, id, (x) => opsOnly(x, 'client_read'));
       const all = [...c.events].reverse().filter((e) => !q?.kind || e.kind === q.kind);
@@ -290,6 +297,7 @@ export function seedClients(at: (daysAgo: number) => string, members: MemberRow[
       deal: { repId: 'rep-jordan', level, priceCents, priceIsDraft: true, closedAt: at(days) }, workspaceId: 'ws-' + id.slice(3),
       profile: { niche, contactName, contactEmail, notes }, checklist: [], versions: [], events: [],
       connections: conns('needs_approval', null), replyDrafts: drafts(id, name, niche, 'pending'),
+      health: { replyMedianMinutes: null, replyWindowMinutes: 30, openDrafts: 0, openHandoffs: 0, alertFailures: 0, sendErrors: 0 },
     };
     event(c, { id: null, kind: 'system' }, 'deal.closed', null, { level, price_is_draft: true }, at(days));
     return c;
@@ -320,6 +328,16 @@ export function seedClients(at: (daysAgo: number) => string, members: MemberRow[
   live.events.sort((a, b) => a.at.localeCompare(b.at));
   live.events.forEach((e, i) => { e.id = `${live.id}-e${i + 1}`; });
 
+  live.health = { replyMedianMinutes: 14, replyWindowMinutes: 30, openDrafts: 2, openHandoffs: 1, alertFailures: 0, sendErrors: 0 };
+  // A second live client with problems, so the Management table has something at the top. Built from the first by renaming.
+  const dental = JSON.parse(JSON.stringify(live).split('cl-ridgeline').join('cl-maple').split('Ridgeline Generators').join('Maple Street Dental')) as ClientRow;
+  dental.profile = { niche: 'Dental practice', contactName: 'Dr. Ana Pruitt', contactEmail: 'ana@maple.example', notes: 'Wants recall reminders and new-patient booking.' };
+  dental.deal = { ...dental.deal, level: 'L1 pilot', priceCents: 49900, closedAt: at(25) };
+  dental.versions = dental.versions.slice(0, 3);
+  dental.events = dental.events.filter((e) => e.kind !== 'setup.draft_saved');
+  dental.health = { replyMedianMinutes: 52, replyWindowMinutes: 30, openDrafts: 6, openHandoffs: 3, alertFailures: 2, sendErrors: 1 };
+  dental.workspaceId = 'ws-maple';
+
   // Onboarding: five items done, one in progress, A2P blocked on carrier review.
   const onb = mk('cl-ironwood', 'Ironwood Martial Arts', 'Martial arts school', 'onboarding', 'Priya Nair', 'priya@ironwood.example', 'L1 pilot', 49900, 6, 'Three locations, trial-class booking is the goal.');
   onb.connections = conns('simulated', at(5));
@@ -333,5 +351,5 @@ export function seedClients(at: (daysAgo: number) => string, members: MemberRow[
 
   // Closed: sold, onboarding not started, so no checklist and no setup yet.
   const closed = mk('cl-northgate', 'Northgate Remodeling', 'Remodeler', 'closed', 'Dale Whitcomb', 'dale@northgate.example', 'L3 outcome', 14900, 1, 'Wants to pay per kept appointment. Quote requests come in by form and phone.');
-  return [closed, onb, live];
+  return [closed, onb, live, dental];
 }

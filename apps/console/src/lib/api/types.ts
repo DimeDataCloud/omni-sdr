@@ -280,6 +280,12 @@ export interface SetupVersion {
 }
 export interface SetupDraft { version: number; parentVersion: number | null; config: SetupConfig }
 
+/** Management rollup, 6d (not 6a): one call, a row per client. The demo returns made-up numbers so the table can be built now. */
+export interface ClientHealth {
+  clientId: Id; replyMedianMinutes: number | null; replyWindowMinutes: number; openDrafts: number; openHandoffs: number; alertFailures: number; sendErrors: number;
+  appliedVersion: number | null; pendingVersions: number; billing: { state: 'not_connected' };
+}
+
 // Demo only, NOT in 6a (connection cards and the draft approval queue come later). Labelled as demo on screen.
 export type ConnState = 'live' | 'simulated' | 'needs_approval';
 export type ConnChannel = 'mailbox' | 'calendar' | 'phone' | 'voice' | 'crm';

@@ -1,7 +1,7 @@
 // Shared bits for the client record screens (6a-shaped data).
 import { api } from '@/lib/api';
 import { ApiError } from '@/lib/api/client';
-import type { ClientStatus, Id } from '@/lib/api/types';
+import type { ClientHealth, ClientStatus, Id } from '@/lib/api/types';
 import { useQuery } from '@/lib/hooks';
 
 export type Tone = 'neutral' | 'success' | 'warning' | 'danger' | 'info';
@@ -25,4 +25,14 @@ export function errText(e: unknown): string {
 export function usePeople(orgId: string) {
   const q = useQuery(() => api.demoPeople(orgId), [orgId], { key: `client-people:${orgId}` });
   return (id: Id | null | undefined) => (id ? q.data?.[id] ?? 'Someone' : 'The system');
+}
+
+/** Plain reasons a live client needs attention, most important first. Empty means healthy. */
+export function unhealthyReasons(h: ClientHealth | undefined): string[] {
+  if (!h) return [];
+  const out: string[] = [];
+  if (h.replyMedianMinutes !== null && h.replyMedianMinutes > h.replyWindowMinutes) out.push(`Replies take ${h.replyMedianMinutes} min, the window is ${h.replyWindowMinutes}`);
+  if (h.alertFailures > 0) out.push(`${h.alertFailures} alert${h.alertFailures === 1 ? '' : 's'} failed to reach the owner`);
+  if (h.sendErrors > 0) out.push(`${h.sendErrors} send error${h.sendErrors === 1 ? '' : 's'}`);
+  return out;
 }
