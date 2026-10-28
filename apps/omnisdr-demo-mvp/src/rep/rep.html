@@ -52,13 +52,11 @@ main>.card,main>section.card,main>.grid{margin-bottom:16px}
 .bulk{position:sticky;bottom:calc(8px + env(safe-area-inset-bottom));z-index:3;box-shadow:0 6px 24px rgba(0,0,0,.18)}.splitlist{display:flex;flex-wrap:wrap;gap:4px 14px}
 @media (pointer:coarse){.chip{min-height:44px}}
 ol.path{margin:0;padding-left:22px;display:grid;gap:10px}ol.path li b{display:block}ol.path li span{display:block;max-width:72ch}
-@keyframes viewIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
-#view.enter{animation:viewIn .2s ease}
-@keyframes dlgIn{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
-@keyframes backdropIn{from{opacity:0}to{opacity:1}}
-dialog[open]{animation:dlgIn .2s ease}dialog[open]::backdrop{animation:backdropIn .2s ease}
-@keyframes toastIn{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}
-.toast:not([hidden]){animation:toastIn .2s ease}
+#view.enter{animation:enter var(--t-enter) ease}
+dialog[open]{animation:rise var(--t-enter) ease}dialog[open]::backdrop{animation:fade var(--t-enter) ease}
+@keyframes toastIn{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}} /* keeps the -50% centring */
+.toast:not([hidden]){animation:toastIn var(--t-enter) ease}
+.chip{transition:border-color var(--t-hover) ease,background-color var(--t-hover) ease}
 .acts{margin:4px 0 16px}.acts label{margin:0}.acts select{width:auto;min-width:180px}
 .show-sm{display:none}@media (max-width:640px){.hide-sm{display:none}.show-sm{display:inline}}
 </style></head>
@@ -372,7 +370,7 @@ const screens = {
               <p class="note" id="mxTrade"></p><div class="row"><button class="btn ghost sm" type="button" id="mxReset">Reset to plan default</button><button class="btn ghost sm" type="button" data-copy="qsheet">Copy quote sheet</button></div>
               <pre class="qsheet card" id="qsheet"></pre></div></div>
           <label for="dn">Notes</label><input id="dn" name="notes" maxlength="1000"><p class="note">${K.prices.isFinal ? '' : 'Prices are DRAFT until Christian sets them. '}${esc(K.taxNote)} No discounts.</p><button class="btn">Close the sale</button></form>`}</div>`;
-    const tabs = $$('.tab'), show = (k) => { tabs.forEach((x) => x.setAttribute('aria-selected', String(x.dataset.t === k))); $$('[data-p]').forEach((p) => (p.hidden = p.dataset.p !== k)); };
+    const tabs = $$('.tab'), show = (k) => { tabs.forEach((x) => x.setAttribute('aria-selected', String(x.dataset.t === k))); $$('[data-p]').forEach((p) => (p.hidden = p.dataset.p !== k)); const on = tabs.find((x) => x.dataset.t === k); if (on) on.scrollIntoView({ block: 'nearest', inline: 'nearest' }); };
     // The open tab lives in the hash via replaceState (no hashchange, no reload), so a save that re-renders lands back on it.
     tabs.forEach((t) => (t.onclick = () => { show(t.dataset.t); const n = Object.keys(ACCOUNT_TAB).find((k) => ACCOUNT_TAB[k] === t.dataset.t); history.replaceState(null, '', '#account/' + a.id + (n === 'details' ? '' : '/' + n)); }));
     const want = location.hash.split('/')[2]; if (Object.hasOwn(ACCOUNT_TAB, want)) show(ACCOUNT_TAB[want]);
