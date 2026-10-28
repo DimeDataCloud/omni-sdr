@@ -39,16 +39,19 @@ async function readJson(req, cap = 4096) {
   try { const v = JSON.parse(new TextDecoder().decode(all)); return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; } catch (e) { return {}; }
 }
 
+const voiceOn = (env) => !!env.RETELL_API_KEY && /^agent_[a-f0-9]{20,}$/.test(String(env.RETELL_AGENT_ID || ''));
 function page(html, env) {
+  const voice = html === demoHtml && voiceOn(env);
   const nonce = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16))));
   let body = html.replaceAll('__NONCE__', nonce).replace('__CSS__', CSS).replace('__LOGO__', LOGO.trim());
+  if (voice) body = body.replace('<meta name="robots"', '<meta name="voice" content="1"><meta name="robots"');
   if (env.TURNSTILE_SITEKEY) body = body.replace('<meta name="robots"', '<meta name="ts-key" content="' + String(env.TURNSTILE_SITEKEY).replace(/[^\w-]/g, '') + '"><meta name="robots"');
   return new Response(body, { headers: {
     'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-robots-tag': 'noindex, nofollow',
     'x-content-type-options': 'nosniff', 'x-frame-options': 'DENY', 'referrer-policy': 'same-origin',
     'strict-transport-security': 'max-age=63072000; includeSubDomains',
     'permissions-policy': 'microphone=(self), camera=(), geolocation=()',
-    'content-security-policy': "default-src 'self'; script-src 'self' 'nonce-" + nonce + "' https://challenges.cloudflare.com; style-src 'self' 'nonce-" + nonce + "'; img-src 'self' data:; connect-src 'self' wss://generativelanguage.googleapis.com; frame-src https://challenges.cloudflare.com; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+    'content-security-policy': "default-src 'self'; script-src 'self' 'nonce-" + nonce + "' https://challenges.cloudflare.com" + (voice ? ' https://cdn.jsdelivr.net' : '') + "; style-src 'self' 'nonce-" + nonce + "'; img-src 'self' data:; connect-src 'self' wss://generativelanguage.googleapis.com" + (voice ? ' https://api.retellai.com https://*.retellai.com wss://*.retellai.com wss://*.livekit.cloud https://*.livekit.cloud' : '') + "; frame-src https://challenges.cloudflare.com; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
   } });
 }
 
@@ -63,6 +66,7 @@ export class Gate {
     for (const [k] of await this.s.list({ prefix: 'day:' })) if (k.slice(4) < old) await this.s.delete(k);
     for (const [k] of await this.s.list({ prefix: 'ip:' })) if (k.split(':')[1] < old) await this.s.delete(k);
     for (const [k, v] of await this.s.list({ prefix: 'ds:' })) if (v < now) await this.s.delete(k);
+    for (const [k, v] of await this.s.list({ prefix: 'vtok:' })) if (now - v > 2 * DAY) await this.s.delete(k);
     for (const [k, v] of await this.s.list({ prefix: 'tok:' })) if (now - v > 2 * DAY) await this.s.delete(k);
     for (const [k, v] of await this.s.list({ prefix: 'lf:' })) if (v.until < now && now - v.last > 15 * 60000) await this.s.delete(k);
     for (const [k, v] of await this.s.list({ prefix: 'sl:' })) if (v.until < now && now - v.last > 15 * 60000) await this.s.delete(k);
@@ -99,9 +103,20 @@ export class Gate {
         await s.put('tok:' + b.sid, now); await s.put('mints', used + 1);
         return R({ ok: true, leftMs: left, tenant: rec.tenant });
       }
+      case 'vtoken': { // Retell voice call: same session rules as 'token', its own marker and lifetime counter ('vcalls', not cleared by resetday)
+        const rec = await s.get('s:' + b.sid); if (!rec) return R({ ok: false }, 404);
+        const left = rec.max * 1000 - (now - Date.parse(rec.at));
+        if (left <= 0) return R({ ok: false, reason: 'expired' }, 410);
+        if ((await s.get('kill')) === true) return R({ ok: false, reason: 'paused' }, 503);
+        if (await s.get('vtok:' + b.sid)) return R({ ok: false, reason: 'used' }, 429);
+        const used = (await s.get('vcalls')) || 0;
+        if (b.ceiling != null && used >= b.ceiling) return R({ ok: false, reason: 'test-ceiling' }, 429);
+        await s.put('vtok:' + b.sid, now); await s.put('vcalls', used + 1);
+        return R({ ok: true, leftMs: left });
+      }
       case 'stats': {
         const list = [...(await s.list({ prefix: 's:' })).values()].sort((x, y) => y.at.localeCompare(x.at)).slice(0, 25);
-        return R({ mints: (await s.get('mints')) || 0, used: (await s.get('day:' + b.day)) || 0, killed: (await s.get('kill')) === true, sessions: list.map((r) => ({ sid: r.sid.slice(0, 8), tenant: r.tenant, at: r.at, events: r.events.length, last: r.events.at(-1)?.type || '' })) });
+        return R({ mints: (await s.get('mints')) || 0, vcalls: (await s.get('vcalls')) || 0, used: (await s.get('day:' + b.day)) || 0, killed: (await s.get('kill')) === true, sessions: list.map((r) => ({ sid: r.sid.slice(0, 8), tenant: r.tenant, at: r.at, events: r.events.length, last: r.events.at(-1)?.type || '' })) });
       }
       case 'resetday': { // dev portal: zero today's daily and per-ip counters (session log is kept)
         await s.delete('day:' + b.day); for (const [k] of await s.list({ prefix: 'ip:' + b.day + ':' })) await s.delete(k); return R({ ok: true });
@@ -232,6 +247,32 @@ async function mintToken(env, b) {
   return json({ ok: true, token: j.name, model });
 }
 
+// Retell web call for the OmniSDR waitlist agent (POST /v3/create-web-call; v2 was retired 2026-09-30; SDK 3.0.2 RetellWebClient takes the same accessToken). The API key never leaves the Worker; the browser gets a one-use access token. The agent itself caps the call at 3 minutes.
+// Spend is bounded three ways: the session caps (daily, per IP, kill switch), this lifetime ceiling, and the agent's own duration cap. No RETELL_API_KEY secret means the tab does not appear.
+async function mintVoice(env, b) {
+  if (!voiceOn(env)) return json({ ok: false, message: 'Not available.' }, 501);
+  if (typeof b.sid !== 'string') return json({ ok: false, message: 'Start a session first.' }, 400);
+  const g = await gate(env, { op: 'vtoken', sid: b.sid.slice(0, 64), ceiling: voiceCeiling(env) });
+  if (!g.ok) return json({ ok: false, reason: g.reason, message: g.reason === 'used' ? 'The voice call for this session was already started.' : g.reason === 'expired' ? 'Session expired.' : g.reason === 'paused' ? 'The demo is paused.' : 'The voice demo has reached its test limit.' }, g._s);
+  const r = await fetch(retellBase(env) + '/v3/create-web-call', { method: 'POST', headers: { authorization: 'Bearer ' + env.RETELL_API_KEY, 'content-type': 'application/json' }, body: JSON.stringify({ agent_id: env.RETELL_AGENT_ID, metadata: { source: 'demo-panel', session: b.sid.slice(0, 8) } }) }).catch(() => null);
+  if (!r || !r.ok) return json({ ok: false, message: 'Could not start the voice call.' }, 502);
+  const j = await r.json().catch(() => null); if (!j || typeof j.access_token !== 'string' || typeof j.call_id !== 'string') return json({ ok: false, message: 'Could not start the voice call.' }, 502);
+  // The v3 SDK starts the call from this create-web-call response (token, transport, ICE servers); only those fields go to the browser, never the API key.
+  const call = { call_id: j.call_id, access_token: j.access_token, transport: j.transport, ice_servers: j.ice_servers, expires_at: j.expires_at };
+  return json({ ok: true, call, agentId: env.RETELL_AGENT_ID, maxSeconds: Math.min(180, Math.floor(g.leftMs / 1000)) });
+}
+// RETELL_BASE exists so the offline test can point at a local mock; honoured ONLY for localhost or the real Retell host, so a bad var can never send the API key elsewhere.
+function retellBase(env) {
+  const v = String(env.RETELL_BASE || '').replace(/\/+$/, '');
+  return /^(https:\/\/api\.retellai\.com|http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?)$/.test(v) ? v : 'https://api.retellai.com';
+}
+// Lifetime voice-call ceiling, default 2 calls (about $1.50 at the 3 minute cap and $0.23 a minute). 'off' lifts it. reset-today never clears it.
+function voiceCeiling(env) {
+  const v = String(env.RETELL_TEST_CALLS ?? '').trim().toLowerCase();
+  if (v === 'off') return null;
+  const n = Number.parseInt(v, 10); return Number.isFinite(n) && n >= 0 ? n : 2;
+}
+
 // Google base URL. GEMINI_BASE exists so the offline tests can point at a local mock; it is honoured ONLY for localhost or the real Google host, so a bad var can never send the API key elsewhere.
 function geminiBase(env) {
   const v = String(env.GEMINI_BASE || '').replace(/\/+$/, '');
@@ -271,6 +312,7 @@ export default {
         if (p === '/api/event') return logEvent(env, b);
         if (p === '/api/lead') return json(chasePlan(b));
         if (p === '/api/token') return mintToken(env, b);
+        if (p === '/api/voice') return mintVoice(env, b);
         if (p === '/api/sales/login') return salesLogin(req, env, b);
         if (p === '/api/sales/logout') { const sid = cookie(req, 'sales'); if (sid && /^[a-f0-9]{64}$/.test(sid)) await gate(env, { op: 'ssdelete', id: sid }); return json({ ok: true }, 200, { 'set-cookie': 'sales=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0' }); }
         if (p === '/api/dev/login') {
@@ -294,7 +336,7 @@ export default {
         if (!await devAuthed(req, env)) return json({ ok: false, message: 'Not signed in.' }, 401);
         if (p === '/api/dev/stats') {
           const g = await gate(env, { op: 'stats', day: today() });
-          return json({ ok: true, testMints: { used: g.mints, ceiling: testMintCeiling(env) }, day: today(), usedToday: g.used, dailyCap: +(env.DAILY_CAP || 10), ipCap: +(env.IP_CAP || 2), sessionSeconds: +(env.SESSION_SECONDS || 180), killed: g.killed, storage: 'Durable Object', checks: { turnstile: !!env.TURNSTILE_SECRET, turnstileKey: !!env.TURNSTILE_SITEKEY, geminiKey: !!env.GEMINI_API_KEY, engineB: env.ENGINE_B === '1', devPasscode: !!env.DEV_PASSCODE }, tenants: Object.keys(TENANTS), sessions: g.sessions });
+          return json({ ok: true, testMints: { used: g.mints, ceiling: testMintCeiling(env) }, voiceCalls: { used: g.vcalls, ceiling: voiceCeiling(env) }, day: today(), usedToday: g.used, dailyCap: +(env.DAILY_CAP || 10), ipCap: +(env.IP_CAP || 2), sessionSeconds: +(env.SESSION_SECONDS || 180), killed: g.killed, storage: 'Durable Object', checks: { turnstile: !!env.TURNSTILE_SECRET, turnstileKey: !!env.TURNSTILE_SITEKEY, geminiKey: !!env.GEMINI_API_KEY, engineB: env.ENGINE_B === '1', devPasscode: !!env.DEV_PASSCODE }, tenants: Object.keys(TENANTS), sessions: g.sessions });
         }
         if (p === '/api/dev/tenants') return json({ ok: true, tenants: TENANTS });
       }

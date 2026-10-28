@@ -22,4 +22,8 @@ bash tests/stop.sh
 export MOCK_PORT="${MOCK_PORT:-8802}"; export ENGINE_B_TEST_MINTS=12; export FAKE_KEY=test-key-NOT-REAL
 bash tests/start.sh --var ENGINE_B:1 --var GEMINI_API_KEY:$FAKE_KEY --var GEMINI_BASE:http://127.0.0.1:$MOCK_PORT --var SESSION_SECONDS:3 --var ENGINE_B_TEST_MINTS:$ENGINE_B_TEST_MINTS --var IP_CAP:5000 --var DAILY_CAP:5000 --var DEV_PASSCODE:test-passcode --var TRYME_GATED:off --var TURNSTILE_SITEKEY: && node tests/token-lockdown.js || rc=1
 bash tests/stop.sh
+# Retell voice tab: fake key, mock Retell, lifetime ceiling of 3 calls.
+export RETELL_MOCK_PORT="${RETELL_MOCK_PORT:-8803}"; export RETELL_TEST_CALLS=3; export FAKE_RETELL_KEY=retell-test-key-NOT-REAL
+bash tests/start.sh --var RETELL_API_KEY:$FAKE_RETELL_KEY --var RETELL_BASE:http://127.0.0.1:$RETELL_MOCK_PORT --var RETELL_TEST_CALLS:$RETELL_TEST_CALLS --var IP_CAP:5000 --var DAILY_CAP:5000 --var TRYME_GATED:off --var TURNSTILE_SITEKEY: && node tests/voice.js || rc=1
+bash tests/stop.sh
 exit $rc
