@@ -13,7 +13,7 @@
 .sim{border:1px dashed var(--control);border-radius:8px;padding:2px 8px;font-size:12px;color:var(--muted);display:inline-block}
 @keyframes pop{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
-.bubble.in,.sms.in{animation:pop .2s ease both}
+.bubble.in,.sms.in,#vsms:not([hidden]){animation:pop .2s ease both}
 #p1:not([hidden]),#p2:not([hidden]),#p3:not([hidden]){animation:fadeIn .2s ease}
 @media (max-width:600px){.tabs{gap:0}.tabs .tab{flex:1 1 0;min-width:0;padding:0 6px;line-height:18px}}
 .ctl{flex-wrap:wrap}.ctl .btn{flex:1 1 auto;white-space:nowrap}
