@@ -1,12 +1,13 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow"><meta name="theme-color" content="#F7F5F0"><title>OmniSDR</title>
 <style nonce="__NONCE__">__CSS__
-.bubble{max-width:88%;padding:10px 12px;border-radius:12px;margin:0 0 8px;white-space:pre-wrap}
+.bubble{max-width:88%;padding:10px 12px;border-radius:12px;margin:0 0 8px;white-space:pre-wrap;align-self:flex-start}
 .bubble.a{background:var(--ok-soft);color:var(--text);border-bottom-left-radius:4px}
-.bubble.u{background:var(--bg);border:1px solid var(--line);margin-left:auto;border-bottom-right-radius:4px}
+.bubble.u{background:var(--bg);border:1px solid var(--line);align-self:flex-end;border-bottom-right-radius:4px}
 .bubble.t{display:flex;gap:5px;align-items:center;min-height:42px}.bubble.t i{width:7px;height:7px;border-radius:50%;background:var(--control);animation:hop .5s ease infinite alternate}.bubble.t i:nth-child(2){animation-delay:.12s}.bubble.t i:nth-child(3){animation-delay:.24s}
 .bubble.in{animation:pop .25s ease both}
 #log{height:min(52vh,420px);overflow:auto;padding:4px 2px;display:flex;flex-direction:column}
+#log>:first-child{margin-top:auto} /* messages sit just above the input; unlike justify-content:flex-end this still scrolls */
 .row{display:flex;gap:8px;margin-top:10px}.row input{flex:1}
 .chat{max-width:480px;margin:6vh auto 0;animation:open .25s ease both}
 .replies{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 8px;animation:pop .2s ease both}
@@ -26,11 +27,13 @@ var mode=document.body.getAttribute('data-mode'),log=document.getElementById('lo
 var calm=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 function el(t,c,x){var n=document.createElement(t);if(c)n.className=c;if(x!=null)n.textContent=x;return n}
 function put(n){log.appendChild(n);log.scrollTop=1e9;return n}
+var wait=null; // typing dots already showing while a request is out; the next agent line takes them over
+function dots(){var d=put(el('div','bubble a t'));d.appendChild(el('i'));d.appendChild(el('i'));d.appendChild(el('i'));return d}
 // Agent line: a typing indicator first, then the text. With reduced motion the text just appears.
 function say(t){return new Promise(function(done){
  if(calm){put(el('div','bubble a',t));return done()}
- var d=put(el('div','bubble a t'));d.appendChild(el('i'));d.appendChild(el('i'));d.appendChild(el('i'));
- setTimeout(function(){d.className='bubble a in';d.textContent=t;log.scrollTop=1e9;done()},650)})}
+ var d=wait||dots(),ms=wait?250:650;wait=null;
+ setTimeout(function(){d.className='bubble a in';d.textContent=t;log.scrollTop=1e9;done()},ms)})}
 function you(t){put(el('div','bubble u',t))}
 function choices(){var r=el('div','replies');r.setAttribute('role','group');r.setAttribute('aria-label','Choose where to go');
  [['Try me','/tryme'],['Rep dashboard','/rep']].forEach(function(c){var b=el('button','rb',c[0]);b.type='button';b.addEventListener('click',function(){var all=r.querySelectorAll('button');for(var k=0;k<all.length;k++)all[k].disabled=true;you(c[0]);say('Opening '+c[0]+' now.').then(function(){location.assign(c[1])})});r.appendChild(b)});put(r);var f=r.firstChild;if(f)f.focus()}
@@ -41,7 +44,7 @@ var f=document.getElementById('lf'),p=document.getElementById('pc'),sb=document.
 function lock(v){p.disabled=v;sb.disabled=v}
 say('Hi, this is OmniSDR.').then(function(){return say('Type the passcode to come in.')}).then(function(){p.focus()});
 f.addEventListener('submit',function(ev){ev.preventDefault();if(busy||!p.value)return;busy=true;lock(true);
- var body=JSON.stringify({passcode:p.value});p.value='';you('\u2022\u2022\u2022\u2022\u2022\u2022');
+ var body=JSON.stringify({passcode:p.value});p.value='';you('\u2022\u2022\u2022\u2022\u2022\u2022');if(!calm)wait=dots();
  fetch('/api/sales/login',{method:'POST',headers:{'content-type':'application/json'},body:body}).then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
  .then(function(x){
   if(x.s===200&&x.j.ok){f.hidden=true;return say('That works. Welcome in.').then(function(){return say('Where to?')}).then(choices)}
