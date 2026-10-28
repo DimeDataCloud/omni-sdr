@@ -155,6 +155,9 @@ async function salesLogin(req, env, b) {
 }
 
 const triedGated = (env) => !['off', '0', 'false', 'no'].includes(String(env.TRYME_GATED ?? '').trim().toLowerCase());
+// Branded 404 for browsers (Accept: text/html); API and script callers keep the JSON 404.
+const NOT_FOUND_HTML = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="robots" content="noindex, nofollow"><meta name="theme-color" content="#F7F5F0"><title>Page not found · OmniSDR</title><style nonce="__NONCE__">__CSS__</style></head><body><div class="wrap"><header class="top"><div class="brand">__LOGO__<b>OmniSDR</b></div></header><main class="card"><h1>That page is not here.</h1><p class="muted">Check the address, or start from the front door.</p><p><a class="btn" href="/">Go to the front door</a></p></main></div></body></html>';
+const notFoundPage = (env) => { const r = page(NOT_FOUND_HTML, env); return new Response(r.body, { status: 404, headers: r.headers }); };
 const toEntry = () => new Response(null, { status: 302, headers: { location: '/', 'cache-control': 'no-store', 'x-robots-tag': 'noindex' } });
 const LOGIN_PANEL = '<form class="row" id="lf"><label class="sr" for="pc">Passcode</label><input id="pc" type="password" autocomplete="off" placeholder="Passcode" required><button class="btn" id="sb" type="submit">Send</button></form>';
 const PORTAL_PANEL = '<div class="out-row"><button class="btn ghost" id="so" type="button">Sign out</button></div>';
@@ -164,10 +167,13 @@ function entryPage(authed, env) { return page(entryHtml.replace('__MODE__', auth
 /* ---------- handlers ---------- */
 const publicTenant = (id) => { const t = TENANTS[id]; return { id: t.id, business: t.business, owner: t.owner, persona: t.persona, niche: t.niche, hours: t.hours, serviceZips: t.serviceZips, services: t.services, outOfScope: t.outOfScope, estimate: t.estimate, slots: t.slots, hot: t.hot, license: t.license }; };
 const pickTenant = (id) => (typeof id === 'string' && Object.hasOwn(TENANTS, id)) ? id : DEFAULT_TENANT;
+// Real booking link comes from Christian; until then one mailto, one constant.
+const BOOK_URL = 'mailto:getomnisdr@gmail.com';
+const BOOK_HOW = 'To book a live walkthrough, email ' + BOOK_URL.slice('mailto:'.length) + '.';
 const MSG = {
-  paused: 'The live demo is paused. Book a live demo with Dime Data instead.',
-  'daily-cap': "Today's demo sessions are used up. Book a live demo and we'll walk you through it.",
-  'ip-cap': 'You have used your demo sessions for today. Book a live demo for more.'
+  paused: 'The demo is paused right now. ' + BOOK_HOW,
+  'daily-cap': "Today's demo sessions are used up. Try again tomorrow. " + BOOK_HOW,
+  'ip-cap': 'You have used your demo sessions for today. Try again tomorrow. ' + BOOK_HOW
 };
 
 async function newSession(req, env, body) {
@@ -241,6 +247,8 @@ function testMintCeiling(env) {
 
 export default {
   async fetch(req, env) {
+    // HEAD answers like GET without a body, so link previews and uptime checks do not see a 404.
+    if (req.method === 'HEAD') { const r = await this.fetch(new Request(req, { method: 'GET' }), env); return new Response(null, { status: r.status, headers: r.headers }); }
     try {
       const u = new URL(req.url), p = u.pathname, m = req.method;
       if (m === 'GET' && p === '/tryme') return (!triedGated(env) || (await salesAuthed(req, env))) ? page(demoHtml, env) : toEntry();
@@ -288,6 +296,7 @@ export default {
         }
         if (p === '/api/dev/tenants') return json({ ok: true, tenants: TENANTS });
       }
+      if (m === 'GET' && !p.startsWith('/api/') && (req.headers.get('accept') || '').includes('text/html')) return notFoundPage(env);
       return json({ ok: false, message: 'Not found' }, 404);
     } catch (e) {
       if (e instanceof TooLarge) return json({ ok: false, message: 'Request too large' }, 413);
