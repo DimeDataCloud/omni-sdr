@@ -338,3 +338,42 @@ test('mix slider: bad positions are refused and leave nothing behind; level 2 ta
   assert.equal((await post({ level: 1, priceCents: 49900, mixPosition: m.lo })).status, 200);
   const d = DB.db.prepare('SELECT mix FROM deals').get(); assert.equal(JSON.parse(d.mix).minutes, 60);
 });
+
+test('rep isolation: a rep never sees another rep by id, by ?owner=, by admin route, or in the history of a handed-over lead', async () => {
+  const DB = setup(), env = { REP_ADMIN_EMAIL: BOSS };
+  await call(DB, BOSS, '/rep/api/me', { env }); // bootstrap the admin
+  const api = (who, p, o = {}) => call(DB, who, '/rep/api' + p, { ...o, env });
+  const a = await newAccount(DB, A);
+  await j(await api(A, `/accounts/${a.id}/notes`, { method: 'POST', body: { body: 'first touch' } }));
+  await j(await api(A, '/calls', { method: 'POST', body: { accountId: a.id, outcome: 'no_answer' } }));
+  const task = (await j(await api(A, '/tasks', { method: 'POST', body: { accountId: a.id, title: 'Ring back', dueAt: new Date(Date.now() + 864e5).toISOString() } }))).body.id;
+  const contact = (await j(await api(A, `/accounts/${a.id}/contacts`, { method: 'POST', body: { name: 'Owner Ann' } }))).body.id;
+
+  // B probing A's rows by id: 404, never 403, and nothing changes.
+  for (const [m, p, body] of [['GET', `/accounts/${a.id}`], ['PATCH', `/accounts/${a.id}`, { notes: 'x' }], ['POST', `/accounts/${a.id}/notes`, { body: 'x' }],
+    ['POST', `/accounts/${a.id}/contacts`, { name: 'x' }], ['DELETE', `/contacts/${contact}`], ['PATCH', `/tasks/${task}`, { status: 'done' }],
+    ['POST', '/calls', { accountId: a.id, outcome: 'no_answer' }], ['POST', '/deals', { accountId: a.id, level: 1 }], ['POST', '/tasks', { accountId: a.id, title: 'x', dueAt: new Date(Date.now() + 864e5).toISOString() }]])
+    assert.equal((await api(B, p, { method: m, body })).status, 404, `${m} ${p}`);
+  // B's lists are empty, and ?owner= means nothing to a rep.
+  for (const p of ['/accounts', `/accounts?owner=${A}`, `/tasks?owner=${A}`, `/deals?owner=${A}`, `/today?owner=${A}`, `/queue?owner=${A}`]) {
+    const r = await j(await api(B, p)); assert.equal(r.status, 200, p); assert.doesNotMatch(JSON.stringify(r.body), /Ridge Roofing|Ring back|rep-a@/, p);
+  }
+  assert.doesNotMatch(await (await api(B, `/export.csv?owner=${A}`)).text(), /Ridge Roofing|rep-a@/);
+  // Admin-only routes refuse a rep outright, so no rep list, counts or pay reach one.
+  for (const [m, p, body] of [['GET', '/reps'], ['GET', '/leads/facets'], ['POST', '/assign', { accountIds: [a.id], owner: B }], ['POST', '/bulk', { accountIds: [a.id], archived: true }]])
+    assert.equal((await api(B, p, { method: m, body })).status, 403, `${m} ${p}`);
+  assert.equal((await api(A, `/accounts/${a.id}`)).status, 200); // and none of that touched A
+  assert.equal((await j(await api(A, `/accounts/${a.id}`))).body.tasks.some((t) => t.id === task), true);
+
+  // The boss hands the lead to B. B gets the lead, but not A's email or name anywhere in its history.
+  assert.equal((await api(BOSS, '/assign', { method: 'POST', body: { accountIds: [a.id], owner: B } })).status, 200);
+  await api(BOSS, '/assign', { method: 'POST', body: { accountIds: [a.id], owner: A } });
+  await api(BOSS, '/assign', { method: 'POST', body: { accountIds: [a.id], owner: B } });
+  const d = await j(await api(B, `/accounts/${a.id}`));
+  assert.equal(d.status, 200); assert.ok(d.body.activities.length >= 3 && d.body.calls.length === 1);
+  const seen = JSON.stringify(d.body);
+  assert.doesNotMatch(seen, /rep-a@example\.test|boss@example\.test|Rep A/i);
+  assert.match(seen, /Assigned to you/); // B's own hand-over still reads
+  // The admin still sees who did what.
+  assert.match(JSON.stringify((await j(await api(BOSS, `/accounts/${a.id}`))).body), /rep-a@example\.test/);
+});
