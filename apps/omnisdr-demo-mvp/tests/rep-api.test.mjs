@@ -13,7 +13,7 @@ const { handleRep } = await import('../src/rep/index.js');
 
 function d1() {
   const db = new DatabaseSync(':memory:');
-  db.exec('PRAGMA foreign_keys = ON;' + readFileSync(new URL('../migrations/rep/0001_init.sql', import.meta.url), 'utf8') + readFileSync(new URL('../migrations/rep/0002_audit.sql', import.meta.url), 'utf8'));
+  db.exec('PRAGMA foreign_keys = ON;' + readFileSync(new URL('../migrations/rep/0001_init.sql', import.meta.url), 'utf8') + readFileSync(new URL('../migrations/rep/0002_audit.sql', import.meta.url), 'utf8') + readFileSync(new URL('../migrations/rep/0003_stages.sql', import.meta.url), 'utf8'));
   const stmt = (sql, args = []) => ({
     bind: (...a) => stmt(sql, a),
     first: async () => db.prepare(sql).get(...args) ?? null,
@@ -87,7 +87,7 @@ test('logging a call moves the stage, closes open follow-ups and books the next 
   const DB = setup(), a = await newAccount(DB, A);
   await call(DB, A, '/rep/api/calls', { method: 'POST', body: { accountId: a.id, outcome: 'no_answer' } });
   const r = await j(await call(DB, A, '/rep/api/calls', { method: 'POST', body: { accountId: a.id, outcome: 'interested', note: 'Owner wants the check' } }));
-  assert.equal(r.body.stage, 'contacted');
+  assert.equal(r.body.stage, 'results_call'); // shown as Demo booked
   const open = DB.db.prepare("SELECT kind, title FROM tasks WHERE account_id = ? AND status = 'open'").all(a.id);
   assert.deepEqual(open.map((t) => t.kind), ['demo']); // the no_answer follow-up was closed by this call
   assert.ok(DB.db.prepare("SELECT COUNT(*) n FROM audit WHERE entity = 'call'").get().n === 2);
@@ -97,9 +97,9 @@ test('logging a call moves the stage, closes open follow-ups and books the next 
 
 test('automation rules are idempotent: one open task per rule and account', async () => {
   const DB = setup(), a = await newAccount(DB, A), old = new Date(Date.now() - 6 * 864e5).toISOString();
-  DB.db.prepare("UPDATE accounts SET stage = 'contacted', last_touch_at = ?, updated_at = ? WHERE id = ?").run(old, old, a.id);
+  DB.db.prepare("UPDATE accounts SET last_touch_at = ?, updated_at = ? WHERE id = ?").run(old, old, a.id); // a new lead reached 6 days ago
   await call(DB, A, '/rep/api/today'); await call(DB, A, '/rep/api/today');
-  assert.equal(DB.db.prepare("SELECT COUNT(*) n FROM tasks WHERE auto_key = ? AND status = 'open'").get('stale-contacted:' + a.id).n, 1);
+  assert.equal(DB.db.prepare("SELECT COUNT(*) n FROM tasks WHERE auto_key = ? AND status = 'open'").get('stale-new:' + a.id).n, 1);
   const today = await j(await call(DB, A, '/rep/api/today'));
   assert.ok(today.body.tasks.some((t) => t.account_id === a.id));
 });
@@ -122,7 +122,7 @@ test('deals: the pilot has a $499 floor the rep can price above, never below; Le
   assert.equal(r.status, 200);
   const d = DB.db.prepare('SELECT price_cents, price_is_draft FROM deals WHERE id = ?').get(r.body.id);
   assert.equal(d.price_cents, 49900); assert.equal(d.price_is_draft, 1); // no price given: the floor
-  assert.equal(DB.db.prepare('SELECT stage FROM accounts WHERE id = ?').get(a.id).stage, 'signed');
+  assert.equal(DB.db.prepare('SELECT stage FROM accounts WHERE id = ?').get(a.id).stage, 'onboarding');
   assert.equal((await call(DB, A, '/rep/api/deals', { method: 'POST', body: { accountId: a.id, level: 1 } })).status, 409);
   assert.equal((await j(await call(DB, A, '/rep/api/deals', { method: 'POST', body: { accountId: c.id, level: 1, priceCents: 89900 } }))).status, 200);
   const list = (await j(await call(DB, A, '/rep/api/deals'))).body.deals;
@@ -177,10 +177,10 @@ test('content carries the six-step path, How it works and the pricing guide, wit
 
 test('audit: saves only known keys, caps length, stays rep-scoped, and can mark the free check run', async () => {
   const DB = setup(), a = await newAccount(DB, A);
-  const r = await j(await call(DB, A, `/rep/api/accounts/${a.id}`, { method: 'PATCH', body: { audit: { callResult: 'Voicemail after 6 rings, no callback', jobValue: '8500', evil: 'x' }, stage: 'audit_run' } }));
+  const r = await j(await call(DB, A, `/rep/api/accounts/${a.id}`, { method: 'PATCH', body: { audit: { callResult: 'Voicemail after 6 rings, no callback', jobValue: '8500', evil: 'x' }, stage: 'results_call' } }));
   assert.equal(r.status, 200);
   assert.deepEqual(r.body.account.audit, { callResult: 'Voicemail after 6 rings, no callback', jobValue: '8500' });
-  assert.equal(r.body.account.stage, 'audit_run');
+  assert.equal(r.body.account.stage, 'results_call');
   assert.equal((await call(DB, A, `/rep/api/accounts/${a.id}`, { method: 'PATCH', body: { audit: ['x'] } })).status, 400);
   assert.equal((await call(DB, A, `/rep/api/accounts/${a.id}`, { method: 'PATCH', body: { audit: { other: 'x'.repeat(1001) } } })).status, 400);
   assert.equal((await call(DB, B, `/rep/api/accounts/${a.id}`, { method: 'PATCH', body: { audit: { other: 'mine now' } } })).status, 404);
@@ -199,4 +199,20 @@ test('content carries the rep toolkit: templates, discovery, qualifying, after t
   assert.doesNotMatch(all, /\u2014/, 'no em dashes');
   assert.doesNotMatch(all, /Omni SDR/, 'spelled OmniSDR');
   assert.doesNotMatch(all, /guarantee(d)? (results|bookings)/i);
+});
+
+test('stages: New, Demo booked, Proposed, Onboarding, Live, Lost; 0003 moves old rows and retired codes are refused', async () => {
+  // Christian 2026-10-27. 'results_call' is the stored code for Demo booked.
+  const { body: k } = await j(await call(setup(), A, '/rep/api/content'));
+  assert.deepEqual(k.stages, ['new', 'results_call', 'proposed', 'onboarding', 'live', 'lost']);
+  const db = new DatabaseSync(':memory:'), t = new Date().toISOString();
+  db.exec(readFileSync(new URL('../migrations/rep/0001_init.sql', import.meta.url), 'utf8') + readFileSync(new URL('../migrations/rep/0002_audit.sql', import.meta.url), 'utf8'));
+  db.prepare("INSERT INTO reps (email, name, role, active, created_at) VALUES ('x@example.test', 'X', 'rep', 1, ?)").run(t);
+  const ins = db.prepare("INSERT INTO accounts (id, owner_email, business, stage, created_at, updated_at) VALUES (?, 'x@example.test', ?, ?, ?, ?)");
+  for (const s of ['new', 'contacted', 'audit_run', 'results_call', 'proposed', 'signed', 'onboarding', 'live', 'lost']) ins.run(s, s, s, t, t);
+  db.exec(readFileSync(new URL('../migrations/rep/0003_stages.sql', import.meta.url), 'utf8'));
+  const after = Object.fromEntries(db.prepare('SELECT id, stage FROM accounts').all().map((r) => [r.id, r.stage]));
+  assert.deepEqual(after, { new: 'new', contacted: 'new', audit_run: 'results_call', results_call: 'results_call', proposed: 'proposed', signed: 'onboarding', onboarding: 'onboarding', live: 'live', lost: 'lost' });
+  const DB = setup(), a = await newAccount(DB, A);
+  for (const old of ['contacted', 'audit_run', 'signed']) assert.equal((await call(DB, A, '/rep/api/accounts/' + a.id, { method: 'PATCH', body: { stage: old } })).status, 400);
 });

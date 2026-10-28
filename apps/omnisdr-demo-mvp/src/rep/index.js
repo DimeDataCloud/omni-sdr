@@ -158,7 +158,7 @@ async function api(req, env, me, path, m) {
 
   if (m === 'GET' && path === '/queue') {
     const r = await D.prepare(`SELECT a.*, (SELECT name FROM contacts c WHERE c.account_id = a.id ORDER BY is_primary DESC LIMIT 1) contact_name
-      FROM accounts a WHERE a.archived = 0 AND a.stage IN ('new','contacted','audit_run','results_call','proposed') AND (a.next_action_at IS NULL OR a.next_action_at <= ?) AND ${scope(me, 'a.').sql}
+      FROM accounts a WHERE a.archived = 0 AND a.stage IN ('new','results_call','proposed') AND (a.next_action_at IS NULL OR a.next_action_at <= ?) AND ${scope(me, 'a.').sql}
       ORDER BY COALESCE(a.next_action_at, a.created_at) LIMIT 100`).bind(addDays(now(), 0.5), ...s.args).all();
     return { accounts: r.results.map(shape) };
   }
@@ -284,7 +284,7 @@ async function api(req, env, me, path, m) {
     }
     if (m === 'POST') {
       const b = await body(req), a = await account(env, me, str(b.accountId, 64, 'Account', { required: true }));
-      if (['signed', 'onboarding', 'live'].includes(a.stage)) throw new Bad(409, 'This account is already signed');
+      if (['onboarding', 'live'].includes(a.stage)) throw new Bad(409, 'This account is already signed');
       const lvl = C.PRICES.levels.find((l) => l.level === Number(b.level) && l.level > 0);
       if (!lvl) throw bad('Pick a level');
       // No discounts: a rep never sets the price. Only quotable levels with a set amount; an admin may enter a price for the rest.
@@ -299,7 +299,7 @@ async function api(req, env, me, path, m) {
       const id = uid(), t = now(), notes = str(b.notes, 1000, 'Notes') ?? '';
       await D.batch([
         D.prepare('INSERT INTO deals (id, account_id, rep_email, level, price_cents, price_is_draft, notes, closed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').bind(id, a.id, a.owner_email, lvl.level, price, C.PRICES.isFinal ? 0 : 1, notes, t),
-        D.prepare("UPDATE accounts SET stage = 'signed', updated_at = ?, last_touch_at = ? WHERE id = ?").bind(t, t, a.id),
+        D.prepare("UPDATE accounts SET stage = 'onboarding', updated_at = ?, last_touch_at = ? WHERE id = ?").bind(t, t, a.id),
         D.prepare("INSERT INTO activities (id, account_id, rep_email, kind, body, created_at) VALUES (?, ?, ?, 'deal', ?, ?)").bind(uid(), a.id, me.email, `Closed: ${lvl.label}, $${(price / 100).toFixed(2)}${C.PRICES.isFinal ? '' : ' (draft price)'}`, t),
         D.prepare("INSERT INTO tasks (id, account_id, rep_email, kind, title, due_at, status, created_at) VALUES (?, ?, ?, 'onboarding', 'Fill in the onboarding details with the owner', ?, 'open', ?)").bind(uid(), a.id, a.owner_email, addDays(t, 1), t),
         audit(env, me.email, 'create', 'deal', id, null, { level: lvl.level, price_cents: price }),
