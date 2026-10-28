@@ -369,26 +369,27 @@ async function api(req, env, me, path, m) {
     return { imported: rows.length - 1, errors: [] };
   }
 
-  // Lead dashboard counts (admin only): live, non-archived leads by category, rep, stage and state.
+  // Lead dashboard counts: live, non-archived leads by category, rep, stage and state. Admin sees every lead; a rep sees counts over their own rows only (same scope as their list).
   if (m === 'GET' && path === '/leads/facets') {
-    if (!isAdmin(me)) throw forbidden();
-    const q = (col) => D.prepare(`SELECT ${col} k, COUNT(*) n FROM accounts WHERE archived = 0 GROUP BY ${col} ORDER BY n DESC, k LIMIT 200`);
+    const sc = scope(me);
+    const q = (col) => D.prepare(`SELECT ${col} k, COUNT(*) n FROM accounts WHERE archived = 0 AND ${sc.sql} GROUP BY ${col} ORDER BY n DESC, k LIMIT 200`).bind(...sc.args);
     const [niche, owner, stage, state, pool] = await D.batch([q('niche'), q('owner_email'), q('stage'), q('state'),
-      D.prepare("SELECT COUNT(*) n FROM accounts WHERE archived = 0 AND owner_email IN (SELECT email FROM reps WHERE role = 'admin')")]);
+      isAdmin(me) ? D.prepare("SELECT COUNT(*) n FROM accounts WHERE archived = 0 AND owner_email IN (SELECT email FROM reps WHERE role = 'admin')") : D.prepare('SELECT 0 n')]);
     const m2 = (r) => r.results.map((x) => ({ key: x.k ?? '', n: x.n }));
     return { niche: m2(niche), owner: m2(owner), stage: m2(stage), state: m2(state), pool: pool.results[0]?.n || 0, total: stage.results.reduce((n, x) => n + x.n, 0) };
   }
 
-  // Bulk category or archive (admin only). Same shape as /assign: validate everything, then write in batches.
+  // Bulk category or archive. Admin: any account, category or archive. Rep: category only, on their own accounts only (an id that is not theirs reads as not found).
+  // Same shape as /assign: validate everything, then write in batches.
   if (m === 'POST' && path === '/bulk') {
-    if (!isAdmin(me)) throw forbidden();
     const b = await body(req), ids = Array.isArray(b.accountIds) ? [...new Set(b.accountIds)] : [];
     if (!ids.length || ids.length > 500 || !ids.every((x) => typeof x === 'string' && x.length <= 64)) throw bad('Pick between 1 and 500 accounts');
     const set = {};
     if ('niche' in b) set.niche = str(b.niche, 80, 'Category') ?? '';
-    if ('archived' in b) set.archived = b.archived ? 1 : 0;
+    if ('archived' in b) { if (!isAdmin(me)) throw forbidden(); set.archived = b.archived ? 1 : 0; }
     if (!Object.keys(set).length) throw bad('Nothing to change');
-    const found = (await D.prepare(`SELECT id, niche, archived FROM accounts WHERE id IN (${ids.map(() => '?').join(',')})`).bind(...ids).all()).results;
+    const own = isAdmin(me) ? { sql: '1 = 1', args: [] } : { sql: 'owner_email = ?', args: [me.email] };
+    const found = (await D.prepare(`SELECT id, niche, archived FROM accounts WHERE id IN (${ids.map(() => '?').join(',')}) AND ${own.sql}`).bind(...ids, ...own.args).all()).results;
     if (found.length !== ids.length) throw notFound('account');
     const t = now(), stmts = [];
     for (const a of found) {
