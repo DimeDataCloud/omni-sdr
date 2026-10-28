@@ -21,6 +21,7 @@ KILL = "0"
 TRYME_GATED = "on"
 # Retell voice tab on /tryme. The agent id is not a secret; the RETELL_API_KEY secret is. No secret = no voice tab. RETELL_TEST_CALLS caps lifetime calls (default 2, "off" lifts it).
 RETELL_AGENT_ID = "agent_59a418569b5369f243dd12d76f"
+RETELL_TEST_CALLS = "4"
 ENGINE_B = "0"
 TURNSTILE_SITEKEY = "0x4AAAAAAFkPgjzo9EQJoOUI"
 # Rep portal sign-in: Cloudflare Access app "OmniSDR Rep Portal" on demo.omnisdr.com/rep. Public values (team host, app audience). Empty = /rep refuses everyone.
