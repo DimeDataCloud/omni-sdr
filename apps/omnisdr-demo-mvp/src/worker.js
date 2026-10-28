@@ -67,6 +67,8 @@ export class Gate {
     for (const [k] of await this.s.list({ prefix: 'ip:' })) if (k.split(':')[1] < old) await this.s.delete(k);
     for (const [k, v] of await this.s.list({ prefix: 'ds:' })) if (v < now) await this.s.delete(k);
     for (const [k, v] of await this.s.list({ prefix: 'vtok:' })) if (now - v > 2 * DAY) await this.s.delete(k);
+    for (const [k, v] of await this.s.list({ prefix: 'vstream:' })) if (now - v > 2 * DAY) await this.s.delete(k);
+    for (const [k, v] of await this.s.list({ prefix: 'vcall:' })) if (now - v.at > 2 * DAY) await this.s.delete(k);
     for (const [k, v] of await this.s.list({ prefix: 'tok:' })) if (now - v > 2 * DAY) await this.s.delete(k);
     for (const [k, v] of await this.s.list({ prefix: 'lf:' })) if (v.until < now && now - v.last > 15 * 60000) await this.s.delete(k);
     for (const [k, v] of await this.s.list({ prefix: 'sl:' })) if (v.until < now && now - v.last > 15 * 60000) await this.s.delete(k);
@@ -113,6 +115,12 @@ export class Gate {
         if (b.ceiling != null && used >= b.ceiling) return R({ ok: false, reason: 'test-ceiling' }, 429);
         await s.put('vtok:' + b.sid, now); await s.put('vcalls', used + 1);
         return R({ ok: true, leftMs: left });
+      }
+      case 'vcall': { await s.put('vcall:' + b.sid, { id: b.callId, at: now }); return R({ ok: true }); }
+      case 'vstream': { // one live stream per session; returns the Retell call id minted for it
+        const c = await s.get('vcall:' + b.sid); if (!c) return R({ ok: false }, 404);
+        if (await s.get('vstream:' + b.sid)) return R({ ok: false, reason: 'used' }, 429);
+        await s.put('vstream:' + b.sid, now); return R({ ok: true, callId: c.id });
       }
       case 'stats': {
         const list = [...(await s.list({ prefix: 's:' })).values()].sort((x, y) => y.at.localeCompare(x.at)).slice(0, 25);
@@ -258,8 +266,53 @@ async function mintVoice(env, b) {
   if (!r || !r.ok) return json({ ok: false, message: 'Could not start the voice call.' }, 502);
   const j = await r.json().catch(() => null); if (!j || typeof j.access_token !== 'string' || typeof j.call_id !== 'string') return json({ ok: false, message: 'Could not start the voice call.' }, 502);
   // The v3 SDK starts the call from this create-web-call response (token, transport, ICE servers); only those fields go to the browser, never the API key.
+  await gate(env, { op: 'vcall', sid: b.sid.slice(0, 64), callId: j.call_id });
   const call = { call_id: j.call_id, access_token: j.access_token, transport: j.transport, ice_servers: j.ice_servers, expires_at: j.expires_at };
   return json({ ok: true, call, agentId: env.RETELL_AGENT_ID, maxSeconds: Math.min(180, Math.floor(g.leftMs / 1000)) });
+}
+// Live call panel: relays Retell's monitor websocket (server side, the key stays here) to the page as server-sent events, then adds the call latency Retell reports once the call ends.
+// Only the fields the panel shows are forwarded (speaker, text, time); one stream per session; hard stop at 200 s.
+async function voiceStream(env, sid) {
+  if (!voiceOn(env)) return json({ ok: false }, 501);
+  if (!/^[A-Za-z0-9_-]{8,64}$/.test(sid)) return json({ ok: false }, 400);
+  const g = await gate(env, { op: 'vstream', sid }); if (!g.ok) return json({ ok: false }, g._s || 404);
+  const base = retellBase(env), auth = { authorization: 'Bearer ' + env.RETELL_API_KEY };
+  const enc = new TextEncoder(); let ws = null, closed = false;
+  const body = new ReadableStream({
+    async start(ctl) {
+      const send = (o) => { if (!closed) try { ctl.enqueue(enc.encode('data: ' + JSON.stringify(o) + '\n\n')); } catch { closed = true; } };
+      const done = () => { if (!closed) { closed = true; try { ws && ws.close(); } catch {} try { ctl.close(); } catch {} } };
+      const stop = setTimeout(done, 200000);
+      for (let i = 0; i < 6 && !ws && !closed; i++) { // the call must be ongoing before the monitor accepts, so retry briefly
+        const r = await fetch(base + '/v2/monitor-call/' + g.callId, { headers: { ...auth, Upgrade: 'websocket' } }).catch(() => null);
+        if (r && r.webSocket) { ws = r.webSocket; ws.accept(); } else await new Promise((ok) => setTimeout(ok, 1000));
+      }
+      if (!ws) { send({ t: 'err' }); clearTimeout(stop); return done(); }
+      let ended = false;
+      const finish = async () => {
+        if (ended) return; ended = true;
+        send({ t: 'end' });
+        for (let i = 0; i < 5 && !closed; i++) { // Retell computes latency after the call ends
+          const r = await fetch(base + '/v2/get-call/' + g.callId, { headers: auth }).catch(() => null);
+          const c = r && r.ok ? await r.json().catch(() => null) : null; const l = c && c.latency;
+          if (l && l.e2e && l.e2e.p50 != null) { const p = (x) => x && x.p50 != null ? Math.round(x.p50) : null; send({ t: 'lat', e2e: p(l.e2e), llm: p(l.llm), tts: p(l.tts), asr: p(l.asr), turns: l.e2e.num ?? null }); break; }
+          await new Promise((ok) => setTimeout(ok, 2000));
+        }
+        clearTimeout(stop); done();
+      };
+      ws.addEventListener('message', (ev) => {
+        let m; try { m = JSON.parse(typeof ev.data === 'string' ? ev.data : ''); } catch { return; }
+        if (m.type === 'call_ended') return void finish();
+        if (m.type !== 'transcript_snapshot' && m.type !== 'transcript_updated') return;
+        for (const it of m.transcripts || []) if ((it.role === 'user' || it.role === 'agent') && typeof it.content === 'string' && typeof it.id === 'string')
+          send({ t: 'tx', id: it.id.slice(0, 40), role: it.role, text: it.content.slice(0, 400), sec: typeof it.time_sec === 'number' ? it.time_sec : null });
+      });
+      ws.addEventListener('close', () => void finish());
+      ws.addEventListener('error', () => void finish());
+    },
+    cancel() { closed = true; try { ws && ws.close(); } catch {} },
+  });
+  return new Response(body, { headers: { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-store', 'x-accel-buffering': 'no' } });
 }
 // RETELL_BASE exists so the offline test can point at a local mock; honoured ONLY for localhost or the real Retell host, so a bad var can never send the API key elsewhere.
 function retellBase(env) {
@@ -301,6 +354,7 @@ export default {
       if (m === 'GET' && p === '/sales') return (await salesAuthed(req, env)) ? deckPage(env) : toEntry();
       if (m === 'GET' && p === '/healthz') return json({ ok: true });
       if (m === 'GET' && p === '/robots.txt') return new Response('User-agent: *\nDisallow: /\n', { headers: { 'content-type': 'text/plain' } });
+      if (m === 'GET' && p === '/api/voice/stream') return voiceStream(env, u.searchParams.get('sid') || '');
       if (m === 'GET' && p === '/api/dev/me') return json({ ok: true, authed: await devAuthed(req, env) });
 
       if (m === 'POST' && p.startsWith('/api/')) {
