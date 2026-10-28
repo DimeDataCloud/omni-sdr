@@ -14,7 +14,8 @@
 @keyframes pop{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 .bubble.in,.sms.in{animation:pop .2s ease both}
-#p1:not([hidden]),#p2:not([hidden]){animation:fadeIn .2s ease}
+#p1:not([hidden]),#p2:not([hidden]),#p3:not([hidden]){animation:fadeIn .2s ease}
+@media (max-width:600px){.tabs{gap:0}.tabs .tab{flex:1 1 0;min-width:0;padding:0 6px;line-height:18px}}
 .ctl{flex-wrap:wrap}.ctl .btn{flex:1 1 auto;white-space:nowrap}
 
 .u-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}.u-mb12{margin-bottom:12px}.u-mt10{margin-top:10px}.u-mt12{margin-top:12px}.u-mt14{margin-top:14px}.u-mt8{margin-top:8px}
