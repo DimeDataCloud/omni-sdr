@@ -259,7 +259,7 @@ const screens = {
         if (pilot && !$('#pc').value) $('#pc').value = String(K.pilot.minCents / 100); split(); };
       const split = () => { const c = Math.round(parseFloat($('#pc').value) * 100), pilot = Number($('#lv').value) === 1;
         if (!pilot || !(c >= K.pilot.minCents)) { $('#psplit').textContent = pilot ? 'The pilot starts at $499.' : ''; return; }
-        const al = Math.round((c * K.pilot.allowanceRate) / 500) * 500, each = Math.round((c - c * K.pilot.feeRate - al) / 2);
+        const r35 = Math.round((c * K.pilot.allowanceRate) / 500) * 500, al = c >= K.pilot.plusFromCents ? Math.max(r35, K.pilot.plusAllowanceCents) : r35, each = Math.round((c - c * K.pilot.feeRate - al) / 2);
         $('#psplit').textContent = `Allowance ${money(al)}. You and the developer, about ${money(Math.round(each / 100) * 100)} each (draft).`; };
       $('#pc').oninput = split;
       $('#lv').onchange = sync; sync();

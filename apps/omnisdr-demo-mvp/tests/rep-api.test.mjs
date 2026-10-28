@@ -128,7 +128,9 @@ test('deals: the pilot has a $499 floor the rep can price above, never below; Le
   const list = (await j(await call(DB, A, '/rep/api/deals'))).body.deals;
   const floor = list.find((x) => x.price_cents === 49900), big = list.find((x) => x.price_cents === 89900);
   assert.equal(floor.allowanceCents, 17500); assert.equal(Math.round(floor.eachCents / 100), 151); // matches the confirmed $499 table
-  assert.equal(big.allowanceCents, 31500); assert.ok(big.eachCents > floor.eachCents);
+  assert.equal(big.allowanceCents, 33000); assert.equal(Math.round(big.eachCents / 100), 264); // Plus: $330 at $899, matches the confirmed table
+  const { pilotSplit } = await import('../src/rep/content.js');
+  assert.equal(pilotSplit(89800).allowanceCents, 31500); assert.equal(pilotSplit(150000).allowanceCents, 52500); // 35% below $899 and once it passes $330
   assert.equal((await call(DB, A, '/rep/api/deals', { method: 'POST', body: { accountId: b.id, level: 2, priceCents: 50000 } })).status, 403);
   assert.equal((await call(DB, A, '/rep/api/deals', { method: 'POST', body: { accountId: b.id, level: 0 } })).status, 400);
 });
