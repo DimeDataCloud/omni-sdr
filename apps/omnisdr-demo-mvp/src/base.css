@@ -15,12 +15,12 @@ button,input,textarea,select{font:inherit;color:inherit}
 input,textarea,select{width:100%;min-height:44px;border:1px solid var(--control);border-radius:8px;padding:10px 12px;font-size:16px;background:var(--surface)}
 label{display:block;font-weight:500;font-size:13px;margin:12px 0 6px}
 :focus-visible{outline:2px solid var(--ink);outline-offset:2px}
-.btn{min-height:44px;padding:0 18px;border:0;border-radius:8px;background:var(--fill);color:#1A1A1A;font-weight:600;cursor:pointer}
-.btn:hover{background:var(--fill-h)}.btn[disabled]{opacity:.5;cursor:not-allowed}
+.btn{min-height:44px;padding:0 18px;border:0;border-radius:8px;background:var(--fill);color:#1A1A1A;font-weight:600;cursor:pointer;transition:background-color .15s ease,transform .1s ease}
+.btn:hover{background:var(--fill-h)}.btn:active{transform:scale(.97)}.btn[disabled]{opacity:.5;cursor:not-allowed}
 .btn.ghost{background:transparent;border:1px solid var(--control);color:var(--text)}
 .btn.danger{background:var(--danger);color:#fff}
 .tabs{display:flex;gap:6px;margin:0 0 16px;border-bottom:1px solid var(--line)}
-.tab{min-height:44px;padding:0 16px;background:none;border:0;border-bottom:3px solid transparent;font-weight:600;color:var(--muted);cursor:pointer}
+.tab{min-height:44px;padding:0 16px;background:none;border:0;border-bottom:3px solid transparent;font-weight:600;color:var(--muted);cursor:pointer;transition:color .15s ease,border-color .15s ease}
 .tab[aria-selected=true]{color:var(--text);border-color:var(--ink)}
 .pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600;background:var(--ok-soft);color:var(--ink)}
 .pill.warn{background:var(--warn-soft);color:var(--warn)}.pill.bad{background:var(--danger-soft);color:var(--danger)}
