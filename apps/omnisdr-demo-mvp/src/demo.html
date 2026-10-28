@@ -20,7 +20,7 @@
 <h1>Call the AI receptionist</h1>
 <p class="sub">You play a homeowner calling a bathroom remodeler. Everything here is a simulation with a fictional company. Please use made-up details, not your real ones.</p>
 <div class="note u-m12-0-16" id="disc">This agent is automated. Your messages in this demo are saved for improvement and deleted after 30 days. Nothing is sent to anyone, and no real text messages or bookings are made.</div>
-<div class="tabs" role="tablist"><button class="tab" role="tab" id="t1" aria-selected="true" data-p="p1">Inbound call</button><button class="tab" role="tab" id="t2" aria-selected="false" data-p="p2">Speed-to-lead texts</button></div>
+<div class="tabs" role="tablist"><button class="tab" role="tab" id="t1" aria-selected="true" data-p="p1">Inbound call</button><button class="tab" role="tab" id="t2" aria-selected="false" data-p="p2">Speed-to-lead texts</button><button class="tab" role="tab" id="t3" aria-selected="false" data-p="p3" hidden>Talk to OmniSDR</button></div>
 
 <section id="p1" class="grid two">
  <div class="card">
@@ -51,6 +51,14 @@
   <div class="row" id="lact" hidden><button class="btn ghost" data-a="reply">Lead replies</button><button class="btn ghost" data-a="book">Lead books</button><button class="btn ghost" data-a="stop">Lead texts STOP</button></div>
   <ul class="muted u-pl18" id="rules"></ul></div>
 </section>
+<section id="p3" hidden class="grid two">
+ <div class="card"><h2>Talk to the OmniSDR assistant</h2><p class="muted u-m0-0-12">A live voice call with the same assistant that answers our line. Ask it what OmniSDR does, what happens after the waitlist form, or how speed to lead helps a small business. Calls end after 3 minutes. Your microphone is only used during the call.</p>
+  <div id="vgate"><button class="btn" id="vstart" type="button">Start the voice call</button> <span id="vErr" class="err" hidden role="alert"></span></div>
+  <div id="vlive" hidden><p class="u-m0-0-8"><span class="timer" id="vtimer">3:00</span> <span class="muted" id="vstate">Connecting...</span></p><button class="btn ghost" id="vend" type="button">Hang up</button></div>
+  <div id="vover" hidden class="note u-mt12">The call has ended. Reload the page to run it again.</div></div>
+ <div class="card"><h2>What to try</h2><ul class="muted u-pl18"><li>What does OmniSDR do for a small business?</li><li>What happens after I join the waitlist?</li><li>Is there a free way to see the gap in my own numbers?</li></ul>
+  <p class="muted u-m8-0-0">Nothing is saved to a CRM and no one is contacted from this call.</p></div>
+</section>
 </div>
 
 <script nonce="__NONCE__">
@@ -63,12 +71,12 @@ function post(u,b){return fetch(u,{method:'POST',headers:{'content-type':'applic
 function ev(type,data){if(S.sid)post('/api/event',{sid:S.sid,type:type,data:data}).catch(function(){})}
 
 /* tabs */
-['t1','t2'].forEach(function(id){$(id).addEventListener('click',function(){['t1','t2'].forEach(function(o){$(o).setAttribute('aria-selected',String(o===id));$($(o).dataset.p).hidden=(o!==id)})})});
+['t1','t2','t3'].forEach(function(id){$(id).addEventListener('click',function(){['t1','t2','t3'].forEach(function(o){$(o).setAttribute('aria-selected',String(o===id));$($(o).dataset.p).hidden=(o!==id)})})});
 
 /* Turnstile (only if the page was configured with a site key) */
 var TSKEY=document.querySelector('meta[name=ts-key]');
 var tsTok='';
-if(TSKEY&&TSKEY.content){$('start').disabled=true;$('start').textContent='Checking your browser...';var tsReady=function(t){tsTok=t;$('start').disabled=!t;$('start').textContent='Start the call'};var sc=document.createElement('script');sc.src='https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';sc.async=true;sc.onload=function(){window.turnstile.render('#ts',{sitekey:TSKEY.content,callback:tsReady,'expired-callback':function(){tsReady('')},'error-callback':function(){tsReady('')}})};document.head.appendChild(sc)}
+if(TSKEY&&TSKEY.content){$('start').disabled=true;$('start').textContent='Checking your browser...';var tsReady=function(t){tsTok=t;$('start').disabled=!t;$('start').textContent='Start the call';$('vstart').disabled=!t};var sc=document.createElement('script');sc.src='https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';sc.async=true;sc.onload=function(){window.turnstile.render('#ts',{sitekey:TSKEY.content,callback:tsReady,'expired-callback':function(){tsReady('')},'error-callback':function(){tsReady('')}})};document.head.appendChild(sc)}
 
 /* ---- agent ---- */
 var QUESTION={
@@ -170,6 +178,31 @@ $('start').addEventListener('click',function(){
   $('msg').focus()}).catch(function(){var e=$('startErr');e.textContent='Could not reach the server. Check your connection.';e.hidden=false;b.disabled=false})});
 $('f').addEventListener('submit',function(e){e.preventDefault();var v=$('msg').value.trim();if(!v||S.over)return;$('msg').value='';reply(v.slice(0,300))});
 $('end').addEventListener('click',function(){you('(hung up)');finish('hangup')});
+
+/* voice tab: Retell web call, shown only when the Worker has the secret and agent id */
+if(document.querySelector('meta[name=voice]')){$('t3').hidden=false;
+ if(TSKEY&&TSKEY.content)$('vstart').disabled=true;
+ var vc=null,vt=null,vleft=180;
+ var vErr=function(m){var e=$('vErr');e.textContent=m;e.hidden=false;$('vstart').disabled=false};
+ var vDone=function(){clearInterval(vt);$('vlive').hidden=true;$('vover').hidden=false;if(vc){try{vc.stopCall()}catch(x){}}};
+ $('vstart').addEventListener('click',function(){
+  var b=$('vstart');b.disabled=true;$('vErr').hidden=true;
+  post('/api/session',{tenant:'riverbend',turnstile:tsTok}).then(function(r){
+   if(!r.ok)throw new Error(r.message||'Could not start the demo.');
+   return post('/api/voice',{sid:r.sid})}).then(function(v){
+   if(!v.ok)throw new Error(v.message||'Could not start the voice call.');
+   vleft=v.maxSeconds;
+   return import('https://cdn.jsdelivr.net/npm/retell-client-js-sdk@2.0.8/+esm').then(function(m){
+    vc=new m.RetellWebClient();
+    vc.on('call_started',function(){$('vstate').textContent='Connected. Say hello.'});
+    vc.on('agent_start_talking',function(){$('vstate').textContent='Assistant speaking'});
+    vc.on('agent_stop_talking',function(){$('vstate').textContent='Listening'});
+    vc.on('call_ended',vDone);vc.on('error',function(){vDone()});
+    return vc.startCall({accessToken:v.accessToken})})}).then(function(){
+   $('vgate').hidden=true;$('vlive').hidden=false;
+   vt=setInterval(function(){vleft--;if(vleft<0){vDone();return}$('vtimer').textContent=Math.floor(vleft/60)+':'+String(vleft%60).padStart(2,'0')},1000)}).catch(function(e){
+   vErr(e&&e.message&&!/Failed to fetch|import|module/i.test(e.message)?e.message:'The voice call could not start. Check your microphone permission and try again.')})});
+ $('vend').addEventListener('click',vDone)}
 $('speak').addEventListener('click',function(){S.speak=!S.speak;this.setAttribute('aria-pressed',String(S.speak));this.textContent='Agent voice: '+(S.speak?'on':'off');if(!S.speak&&window.speechSynthesis)speechSynthesis.cancel()});
 /* mic: browser speech recognition where available (free, on-device or vendor-provided by the browser) */
 var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
