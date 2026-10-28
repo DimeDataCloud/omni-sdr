@@ -1,8 +1,8 @@
 // The demo world: the SPEC §1 agency story ("Northside Growth"), the same people as packages/api/src/seed-demo.mjs,
 // plus 30 days of history so Analytics has real rows behind every number. Everyone and every company is fictional;
 // every address is on a reserved .example domain.
-import { diffSetup, snapshotOf, topRisk } from './setup-versions';
-import type { Role, SetupVersion, SetupSnapshot, VersionStatus, ClientSetup, ClientRecord, ClientStatus, ChecklistGroup, ChecklistState, ChecklistItem } from '../types';
+import { seedClients, type ClientRow } from './clients';
+import type { Role } from '../types';
 
 export interface Row { id: string }
 export interface WorkspaceRow extends Row { name: string; timezone: string; trustLevel: 1 | 2 | 3; clientApprovalsEnabled: boolean; autoAdjustEnabled: boolean;
@@ -50,10 +50,10 @@ export interface World {
   mailboxes: MailboxRow[]; holds: HoldRow[]; suppression: string[]; contacts: ContactRow[]; evidence: EvidenceRow[]; icps: IcpRow[];
   campaigns: CampaignRow[]; enrollments: EnrollmentRow[]; drafts: DraftRow[]; sent: SentRow[]; inbound: InboundRow[]; meetings: MeetingRow[];
   audit: AuditRow[]; credits: { data: number; action: number; media: number }; handoffs: HandoffRow[];
-  playbook: PlaybookRow[]; questions: QuestionRow[]; replyDrafts: ReplyDraftRow[]; clients: ClientRecord[];
+  playbook: PlaybookRow[]; questions: QuestionRow[]; replyDrafts: ReplyDraftRow[]; clients: ClientRow[];
 }
 
-export const WORLD_VERSION = 13;
+export const WORLD_VERSION = 14;
 
 // Deterministic randomness so the demo looks the same on every device.
 function rng(seed: number) {
@@ -295,70 +295,8 @@ export function buildWorld(now = new Date()): World {
     w.enrollments.push({ id: uid('enr'), ws: w1.id, campaignId: lawCamp.id, contactId: c.id, state: 'waiting', step: 0, heat: 1, stopReason: null });
   }
 
-  w.clients = seedClients(now);
+  w.clients = seedClients((d) => iso(ago(now, 60 * 24 * d)), members);
   w.audit.push({ id: uid('audit'), ws: null, actor: 'seed', action: 'create', entityType: 'org', entityId: org.id, at: iso(ago(now, 60 * 24 * 21)) });
   (w as World & { _todays?: unknown })._todays = todays.map((t) => ({ firstDraftId: t.first.id, sendNow: Boolean(t.p.sent), reply: t.p.reply ?? null, email: t.p.email, subject: t.p.subject }));
   return w;
-}
-
-// Dev portal seed: three fictional clients in different states (closed, onboarding, live). Fictional names only.
-const CHECKLIST_TEMPLATE: [ChecklistGroup, string, string][] = [
-  ['Account', 'Business profile and hours', 'operator'], ['Account', 'Owner contacts and alert emails', 'operator'],
-  ['Connections', 'Mailbox connected and tested', 'operator'], ['Connections', 'Calendar connected', 'operator'], ['Connections', 'Phone number and voice line', 'operator'],
-  ['Compliance', 'Consent basis recorded', 'operator'], ['Compliance', 'A2P texting filed', 'operator'],
-  ['Setup', 'Playbook replies and questions', 'operator'], ['Setup', 'Handoff route and closers', 'operator'], ['Setup', 'First drafts approved', 'reviewer'],
-  ['Launch', 'Approval-week plan agreed', 'operator'], ['Launch', 'Go live review', 'reviewer'],
-];
-export const checklistFor = (clientId: string): ChecklistItem[] => CHECKLIST_TEMPLATE.map(([group, label, owner], i) => (
-  { id: `${clientId}-c${i + 1}`, group, label, owner, state: 'todo' as ChecklistState, blockedBy: null, evidence: null }));
-function setupFor(id: string, name: string, niche: string, status: ClientStatus, testedAt: string): ClientSetup {
-  const live = status === 'live';
-  return {
-    profile: { hours: live ? 'Mon to Sat, 7am to 7pm' : '', timezone: 'America/Chicago', services: live ? 'Generator sales, installs and service plans' : '', ownerContacts: live ? 'owner@' + id.slice(3) + '.example' : '', consentBasis: live ? 'Existing customers and web inquiries' : '' },
-    handoff: { booking: live ? 'Book on the owner calendar' : '', payment: live ? 'Send the payment link' : '', resolution: live ? 'Owner calls back same day' : '', unknown: 'Ask a human', closers: live ? 'Tom Alvarez' : '', quietHours: live ? '9pm to 7am' : '' },
-    customizations: { tone: 'warm', followUpDays: [2, 5, 9], replyNotes: live ? 'Always mention the storm-season install slots.' : '' },
-    connections: [
-      { channel: 'mailbox', state: live ? 'live' : 'needs_approval', lastTest: live ? testedAt : null, note: live ? 'Gmail connected' : 'Waiting on the client to approve access' },
-      { channel: 'calendar', state: live ? 'live' : 'simulated', lastTest: null, note: live ? 'Calendar connected' : 'Simulated until the client connects' },
-      { channel: 'phone', state: live ? 'live' : 'needs_approval', lastTest: null, note: live ? 'Number active' : 'Texting shows as pending (carrier review)' },
-      { channel: 'voice', state: 'simulated', lastTest: null, note: 'Demo voice line' },
-      { channel: 'crm', state: 'simulated', lastTest: null, note: 'No CRM yet' },
-    ],
-    drafts: [
-      { id: id + '-d1', subject: 'Thanks for reaching out to ' + name, body: 'Hi {first_name}, thanks for contacting ' + name + '. We can help with ' + niche.toLowerCase() + ' questions. What day works for a quick call?', state: live ? 'approved' : 'pending' },
-      { id: id + '-d2', subject: 'Following up', body: 'Hi {first_name}, checking in on your question. Happy to help whenever you are ready.', state: live ? 'approved' : 'pending' },
-    ],
-    changesSinceApproved: 0,
-  };
-}
-function seedClients(now: Date): ClientRecord[] {
-  const at = (d: number) => iso(ago(now, 60 * 24 * d));
-  const mk = (id: string, name: string, niche: string, status: ClientStatus, contactName: string, contactEmail: string, level: ClientRecord['deal']['level'], price: number, days: number, notes: string): ClientRecord => ({
-    id, name, niche, status, contactName, contactEmail, setupVersion: status === 'live' ? 3 : null,
-    deal: { rep: 'Jordan Reyes', level, price, priceDraft: true, closedAt: at(days), notes }, checklist: status === 'closed' ? [] : checklistFor(id),
-    setup: status === 'closed' ? null : setupFor(id, name, niche, status, at(days - 1)), versions: [],
-    audit: [{ id: `${id}-a1`, at: at(days), actor: 'Jordan Reyes', action: 'closed', detail: `Sold ${level} at $${price} (draft price)` }],
-  });
-  const live = mk('cl-ridgeline', 'Ridgeline Generators', 'Generator dealer', 'live', 'Tom Alvarez', 'tom@ridgeline.example', 'L2 recurring', 499, 40, 'Storm season rush, wants after-hours coverage.');
-  live.checklist.forEach((c) => { c.state = 'done'; });
-  const base = snapshotOf(live.setup!);
-  const v1: SetupSnapshot = { ...structuredClone(base), profile: { ...base.profile, hours: 'Mon to Fri, 8am to 6pm' } };
-  const v2: SetupSnapshot = { ...structuredClone(v1), customizations: { ...base.customizations, tone: 'direct' } };
-  const ver = (n: number, title: string, status: VersionStatus, author: string, reviewer: string | null, d: number, prev: SetupSnapshot | null, snap: SetupSnapshot): SetupVersion => {
-    const changes = diffSetup(prev, snap);
-    return { id: 'cl-ridgeline-v' + n, number: n, title, author, createdAt: at(d), status, risk: topRisk(changes), changes, snapshot: structuredClone(snap), reviewer, reviewNote: reviewer ? 'Looks right.' : null,
-      selfApproved: false, rollbackOf: null, checks: status === 'in_review' ? null : [{ label: 'A test lead gets a reply inside the window', ok: true, why: null }, { label: 'Alerts reach an owner', ok: true, why: null }, { label: 'The mailbox can send (connected or simulated)', ok: true, why: null }] };
-  };
-  live.versions = [ver(1, 'First setup', 'retired', 'Sam Rivera', 'Riley Brooks', 39, null, v1), ver(2, 'Switch to a direct tone', 'retired', 'Sam Rivera', 'Riley Brooks', 34, v1, v2), ver(3, 'Saturday hours and a warmer tone', 'live', 'Sam Rivera', 'Riley Brooks', 31, v2, base)];
-  live.setup!.profile.hours = 'Mon to Sat, 7am to 8pm';
-  live.setup!.changesSinceApproved = 1;
-  live.versions.push(ver(4, 'Stay open until 8pm', 'in_review', 'Sam Rivera', null, 1, base, snapshotOf(live.setup!)));
-  live.audit.push({ id: 'cl-ridgeline-a2', at: at(38), actor: 'Sam Rivera', action: 'onboarding_started', detail: 'Checklist created (12 items)' },
-    { id: 'cl-ridgeline-a3', at: at(30), actor: 'Sam Rivera', action: 'live', detail: 'Moved to live on setup v3' });
-  const onb = mk('cl-ironwood', 'Ironwood Martial Arts', 'Martial arts school', 'onboarding', 'Priya Nair', 'priya@ironwood.example', 'L1 pilot', 499, 6, 'Three locations, trial-class booking is the goal.');
-  onb.checklist.forEach((c, i) => { c.state = i < 5 ? 'done' : i === 5 ? 'doing' : 'todo'; });
-  const a2p = onb.checklist.find((c) => c.label === 'A2P texting filed')!; a2p.state = 'blocked'; a2p.blockedBy = 'Carrier review (texting shows as pending)';
-  onb.audit.push({ id: 'cl-ironwood-a2', at: at(5), actor: 'Sam Rivera', action: 'onboarding_started', detail: 'Checklist created (12 items)' });
-  const closed = mk('cl-northgate', 'Northgate Remodeling', 'Remodeler', 'closed', 'Dale Whitcomb', 'dale@northgate.example', 'L3 outcome', 149, 1, 'Wants to pay per kept appointment. Quote requests come in by form and phone.');
-  return [closed, onb, live];
 }

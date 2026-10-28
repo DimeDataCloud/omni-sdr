@@ -4,11 +4,10 @@
 import { can } from '@db/permissions.mjs';
 import { CONNECTORS, freeEmailChecks } from '@rules/catalog.mjs';
 import { ApiError, invalidate, type Client, type Scope, type Campaign, type Icp } from '../client';
-import type { Dataset, ApprovalCard, Agent, ChatMessage, Contact, InboxItem, Meeting, Routine, Role, Analytics, Me, Pipeline, AboutKind, AskMode, HandoffItem, HandoffCard, ThreadMessage, PlaybookReply, ReplyDraft, PlaybookCategory, ClientRecord, ChecklistState, ClientSetupPatch, ConnChannel } from '../types';
+import type { Dataset, ApprovalCard, Agent, ChatMessage, Contact, InboxItem, Meeting, Routine, Role, Analytics, Me, Pipeline, AboutKind, AskMode, HandoffItem, HandoffCard, ThreadMessage, PlaybookReply, ReplyDraft, PlaybookCategory } from '../types';
 import { addBusinessMinutes, SLA_MINUTES } from '@rules/reply-rules.mjs';
 import { PLAYBOOK_CATEGORIES, unknownFields, render, firstName, AUTONOMY_WINDOW, AUTONOMY_RATE } from '@rules/playbook.mjs';
-import { checklistFor } from './seed';
-import { diffSetup, postChecks, snapshotOf, topRisk } from './setup-versions';
+import { makeClientApi } from './clients';
 import { load, save, gate, newId, personaEmail, convertOnMeeting, recordReply } from './store';
 import { think } from './brain';
 import { studioDemo, mediaCounts } from './studio';
@@ -48,27 +47,6 @@ async function write<T>(fn: (w: World) => T): Promise<T> {
 const audit = (w: World, ws: string | null, actor: string, action: string, entityType: string, entityId: string) =>
   w.audit.push({ id: newId(), ws, actor, action, entityType, entityId, at: nowIso() });
 const nf = (what: string) => new ApiError(404, 'not_found', `${what} not found`);
-/** Dev portal is operator-only. The matrix in packages/db has no client-record action yet, so the demo checks the role directly. */
-function operatorOnly(w: World): MemberRow {
-  const m = me(w);
-  if (m.role !== 'admin' && m.role !== 'operator') throw new ApiError(403, 'forbidden', 'only operators can open client records');
-  return m;
-}
-/** Reviewers may open client records and review versions; every other client action is operator-only. */
-function reviewerOrOperator(w: World): MemberRow {
-  const m = me(w);
-  if (m.role !== 'admin' && m.role !== 'operator' && m.role !== 'reviewer') throw new ApiError(403, 'forbidden', 'only the operator team can open client records');
-  return m;
-}
-const liveVersion = (c: ClientRecord) => c.versions.find((v) => v.status === 'live') ?? null;
-function clientOf(w: World, id: string) {
-  const c = w.clients.find((x) => x.id === id);
-  if (!c) throw nf('client');
-  return c;
-}
-function clientEvent(c: ClientRecord, actor: string, action: string, detail: string) {
-  c.audit.push({ id: newId(), at: nowIso(), actor, action, detail });
-}
 const conflict = (msg: string) => new ApiError(409, 'conflict', msg);
 
 function card(w: World, d: DraftRow): ApprovalCard {
@@ -860,174 +838,7 @@ export const demoClient: Client = {
     return { enrolled, skipped };
   }),
 
-  clients: (orgId) => read((w) => {
-    reviewerOrOperator(w);
-    if (orgId !== w.org.id) throw nf('organization');
-    return w.clients;
-  }),
-  // Guarded transition: only a closed deal can start onboarding. Stamps the standard checklist and writes an audit row.
-  startOnboarding: (orgId, id) => write((w) => {
-    const m = operatorOnly(w);
-    if (orgId !== w.org.id) throw nf('organization');
-    const c = clientOf(w, id);
-    if (c.status !== 'closed') throw conflict(`Onboarding can start only from closed, this client is ${c.status}`);
-    c.status = 'onboarding';
-    c.checklist = checklistFor(c.id);
-    clientEvent(c, m.name, 'onboarding_started', `Checklist created (${c.checklist.length} items)`);
-    audit(w, null, m.userId, 'update', 'client', c.id);
-    return c;
-  }),
-  setChecklistItem: (orgId, id, itemId, state: ChecklistState) => write((w) => {
-    const m = operatorOnly(w);
-    if (orgId !== w.org.id) throw nf('organization');
-    const c = clientOf(w, id);
-    if (c.status !== 'onboarding') throw conflict('The checklist can change only while the client is in onboarding');
-    const item = c.checklist.find((x) => x.id === itemId);
-    if (!item) throw nf('checklist item');
-    if (state === 'blocked') throw conflict('Blocked is set by the system with a reason, not by hand');
-    const before = item.state;
-    item.state = state;
-    item.blockedBy = null;
-    clientEvent(c, m.name, 'checklist', `${item.label}: ${before} to ${state}`);
-    audit(w, null, m.userId, 'update', 'client', c.id);
-    return c;
-  }),
-
-  // Saving edits the DRAFT setup and counts the changes; the client keeps running the approved version until step 3.
-  updateClientSetup: (orgId, id, patch: ClientSetupPatch) => write((w) => {
-    const m = operatorOnly(w);
-    if (orgId !== w.org.id) throw nf('organization');
-    const c = clientOf(w, id);
-    if (!c.setup || c.status === 'closed' || c.status === 'ended') throw conflict('Start onboarding before editing the setup');
-    const p = patch.profile;
-    if (p?.hours !== undefined && !p.hours.trim()) throw new ApiError(400, 'bad_request', 'hours: required');
-    if (p?.ownerContacts !== undefined && !/@/.test(p.ownerContacts)) throw new ApiError(400, 'bad_request', 'ownerContacts: needs at least one email address');
-    if (patch.customizations?.followUpDays?.some((d) => !Number.isInteger(d) || d < 1 || d > 30)) throw new ApiError(400, 'bad_request', 'followUpDays: whole days from 1 to 30');
-    let n = 0;
-    for (const area of ['profile', 'handoff', 'customizations'] as const) {
-      const next = patch[area] as Record<string, unknown> | undefined;
-      if (!next) continue;
-      const cur = c.setup[area] as Record<string, unknown>;
-      for (const [k, v] of Object.entries(next)) if (JSON.stringify(cur[k]) !== JSON.stringify(v)) { cur[k] = v; n++; }
-    }
-    if (n) {
-      c.setup.changesSinceApproved += n;
-      clientEvent(c, m.name, 'setup_edited', `Draft setup: ${n} field${n === 1 ? '' : 's'} changed`);
-      audit(w, null, m.userId, 'update', 'client', c.id);
-    }
-    return c;
-  }),
-  // Simulated: no carrier or mailbox is touched. A "live" channel stays live; a simulated one stays simulated.
-  testClientConnection: (orgId, id, channel: ConnChannel) => write((w) => {
-    const m = operatorOnly(w);
-    if (orgId !== w.org.id) throw nf('organization');
-    const c = clientOf(w, id);
-    const conn = c.setup?.connections.find((x) => x.channel === channel);
-    if (!c.setup || !conn) throw nf('connection');
-    conn.lastTest = nowIso();
-    clientEvent(c, m.name, 'connection_tested', `${channel}: test run (${conn.state})`);
-    return c;
-  }),
-  decideClientDraft: (orgId, id, draftId, decision) => write((w) => {
-    const m = operatorOnly(w);
-    if (orgId !== w.org.id) throw nf('organization');
-    const c = clientOf(w, id);
-    if (!c.setup || c.status === 'closed' || c.status === 'ended') throw conflict('Start onboarding before deciding drafts');
-    const d = c.setup.drafts.find((x) => x.id === draftId);
-    if (!d) throw nf('draft');
-    if (d.state !== 'pending') throw conflict('That draft was already decided');
-    d.state = decision;
-    c.setup.changesSinceApproved += 1;
-    clientEvent(c, m.name, 'draft_' + decision, d.subject);
-    return c;
-  }),
-
-  // A version is the draft setup compared with what is live. One open version per client at a time.
-  proposeVersion: (orgId, id, title) => write((w) => {
-    const m = operatorOnly(w);
-    if (orgId !== w.org.id) throw nf('organization');
-    const c = clientOf(w, id);
-    if (!c.setup || c.status === 'closed' || c.status === 'ended') throw conflict('Start onboarding before proposing a version');
-    if (!title.trim() || title.length > 80) throw new ApiError(400, 'bad_request', 'title: 1 to 80 characters');
-    if (c.versions.some((v) => v.status === 'in_review' || v.status === 'approved')) throw conflict('Finish the open version first (review it or roll it out)');
-    const snap = snapshotOf(c.setup);
-    const changes = diffSetup(liveVersion(c)?.snapshot ?? null, snap);
-    if (!changes.length) throw conflict('Nothing has changed since the live version');
-    const number = Math.max(0, ...c.versions.map((v) => v.number)) + 1;
-    c.versions.push({ id: `${c.id}-v${number}`, number, title: title.trim(), author: m.name, createdAt: nowIso(), status: 'in_review', risk: topRisk(changes), changes, snapshot: snap,
-      reviewer: null, reviewNote: null, selfApproved: false, rollbackOf: null, checks: null });
-    clientEvent(c, m.name, 'version_proposed', `v${number}: ${title.trim()} (${changes.length} change${changes.length === 1 ? '' : 's'}, ${topRisk(changes)} risk)`);
-    audit(w, null, m.userId, 'create', 'client_version', `${c.id}-v${number}`);
-    return c;
-  }),
-  // The author cannot approve their own version, except when every change is low risk (then it is self-approved and the audit says so).
-  reviewVersion: (orgId, id, versionId, decision, note) => write((w) => {
-    const m = reviewerOrOperator(w);
-    if (orgId !== w.org.id) throw nf('organization');
-    const c = clientOf(w, id);
-    const v = c.versions.find((x) => x.id === versionId);
-    if (!v) throw nf('version');
-    if (v.status !== 'in_review') throw conflict('That version is not waiting for review');
-    if (decision === 'send_back') {
-      if (!note.trim()) throw new ApiError(400, 'bad_request', 'note: say what to change');
-      v.status = 'sent_back'; v.reviewer = m.name; v.reviewNote = note.trim();
-      clientEvent(c, m.name, 'version_sent_back', `v${v.number}: ${note.trim()}`);
-    } else {
-      const own = v.author === m.name;
-      if (own && v.risk !== 'low') throw conflict(`A second person must approve a ${v.risk}-risk change. You wrote this version.`);
-      v.status = 'approved'; v.reviewer = m.name; v.reviewNote = note.trim() || null; v.selfApproved = own;
-      if (c.status === 'onboarding') c.status = 'ready';
-      clientEvent(c, m.name, own ? 'version_self_approved' : 'version_approved', `v${v.number}${own ? ' (low risk, own change)' : ''}`);
-    }
-    audit(w, null, m.userId, 'update', 'client_version', v.id);
-    return c;
-  }),
-  // Simulated instant rollout. A failed post-check leaves the previous version live and says why.
-  rolloutVersion: (orgId, id, versionId) => write((w) => {
-    const m = operatorOnly(w);
-    if (orgId !== w.org.id) throw nf('organization');
-    const c = clientOf(w, id);
-    const v = c.versions.find((x) => x.id === versionId);
-    if (!v || !c.setup) throw nf('version');
-    if (v.status !== 'approved') throw conflict('Only an approved version can roll out');
-    v.checks = postChecks(v.snapshot, c.setup);
-    if (v.checks.some((k) => !k.ok)) {
-      v.status = 'failed';
-      clientEvent(c, m.name, 'rollout_failed', `v${v.number}: ${v.checks.filter((k) => !k.ok).map((k) => k.label).join('; ')}. Still on v${liveVersion(c)?.number ?? 'none'}.`);
-      return c;
-    }
-    const prev = liveVersion(c);
-    if (prev) prev.status = 'retired';
-    v.status = 'live';
-    c.setupVersion = v.number;
-    c.setup.changesSinceApproved = diffSetup(v.snapshot, snapshotOf(c.setup)).length;
-    clientEvent(c, m.name, 'rollout', `v${v.number} is live`);
-    audit(w, null, m.userId, 'update', 'client_version', v.id);
-    return c;
-  }),
-  // Rollback creates a NEW version that restores the previous one's snapshot, so numbers only go up.
-  rollbackVersion: (orgId, id) => write((w) => {
-    const m = operatorOnly(w);
-    if (orgId !== w.org.id) throw nf('organization');
-    const c = clientOf(w, id);
-    const cur = liveVersion(c);
-    if (!cur || !c.setup) throw conflict('No live version to roll back');
-    if (c.versions.some((v) => v.status === 'in_review' || v.status === 'approved')) throw conflict('Finish the open version first');
-    const prev = [...c.versions].filter((v) => v.status === 'retired' && v.number < cur.number && v.rollbackOf === null).sort((a, b) => b.number - a.number)[0]
-      ?? [...c.versions].filter((v) => v.status === 'retired' && v.number < cur.number).sort((a, b) => b.number - a.number)[0];
-    if (!prev) throw conflict('There is no earlier version to return to');
-    const number = Math.max(...c.versions.map((v) => v.number)) + 1;
-    const changes = diffSetup(cur.snapshot, prev.snapshot);
-    cur.status = 'retired';
-    c.versions.push({ id: `${c.id}-v${number}`, number, title: `Rollback to v${prev.number}`, author: m.name, createdAt: nowIso(), status: 'live', risk: topRisk(changes), changes, snapshot: structuredClone(prev.snapshot),
-      reviewer: null, reviewNote: 'Rollback restores a version that was already approved.', selfApproved: false, rollbackOf: prev.number, checks: postChecks(prev.snapshot, c.setup) });
-    Object.assign(c.setup, structuredClone({ profile: prev.snapshot.profile, handoff: prev.snapshot.handoff, customizations: prev.snapshot.customizations }));
-    c.setup.changesSinceApproved = 0;
-    c.setupVersion = number;
-    clientEvent(c, m.name, 'rollback', `v${cur.number} rolled back; v${number} restores v${prev.number}`);
-    audit(w, null, m.userId, 'update', 'client_version', `${c.id}-v${number}`);
-    return c;
-  }),
+  ...makeClientApi({ read, write, me, nf }),
 
   agentStats: (s, id, days = 30) => read((w) => {
     tenant(w, s, 'reports_view');

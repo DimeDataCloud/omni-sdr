@@ -1,99 +1,120 @@
-// Dev portal step 3: CI/CD for one client. Versions, plain diff, review, rollout, rollback (DESIGN-frontend-1-dev-portal).
+// Dev portal: CI/CD for one client (6a). Versions, plain diff, review, rollout, restore. Two people always: whoever wrote a version cannot approve it,
+// checked by user id. Restoring an earlier version is a new version that goes through review like any other.
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import type { Scope } from '@/lib/api/client';
 import type { ClientRecord, Risk, SetupVersion, VersionStatus } from '@/lib/api/types';
-import { useWorkspace } from '@/lib/session';
-import { Badge, Banner, Button, Field, Input, Textarea } from '@/components/ui';
+import { useQuery } from '@/lib/hooks';
+import { useSession, useWorkspace } from '@/lib/session';
+import { Badge, Banner, Button, ErrorState, Field, Input, SkeletonList } from '@/components/ui';
+import { errText, usePeople, type Tone } from './clientBits';
 
-type Tone = 'neutral' | 'success' | 'warning' | 'danger' | 'info';
 const STATUS: Record<VersionStatus, { label: string; tone: Tone }> = {
-  in_review: { label: 'In review', tone: 'info' }, sent_back: { label: 'Sent back', tone: 'warning' }, approved: { label: 'Approved', tone: 'info' },
-  live: { label: 'Live', tone: 'success' }, failed: { label: 'Rollout failed', tone: 'danger' }, retired: { label: 'Replaced', tone: 'neutral' },
+  draft: { label: 'Draft', tone: 'neutral' }, in_review: { label: 'In review', tone: 'info' }, approved: { label: 'Approved', tone: 'info' }, applied: { label: 'Live', tone: 'success' },
+  superseded: { label: 'Replaced', tone: 'neutral' }, rejected: { label: 'Sent back', tone: 'warning' }, rolled_back: { label: 'Rolled back', tone: 'neutral' },
 };
 const RISK: Record<Risk, { label: string; tone: Tone }> = { low: { label: 'Low risk', tone: 'neutral' }, medium: { label: 'Medium risk', tone: 'warning' }, high: { label: 'High risk', tone: 'danger' } };
+const LABELS: Record<string, string> = {
+  hours: 'Business hours', timezone: 'Time zone', quietHours: 'Quiet hours', services: 'Services', tone: 'Tone', replyNotes: 'Reply notes', followUpDays: 'Follow-up days',
+  ownerContacts: 'Owner contacts', consentBasis: 'Consent basis', closers: 'Closers', resolution: 'Resolution route', unknown: 'Unknown route', booking: 'Booking route', payment: 'Payment route',
+};
 
 export function VersionsTab({ client: c, scope }: { client: ClientRecord; scope: Scope }) {
   const { role } = useWorkspace();
+  const { me } = useSession();
   const operator = role === 'admin' || role === 'operator';
-  const [title, setTitle] = useState('');
+  const people = usePeople(scope.orgId);
+  const q = useQuery(() => api.setupVersions(scope.orgId, c.id), [scope.orgId, c.id], { key: `setup-versions:${c.id}` });
   const [busy, setBusy] = useState<string | null>(null);
-  const run = async (key: string, fn: () => Promise<ClientRecord>, ok: (r: ClientRecord) => string) => {
+  const run = async (key: string, fn: () => Promise<unknown>, ok: string) => {
     setBusy(key);
-    try { toast.success(ok(await fn())); } catch (e) { toast.error((e as Error).message); } finally { setBusy(null); }
+    try { await fn(); toast.success(ok); } catch (e) { toast.error(errText(e)); } finally { setBusy(null); }
   };
-  const live = c.versions.find((v) => v.status === 'live') ?? null;
-  const open = c.versions.find((v) => v.status === 'in_review' || v.status === 'approved') ?? null;
-  const pending = c.setup?.changesSinceApproved ?? 0;
-  const canRollBack = operator && live && !open && c.versions.some((v) => v.status === 'retired' && v.number < live.number);
-  const sorted = [...c.versions].sort((a, b) => b.number - a.number);
+  const versions = q.data ?? [];
+  const live = versions.find((v) => v.status === 'applied') ?? null;
+  const open = versions.find((v) => v.status === 'in_review' || v.status === 'approved') ?? null;
+  const draft = versions.find((v) => v.status === 'draft') ?? null;
+  if (q.loading && !q.data) return <SkeletonList rows={3} />;
 
   return (
     <div className="space-y-4">
+      <ErrorState error={q.error} onRetry={q.reload} />
       <p className="text-sm" role="status">
-        {live ? <>The client runs <strong>v{live.number}</strong>, {live.title}.</> : 'Nothing is live yet. The first approved version starts the client.'}{' '}
-        <span className="text-muted">{pending ? `${pending} change${pending === 1 ? '' : 's'} sit in the draft.` : 'The draft matches the live version.'}</span>
+        {live ? <>The client runs <strong>v{live.version}</strong>, {live.note || 'no note'}.</> : 'Nothing is live yet. The first approved and rolled out version starts the client.'}{' '}
+        <span className="text-muted">{draft ? `${draft.diff.length} change${draft.diff.length === 1 ? '' : 's'} sit in the draft.` : 'No draft changes.'}</span>
       </p>
-      {operator && !open && (
-        <form className="flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); void run('propose', () => api.proposeVersion(scope.orgId, c.id, title), (r) => `Proposed v${Math.max(...r.versions.map((v) => v.number))}`).then(() => setTitle('')); }}>
-          <Field label="Name this change" className="min-w-0 flex-1" hint="Say what it does, like Add Saturday hours.">{(p) => <Input {...p} value={title} maxLength={80} onChange={(e) => setTitle(e.target.value)} />}</Field>
-          <Button type="submit" variant="primary" loading={busy === 'propose'} disabled={!title.trim() || !pending}>Propose version</Button>
-        </form>
-      )}
-      {open && <Banner tone="info" title={`v${open.number} is ${open.status === 'in_review' ? 'waiting for review' : 'approved and ready to roll out'}`}>One version moves at a time. Finish it before proposing another.</Banner>}
-      {canRollBack && <Button loading={busy === 'rollback'} onClick={() => void run('rollback', () => api.rollbackVersion(scope.orgId, c.id), () => 'Rolled back as a new version')}>Roll back to the previous version</Button>}
-      {!sorted.length ? <p className="text-sm text-muted">No versions yet. Save changes in the other tabs, then propose one here.</p> : (
-        <ul className="space-y-2">{sorted.map((v) => <VersionRow key={v.id} v={v} client={c} scope={scope} operator={operator} busy={busy} run={run} />)}</ul>
+      {!operator && <Banner tone="info" title="Review view">You see versions and their changes, not the rest of the record. Approving needs a version someone else wrote.</Banner>}
+      {open && <Banner tone="info" title={`v${open.version} is ${open.status === 'in_review' ? 'waiting for review' : 'approved and ready to roll out'}`}>One version moves at a time. Finish it before sending another.</Banner>}
+      {!versions.length ? <p className="text-sm text-muted">No versions yet. Save changes in the other tabs, then send them for review here.</p> : (
+        <ul className="space-y-2">{versions.map((v) => (
+          <VersionRow key={v.version} v={v} client={c} scope={scope} operator={operator} myId={me?.user.id ?? null} canRestore={operator && !open && !draft && live !== null}
+            people={people} busy={busy} run={run} />))}</ul>
       )}
     </div>
   );
 }
 
-function VersionRow({ v, client: c, scope, operator, busy, run }: {
-  v: SetupVersion; client: ClientRecord; scope: Scope; operator: boolean; busy: string | null;
-  run: (key: string, fn: () => Promise<ClientRecord>, ok: (r: ClientRecord) => string) => Promise<void>;
+function VersionRow({ v, client: c, scope, operator, myId, canRestore, people, busy, run }: {
+  v: SetupVersion; client: ClientRecord; scope: Scope; operator: boolean; myId: string | null; canRestore: boolean; people: (id: string | null) => string;
+  busy: string | null; run: (key: string, fn: () => Promise<unknown>, ok: string) => Promise<void>;
 }) {
-  const [note, setNote] = useState('');
+  const [text, setText] = useState('');
+  const mine = v.authorId === myId;
+  const key = (s: string) => `${v.version}${s}`;
+  const act = (a: 'submit' | 'approve' | 'reject' | 'apply' | 'rollback', ok: string, why?: string) => run(key(a), () => api.setupAction(scope.orgId, c.id, v.version, a, why), ok);
   return (
     <li className="rounded-md border border-control p-3 text-sm">
       <div className="flex flex-wrap items-center gap-2">
-        <p className="min-w-0 flex-1 font-medium">v{v.number}, {v.title}</p>
+        <p className="min-w-0 flex-1 font-medium">v{v.version}{v.note && `, ${v.note}`}</p>
         <Badge tone={RISK[v.risk].tone}>{RISK[v.risk].label}</Badge>
         <Badge tone={STATUS[v.status].tone}>{STATUS[v.status].label}</Badge>
       </div>
-      <p className="text-muted">{v.author}, {new Date(v.createdAt).toLocaleDateString('en-US')}{v.reviewer && ` · reviewed by ${v.reviewer}${v.selfApproved ? ' (own low-risk change)' : ''}`}{v.rollbackOf !== null && ` · restores v${v.rollbackOf}`}</p>
-      {v.reviewNote && <p className="mt-1">Reviewer note: {v.reviewNote}</p>}
+      <p className="text-muted">{people(v.authorId)}, {new Date(v.createdAt).toLocaleDateString('en-US')}{v.reviewerId && ` · reviewed by ${people(v.reviewerId)}`}</p>
+      {v.reviewNote && <p className="mt-1">{v.status === 'rejected' ? 'Sent back' : 'Reviewer note'}: {v.reviewNote}</p>}
       <details className="mt-2">
-        <summary className="cursor-pointer text-muted">What changed ({v.changes.length})</summary>
-        {!v.changes.length ? <p className="mt-1 text-muted">No field differences.</p> : (
+        <summary className="cursor-pointer text-muted">What changed ({v.diff.length})</summary>
+        {!v.diff.length ? <p className="mt-1 text-muted">No field differences.</p> : (
           <table className="mt-2 w-full text-left">
             <thead><tr className="text-xs text-muted"><th className="pb-1 pr-2 font-medium">Setting</th><th className="pb-1 pr-2 font-medium">Was</th><th className="pb-1 pr-2 font-medium">Now</th><th className="pb-1 font-medium">Risk</th></tr></thead>
-            <tbody>{v.changes.map((x) => (
-              <tr key={x.area + x.field} className="align-top border-t border-control">
-                <td className="py-1 pr-2">{x.label}</td><td className="py-1 pr-2 text-muted">{x.before}</td><td className="py-1 pr-2">{x.after}</td><td className="py-1"><Badge tone={RISK[x.risk].tone}>{RISK[x.risk].label}</Badge></td>
+            <tbody>{v.diff.map((x) => (
+              <tr key={x.path} className="align-top border-t border-control">
+                <td className="py-1 pr-2">{LABELS[x.path] ?? x.path}</td><td className="py-1 pr-2 text-muted">{x.before}</td><td className="py-1 pr-2">{x.after}</td><td className="py-1"><Badge tone={RISK[x.risk].tone}>{RISK[x.risk].label}</Badge></td>
               </tr>))}</tbody>
           </table>
         )}
       </details>
-      {v.checks && (
-        <ul className="mt-2 space-y-0.5" aria-label="Checks after rollout">
+      {v.checks.length > 0 && (
+        <ul className="mt-2 space-y-0.5" aria-label="Checks after rollout (demo)">
+          <li className="text-xs text-muted">Demo checks. Real post-checks arrive later.</li>
           {v.checks.map((k) => <li key={k.label}>{k.ok ? 'Passed' : 'Failed'}: {k.label}{k.why && <span className="text-muted"> ({k.why})</span>}</li>)}
         </ul>
       )}
-      {v.status === 'failed' && <p className="mt-2 font-medium text-danger">The client stays on the previous version. Fix the cause in the draft, then propose a new version.</p>}
+      {v.status === 'draft' && operator && (
+        <form className="mt-3 flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); void act('submit', `v${v.version} sent for review`, text).then(() => setText('')); }}>
+          <Field label="Name this change" className="min-w-0 flex-1" hint="Say what it does, like Add Saturday hours.">{(p) => <Input {...p} value={text} maxLength={80} onChange={(e) => setText(e.target.value)} />}</Field>
+          <Button type="submit" variant="primary" loading={busy === key('submit')} disabled={!text.trim() || !v.diff.length}>Send for review</Button>
+        </form>
+      )}
       {v.status === 'in_review' && (
         <div className="mt-3 space-y-2">
-          {v.risk !== 'low' && <p className="text-muted">A {v.risk}-risk change needs a second person. The author cannot approve it.</p>}
-          <Field label="Review note" hint="Required when sending back.">{(p) => <Textarea {...p} rows={2} value={note} onChange={(e) => setNote(e.target.value)} />}</Field>
-          <div className="flex gap-2">
-            <Button size="sm" variant="primary" loading={busy === v.id + 'a'} onClick={() => void run(v.id + 'a', () => api.reviewVersion(scope.orgId, c.id, v.id, 'approve', note), () => `v${v.number} approved`)}>Approve</Button>
-            <Button size="sm" loading={busy === v.id + 's'} disabled={!note.trim()} onClick={() => void run(v.id + 's', () => api.reviewVersion(scope.orgId, c.id, v.id, 'send_back', note), () => `v${v.number} sent back`)}>Send back</Button>
-          </div>
+          {mine ? <p className="text-muted">You wrote this version, so someone else has to review it.</p> : (
+            <>
+              {v.risk !== 'low' && <p className="text-muted">A {v.risk}-risk change. Check the table before approving.</p>}
+              <Field label="Reason" hint="Required when sending back.">{(p) => <Input {...p} value={text} maxLength={200} onChange={(e) => setText(e.target.value)} />}</Field>
+              <div className="flex gap-2">
+                <Button size="sm" variant="primary" loading={busy === key('approve')} onClick={() => void act('approve', `v${v.version} approved`)}>Approve</Button>
+                <Button size="sm" loading={busy === key('reject')} disabled={!text.trim()} onClick={() => void act('reject', `v${v.version} sent back`, text)}>Send back</Button>
+              </div>
+            </>
+          )}
         </div>
       )}
       {v.status === 'approved' && operator && (
-        <div className="mt-3"><Button size="sm" variant="primary" loading={busy === v.id + 'r'} onClick={() => void run(v.id + 'r', () => api.rolloutVersion(scope.orgId, c.id, v.id), (r) => (r.versions.find((x) => x.id === v.id)?.status === 'live' ? `v${v.number} is live` : 'Rollout stopped, see the checks'))}>Roll out now</Button></div>
+        <div className="mt-3"><Button size="sm" variant="primary" loading={busy === key('apply')} onClick={() => void act('apply', `v${v.version} is live`)}>Roll out now</Button></div>
+      )}
+      {v.status === 'superseded' && canRestore && (
+        <div className="mt-3"><Button size="sm" loading={busy === key('rollback')} onClick={() => void act('rollback', `Proposed a restore of v${v.version}. A second person has to approve it.`)}>Restore this version</Button></div>
       )}
     </li>
   );
