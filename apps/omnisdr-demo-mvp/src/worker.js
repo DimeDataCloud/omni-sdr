@@ -156,9 +156,9 @@ async function salesLogin(req, env, b) {
 
 const triedGated = (env) => !['off', '0', 'false', 'no'].includes(String(env.TRYME_GATED ?? '').trim().toLowerCase());
 const toEntry = () => new Response(null, { status: 302, headers: { location: '/', 'cache-control': 'no-store', 'x-robots-tag': 'noindex' } });
-const LOGIN_PANEL = '<div class="card"><h1>Hello</h1><p class="sub u-mb12">Enter the passcode to come in.</p><form id="lf"><label for="pc">Passcode</label><input id="pc" type="password" autocomplete="current-password" required><div id="le" class="err u-mt12" role="alert" hidden></div><button class="btn u-full-mt18" type="submit">Open</button></form></div>';
-const PORTAL_PANEL = '<div class="card"><h1>Where to?</h1><div class="choices"><a class="choice" href="/tryme"><b>Try me</b><span>Run the live demo.</span></a><a class="choice" href="/sales"><b>Sales</b><span>Open the sales deck.</span></a></div><div class="out-row"><button class="btn ghost" id="so" type="button">Sign out</button></div></div>';
-// The gate decision is made here, on the server. The animation and skip are cosmetic; the portal links are only sent with a valid session.
+const LOGIN_PANEL = '<form class="row" id="lf"><label class="sr" for="pc">Passcode</label><input id="pc" type="password" autocomplete="off" placeholder="Passcode" required><button class="btn" id="sb" type="submit">Send</button></form>';
+const PORTAL_PANEL = '<div class="out-row"><button class="btn ghost" id="so" type="button">Sign out</button></div>';
+// The gate decision is made here, on the server. The chat is only presentation: /tryme and /sales are gated by the session cookie regardless of what the page shows.
 function entryPage(authed, env) { return page(entryHtml.replace('__MODE__', authed ? 'portal' : 'login').replace('__PANEL__', () => (authed ? PORTAL_PANEL : LOGIN_PANEL)), env); }
 
 /* ---------- handlers ---------- */
