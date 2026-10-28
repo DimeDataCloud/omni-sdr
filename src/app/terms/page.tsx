@@ -54,7 +54,7 @@ export default function TermsPage() {
               <li><strong>Frequency.</strong> Message frequency varies. For follow-ups about a request, at most 4 texts over 7 days unless you reply.</li>
               <li><strong>Cost.</strong> Message and data rates may apply.</li>
               <li><strong>Stop.</strong> Reply STOP (or STOPALL, UNSUBSCRIBE, CANCEL, END or QUIT) at any time. You will get one confirmation and no further texts from that business. Reply START to opt back in.</li>
-              <li><strong>Help.</strong> Reply HELP, or email support@omnisdr.com.</li>
+              <li><strong>Help.</strong> Reply HELP, or email support{"@"}omnisdr.com.</li>
               <li><strong>Carriers.</strong> Carriers are not liable for delayed or undelivered messages.</li>
               <li><strong>Privacy.</strong> See our Privacy Policy at omnisdr.com/privacy. Mobile numbers and text opt-in data are never shared with third parties for marketing.</li>
             </ul>
@@ -100,7 +100,7 @@ export default function TermsPage() {
 
           <section className="space-y-3">
             <h2 className="text-xl font-bold text-[#111111]">10. Contact</h2>
-            <p>OmniSDR, 713 Harpeth Knoll Court, Nashville, TN 37221 · support@omnisdr.com</p>
+            <p>OmniSDR, 713 Harpeth Knoll Court, Nashville, TN 37221 · support{"@"}omnisdr.com</p>
           </section>
 
         </div>
