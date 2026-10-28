@@ -4,7 +4,7 @@ import type {
   Me, Settings, Members, ApprovalsList, ApprovalCard, InboxItem, Meeting, Agent, ChatMessage, Routine, Capacity,
   Analytics, Credits, Connector, Contact, ContactDetail, Role, ModelTier, DraftStatus, Id, About, AskMode, Pipeline,
   Autonomy, AgentStats, Dataset, HandoffItem, HandoffCard, HandoffDraft, HandoffReason, HandoffOutcome,
-  Playbook, PlaybookReply, PlaybookCategory, ReplyDraft,
+  Playbook, PlaybookReply, PlaybookCategory, ReplyDraft, ClientRecord, ClientSummary, ClientHealth, PriceConfig, SalesDeal, CloseSaleInput, ClientStatusView, ClientSetupView, ClientConversation, Prospect, ProspectPatch, SalesLog, SalesLogInput, ClientStatus, ChecklistItem, ChecklistState, ClientEvent, SetupConfig, SetupVersion, SetupDraft, DemoConnection, DemoReplyDraft, ConnChannel,
   Asset, AssetKind, AssetStatus, Aspect, Edits, GenMode, Ingredient, MotionKey, Product, Project, Scene, SequenceClip, StudioCaps,
 } from './types';
 
@@ -75,6 +75,40 @@ export interface Client {
   patchAgent(s: Scope, id: Id, patch: Partial<Pick<Agent, 'name' | 'station' | 'badge' | 'modelTier' | 'systemPrompt' | 'contextSources' | 'autonomousMode'>> & { autonomy?: Autonomy }): Promise<Agent>;
   /** PROPOSED (WORKSPACE-PLAN.md): an agent's last N days of drafts and the corrections people made. */
   agentStats(s: Scope, id: Id, days?: number): Promise<AgentStats>;
+
+  // Dev portal (6a). Org-level routes, checked per action on the server: client_read admin/operator/reviewer; sales_write, onboard_write, setup_edit, setup_apply,
+  // client_transition admin/operator; setup_approve admin/operator/reviewer and never the author (403 own_version). Errors: 403 forbidden, 404, 409 stale_parent,
+  // 409 transition_not_allowed (details.unmet lists unmet Go live guards), 409 auto_item, 409 conflict, 400 bad_request.
+  clients(orgId: Id, q?: { status?: ClientStatus }): Promise<ClientSummary[]>;
+  client(orgId: Id, id: Id): Promise<ClientRecord>;
+  patchClientProfile(orgId: Id, id: Id, patch: Partial<ClientRecord['profile']>): Promise<ClientRecord>;
+  transitionClient(orgId: Id, id: Id, to: ClientStatus, reason: string): Promise<ClientRecord>;
+  clientChecklist(orgId: Id, id: Id): Promise<ChecklistItem[]>;
+  patchChecklistItem(orgId: Id, id: Id, key: string, patch: { state: ChecklistState; evidenceRef?: string; waivedReason?: string }): Promise<ChecklistItem>;
+  setupVersions(orgId: Id, id: Id): Promise<SetupVersion[]>;
+  setupDraft(orgId: Id, id: Id): Promise<SetupDraft>;
+  putSetupDraft(orgId: Id, id: Id, config: SetupConfig): Promise<SetupDraft>;
+  setupAction(orgId: Id, id: Id, version: number, action: 'submit' | 'approve' | 'reject' | 'apply' | 'rollback', reason?: string): Promise<SetupVersion>;
+  clientEvents(orgId: Id, id: Id, q?: { kind?: string; after?: string }): Promise<{ items: ClientEvent[]; next: string | null }>;
+  clientHealth(orgId: Id): Promise<ClientHealth[]>;   // 6d rollup, not 6a: GET clients/health
+  clientSetup(s: Scope): Promise<ClientSetupView | null>;   // client portal: the live setup, read-only
+  clientConversations(s: Scope): Promise<ClientConversation[]>;   // client portal: masked, summarised; transcripts by request
+  clientStatus(s: Scope): Promise<ClientStatusView | null>;   // client portal: the viewer's own workspace only, a narrow read; never the record
+  // Rep portal (DESIGN-frontend-4-sales-portal): proposals for Backend, not in 6a.
+  priceConfig(orgId: Id): Promise<PriceConfig>;
+  putPriceConfig(orgId: Id, config: PriceConfig): Promise<PriceConfig>;
+  salesDeals(orgId: Id): Promise<SalesDeal[]>;   // a rep gets only their own; the server must enforce that, not the UI
+  closeSale(orgId: Id, input: CloseSaleInput): Promise<SalesDeal>;
+  prospects(orgId: Id): Promise<Prospect[]>;   // own only for a rep, enforced server-side
+  patchProspect(orgId: Id, id: Id, patch: ProspectPatch): Promise<Prospect>;
+  salesLog(orgId: Id, date: string): Promise<SalesLog>;   // the caller's own day; zeros if nothing logged
+  putSalesLog(orgId: Id, input: SalesLogInput): Promise<SalesLog>;   // creates the client record with status closed
+  // Demo only, not in 6a.
+  demoConnections(orgId: Id, id: Id): Promise<DemoConnection[]>;
+  demoTestConnection(orgId: Id, id: Id, channel: ConnChannel): Promise<DemoConnection[]>;
+  demoReplyDrafts(orgId: Id, id: Id): Promise<DemoReplyDraft[]>;
+  demoDecideReplyDraft(orgId: Id, id: Id, draftId: Id, decision: 'approved' | 'rejected'): Promise<DemoReplyDraft[]>;
+  demoPeople(orgId: Id): Promise<Record<Id, string>>;   // names for user and rep ids; real data resolves them through users
   /** PROPOSED (WORKSPACE-PLAN.md): every dataset agents can read, with size, freshness and readers. */
   datasets(s: Scope): Promise<Dataset[]>;
   archiveAgent(s: Scope, id: Id): Promise<void>;

@@ -56,6 +56,7 @@ const verifyToken = (token) => (fb && token.split('.').length === 3 ? fb(token) 
 const app = createApp({
   pool: pglitePool(db),
   verifyToken,
+  tokenFrom: (req) => /^Bearer (.+)$/.exec(req.headers.authorization ?? '')?.[1] ?? null,   // dev only: never in server.mjs
   model: env.OMNI_DEV_MODEL === 'rules' ? rulesModel() : offModel(),
   config: {
     corsOrigins: ['http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:3000', 'http://127.0.0.1:5173',

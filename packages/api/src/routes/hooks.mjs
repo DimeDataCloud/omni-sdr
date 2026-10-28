@@ -5,7 +5,7 @@ import { randomBytes, createHash } from 'node:crypto';
 import { T, camel, audit } from './index.mjs';
 import { v, parse } from '../validate.mjs';
 import { badRequest, notFound, HttpError } from '../errors.mjs';
-import { ingestForm } from '../services/inbox.mjs';
+import { ingestFormLead } from '../leads/web-form.mjs';
 
 const sha = (s) => createHash('sha256').update(s, 'utf8').digest('hex');
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -52,9 +52,16 @@ export function registerHooks(r) {
       page: v.optional(v.string({ max: 200 })),
       externalId: v.optional(v.string({ min: 1, max: 200 })),
     }), json);
-    const out = await ingestForm(ctx.client, { id: ctx.params.id.toLowerCase(), tokenHash: sha(tok) },
-      { body: msg.message, email: msg.email, name: msg.name, phone: msg.phone, page: msg.page, externalId: msg.externalId, receivedAt: ctx.now() });
+    // Postgres text cannot hold U+0000: it would surface as a 500. It is never real form input, so it is the caller's 400.
+    if (Object.values(msg).some((x) => typeof x === 'string' && x.includes('\u0000'))) throw badRequest('submission contains a NUL character');
+    // One transaction: the message and its lead event land together or not at all (S2L-2b). Over the daily cap nothing is written.
+    const out = await ingestFormLead(ctx.client, { id: ctx.params.id.toLowerCase(), tokenHash: sha(tok) },
+      { body: msg.message, email: msg.email, name: msg.name, phone: msg.phone, page: msg.page, externalId: msg.externalId, receivedAt: ctx.now() },
+      { dailyCap: ctx.config.formDailyCap });
     if (out.outcome === 'unknown_hook') throw notFound('not found');
+    if (out.outcome === 'rate_limited') throw new HttpError(429, 'rate_limited', 'too many submissions for this workspace today; try again later');
+    // After COMMIT (ingestFormLead has returned): tell the owner. Not awaited, never throws.
+    if (out.outcome === 'recorded' && !out.capped) ctx.kickAlerts?.();
     return { status: out.outcome === 'duplicate' ? 200 : 202, body: { received: true } };
   });
 }

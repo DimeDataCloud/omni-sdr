@@ -1,7 +1,9 @@
 // The demo world: the SPEC §1 agency story ("Northside Growth"), the same people as packages/api/src/seed-demo.mjs,
 // plus 30 days of history so Analytics has real rows behind every number. Everyone and every company is fictional;
 // every address is on a reserved .example domain.
-import type { Role } from '../types';
+import { seedClients, type ClientRow } from './clients';
+import { DEFAULT_PRICES, seedProspects } from './sales';
+import type { PriceConfig, Prospect, Role, SalesLog } from '../types';
 
 export interface Row { id: string }
 export interface WorkspaceRow extends Row { name: string; timezone: string; trustLevel: 1 | 2 | 3; clientApprovalsEnabled: boolean; autoAdjustEnabled: boolean;
@@ -49,10 +51,10 @@ export interface World {
   mailboxes: MailboxRow[]; holds: HoldRow[]; suppression: string[]; contacts: ContactRow[]; evidence: EvidenceRow[]; icps: IcpRow[];
   campaigns: CampaignRow[]; enrollments: EnrollmentRow[]; drafts: DraftRow[]; sent: SentRow[]; inbound: InboundRow[]; meetings: MeetingRow[];
   audit: AuditRow[]; credits: { data: number; action: number; media: number }; handoffs: HandoffRow[];
-  playbook: PlaybookRow[]; questions: QuestionRow[]; replyDrafts: ReplyDraftRow[];
+  playbook: PlaybookRow[]; questions: QuestionRow[]; replyDrafts: ReplyDraftRow[]; clients: ClientRow[]; priceConfig: PriceConfig; prospects: Prospect[]; salesLogs: SalesLog[];
 }
 
-export const WORLD_VERSION = 10;
+export const WORLD_VERSION = 20;
 
 // Deterministic randomness so the demo looks the same on every device.
 function rng(seed: number) {
@@ -74,6 +76,7 @@ export const PERSONAS: { email: string; name: string; role: Role; firstWorkspace
   { email: 'sam@example.com', name: 'Sam Rivera', role: 'operator', blurb: 'Runs campaigns and approvals' },
   { email: 'riley@example.com', name: 'Riley Brooks', role: 'reviewer', blurb: 'Approves drafts, reads the inbox' },
   { email: 'client@example.com', name: 'Dr. Lena Ortiz (client)', role: 'client_viewer', firstWorkspaceOnly: true, blurb: 'A client: sees results' },
+  { email: 'jordan@example.com', name: 'Jordan Reyes (rep)', role: 'rep', firstWorkspaceOnly: true, blurb: 'Sells OmniSDR: quote sheet and own deals' },
   { email: 'cole@example.com', name: 'Cole Park (closer)', role: 'closer', firstWorkspaceOnly: true, blurb: 'Takes the conversations handed to them' },
 ];
 
@@ -141,7 +144,7 @@ export function buildWorld(now = new Date()): World {
   const members: MemberRow[] = PERSONAS.map((p) => ({ userId: uid('user'), email: p.email, name: p.name, role: p.role, workspaceIds: p.firstWorkspaceOnly ? [w0.id] : null }));
   const maya = members[0].userId;
 
-  const w: World = { version: WORLD_VERSION, org, workspaces, members, invites: [], agents: [], chat: [], routines: [], mailboxes: [], holds: [], suppression: [],
+  const w: World = { version: WORLD_VERSION, clients: [], priceConfig: DEFAULT_PRICES(), prospects: [], salesLogs: [], org, workspaces, members, invites: [], agents: [], chat: [], routines: [], mailboxes: [], holds: [], suppression: [],
     contacts: [], evidence: [], icps: [], campaigns: [], enrollments: [], drafts: [], sent: [], inbound: [], meetings: [], audit: [], credits: { data: 30000, action: 38420, media: 0 }, handoffs: [], playbook: [], questions: [], replyDrafts: [] };
 
   // A starter playbook for every workspace (SDR-PIVOT P3): the business's own words, per category. Fictional.
@@ -294,6 +297,10 @@ export function buildWorld(now = new Date()): World {
     w.enrollments.push({ id: uid('enr'), ws: w1.id, campaignId: lawCamp.id, contactId: c.id, state: 'waiting', step: 0, heat: 1, stopReason: null });
   }
 
+  // Fictional numbers (555-01xx is reserved for fiction) so the client portal has something to mask.
+  w.contacts.filter((c) => c.ws === w0.id && c.name).forEach((c, k) => { c.phone ??= `+1615555${String(100 + k).padStart(4, '0')}`; });
+  w.prospects = seedProspects((d) => iso(ago(now, 60 * 24 * d)), members);
+  w.clients = seedClients((d) => iso(ago(now, 60 * 24 * d)), members, w0.id);
   w.audit.push({ id: uid('audit'), ws: null, actor: 'seed', action: 'create', entityType: 'org', entityId: org.id, at: iso(ago(now, 60 * 24 * 21)) });
   (w as World & { _todays?: unknown })._todays = todays.map((t) => ({ firstDraftId: t.first.id, sendNow: Boolean(t.p.sent), reply: t.p.reply ?? null, email: t.p.email, subject: t.p.subject }));
   return w;

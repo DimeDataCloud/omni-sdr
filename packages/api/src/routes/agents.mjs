@@ -2,7 +2,9 @@
 // only returns text: no tools, no sends. The composer never sends or publishes (SPEC Station 07).
 import { T, camel, audit } from './index.mjs';
 import { v, parse } from '../validate.mjs';
-import { notFound, HttpError } from '../errors.mjs';
+import { notFound, forbidden, HttpError } from '../errors.mjs';
+import { can } from '../../../db/src/permissions.mjs';
+import { MODES, ABOUT_KINDS, ABOUT_ACTION, loadAbout, buildContext, modeSteer } from '../services/context.mjs';
 
 const BADGES = ['EXEC', 'OPS', 'TRI', 'SDR', 'HR', 'MKT', 'CS', 'FIN', 'INT'];
 const TIERS = ['flash_lite', 'flash', 'pro'];
@@ -101,27 +103,44 @@ export function registerAgents(r) {
   // Send a message to an agent. Two short transactions around the model call, so a slow model never holds
   // a database transaction open; if the model fails, the person's message is kept and the answer is 502.
   r.post(`${T}/agents/:id/messages`, async (ctx) => {
-    const b = parse(v.object({ body: v.string({ min: 1, max: 8000, trim: false }), modelTier: v.optional(v.oneOf(TIERS)) }), ctx.body);
+    // `about.label` is accepted (the console sends it) and ignored: the label is built here from the row itself.
+    const b = parse(v.object({ body: v.string({ min: 1, max: 8000, trim: false }), modelTier: v.optional(v.oneOf(TIERS)),
+      about: v.optional(v.object({ kind: v.oneOf(ABOUT_KINDS), id: v.string({ min: 1, max: 64 }), label: v.optional(v.string({ max: 300 })) })),
+      mode: v.optional(v.oneOf(MODES)) }), ctx.body);
+    const mode = b.mode ?? 'ask';
     if (!ctx.allow(`chat:${ctx.user.id}`, 30, 60000, ctx.now().getTime())) throw new HttpError(429, 'rate_limited', 'slow down a little');
-    const { agent, userMsg, history } = await ctx.tenant(async (tx, m) => {
+    const { agent, userMsg, history, about, rows } = await ctx.tenant(async (tx, m) => {
       const a = (await tx.query(`SELECT * FROM agents WHERE id = $1 AND archived_at IS NULL`, [ctx.params.id])).rows[0];
       if (!a) throw notFound('agent not found');
-      const um = (await tx.query(`INSERT INTO agent_messages (org_id, workspace_id, agent_id, sender, author_id, body)
-        VALUES ($1, $2, $3, 'user', $4, $5) RETURNING id, sender, author_id, body, meta, created_at`,
-      [m.orgId, m.workspaceId, a.id, m.userId, b.body])).rows[0];
+      // Resolve what the question is about BEFORE the message is stored: an unknown or other-workspace object is a 404
+      // and leaves no trace; a role that can't open that kind of object is a 403.
+      let loaded = null;
+      if (b.about) {
+        if (!can(m, ABOUT_ACTION[b.about.kind])) throw forbidden();
+        loaded = await loadAbout(tx, m, b.about);
+        if (!loaded) throw notFound(`${b.about.kind} not found`);
+      }
+      const um = (await tx.query(`INSERT INTO agent_messages (org_id, workspace_id, agent_id, sender, author_id, body, meta)
+        VALUES ($1, $2, $3, 'user', $4, $5, $6) RETURNING id, sender, author_id, body, meta, created_at`,
+      [m.orgId, m.workspaceId, a.id, m.userId, b.body, JSON.stringify({ ...(loaded ? { about: loaded.about } : {}), ...(b.mode ? { mode } : {}) })])).rows[0];
       const h = (await tx.query(`SELECT sender, body FROM agent_messages WHERE agent_id = $1 ORDER BY created_at DESC LIMIT $2`,
         [a.id, HISTORY])).rows.reverse();
-      return { agent: a, userMsg: um, history: h };
+      return { agent: a, userMsg: um, history: h, about: loaded?.about ?? null, rows: loaded?.rows ?? [] };
     }, { action: 'build' });
 
     const tier = b.modelTier ?? agent.model_tier;
     const started = Date.now();
+    // The data goes after the question, inside its blocks; the mode's steering is system text, away from the data.
+    const context = buildContext({ mode, rows });
+    const messages = history.map((x) => ({ role: x.sender === 'user' ? 'user' : 'model', text: x.body }));
+    if (context.text) messages[messages.length - 1] = { ...messages.at(-1), text: `${messages.at(-1).text}\n\n${context.text}` };
+    const steer = modeSteer(mode);
     let out;
     try {
       out = await ctx.model.generate({
         tier,
-        system: `${HOUSE_RULES}\n\nYour role (${agent.name}):\n${agent.system_prompt || 'General assistant.'}`,
-        messages: history.map((x) => ({ role: x.sender === 'user' ? 'user' : 'model', text: x.body })),
+        system: `${HOUSE_RULES}\n\nYour role (${agent.name}):\n${agent.system_prompt || 'General assistant.'}${steer ? `\n\n${steer}` : ''}`,
+        messages,
       });
     } catch {
       throw new HttpError(502, 'model_unavailable', 'the model did not answer; your message was saved', { userMessage: camel(userMsg) });
@@ -130,7 +149,8 @@ export function registerAgents(r) {
       `INSERT INTO agent_messages (org_id, workspace_id, agent_id, sender, body, meta)
        VALUES ($1, $2, $3, 'agent', $4, $5) RETURNING id, sender, author_id, body, meta, created_at`,
       [m.orgId, m.workspaceId, agent.id, out.text.slice(0, 32000),
-        JSON.stringify({ model: out.model, tier, ms: Date.now() - started, usage: out.usage })])).rows[0], { action: 'build' });
+        JSON.stringify({ model: out.model, tier, ms: Date.now() - started, usage: out.usage,
+          ...(about ? { about } : {}), ...(b.mode ? { mode } : {}), ...(context.sources.length ? { sources: context.sources } : {}) })])).rows[0], { action: 'build' });
     return { status: 201, body: { userMessage: camel(userMsg), reply: camel(reply) } };
   });
 

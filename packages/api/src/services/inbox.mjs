@@ -16,6 +16,20 @@ export { classifyReply, cleanReplyBody, addBusinessMinutes, SLA_MINUTES };
 
 const TERMINAL = `('stopped', 'converted', 'completed')`;
 
+/**
+ * A new lead (0030): the console's unread item and the owner-alert outbox row, in the same transaction as the message, so both
+ * exist or neither does. Once per message (UNIQUE), and the outbox row only when this call wrote the notification. Ids only.
+ */
+async function notifyNewLead(tx, { orgId, workspaceId, inboundId, at }) {
+  const n = (await tx.query(`INSERT INTO notifications (org_id, workspace_id, inbound_message_id, kind, channel, due_at)
+                             VALUES ($1, $2, $3, 'new_lead', 'in_app', $4) ON CONFLICT DO NOTHING RETURNING id`,
+    [orgId, workspaceId, inboundId, at])).rows[0];
+  if (n) {
+    await tx.query(`INSERT INTO outbox (org_id, topic, key, payload) VALUES ($1, 'notify.lead', $2, $3)`,
+      [orgId, inboundId, JSON.stringify({ workspace_id: workspaceId, inbound_id: inboundId, notification_id: n.id })]);
+  }
+}
+
 // SLA escalation (0008): the in-app step is written with the reply; push and email come from escalateSla().
 async function notifyInApp(tx, { orgId, workspaceId, inboundId, at }) {
   await tx.query(`INSERT INTO notifications (org_id, workspace_id, inbound_message_id, kind, channel, due_at)
@@ -55,11 +69,15 @@ export async function ingestReply(client, msg, { classify = classifyReply } = {}
         verdict.confidence, verdict.by, slaDueAt, msg.externalId ?? null, conversation.id])).rows[0].id;
 
     // Safe-side effects only.
-    if (verdict.intent === 'unsubscribe' || verdict.intent === 'bounce') {
+    if (verdict.intent === 'unsubscribe') {
+      // The person, not the address (0020): every identity of the contact and of anyone linked to them.
+      await tx.query(`SELECT suppress_person($1, 'reply_unsubscribe')`, [hit.contact_id]);
+    } else if (verdict.intent === 'bounce') {
+      // A bounce is about the address only; it never spreads to the person.
       const email = (await tx.query(`SELECT email FROM contacts WHERE id = $1`, [hit.contact_id])).rows[0]?.email;
       if (email) {
-        await tx.query(`INSERT INTO suppression (scope_org_id, value_hash, kind, reason) VALUES ($1, value_hash($2), 'email', $3)
-                        ON CONFLICT DO NOTHING`, [hit.org_id, email, verdict.intent === 'bounce' ? 'bounce' : 'reply_unsubscribe']);
+        await tx.query(`INSERT INTO suppression (scope_org_id, value_hash, kind, reason) VALUES ($1, value_hash($2), 'email', 'bounce')
+                        ON CONFLICT DO NOTHING`, [hit.org_id, email]);
       }
     }
     let snoozedUntil = null;
@@ -115,12 +133,8 @@ export async function refineReply(client, { id, orgId, workspaceId }, { decider 
       intent: fresh.intent, suppressed: ruled, stopped: fresh.intent !== 'out_of_office', slaDueAt: fresh.sla_due_at });
     const applied = [];
     if (fx.suppress && row.contact_id) {
-      const email = (await tx.query(`SELECT email FROM contacts WHERE id = $1`, [row.contact_id])).rows[0]?.email;
-      if (email) {
-        await tx.query(`INSERT INTO suppression (scope_org_id, value_hash, kind, reason) VALUES ($1, value_hash($2), 'email', 'reply_unsubscribe_model')
-                        ON CONFLICT DO NOTHING`, [orgId, email]);
-        applied.push('suppress');
-      }
+      await tx.query(`SELECT suppress_person($1, 'reply_unsubscribe_model')`, [row.contact_id]);
+      applied.push('suppress');
     }
     if (fx.stop && row.contact_id) {
       const n = (await tx.query(`UPDATE enrollments SET state = 'stopped', stop_reason = 'reply:model_stop', next_run_at = NULL
@@ -201,16 +215,27 @@ export async function escalateSla(client, { now = new Date(), limit = 500 } = {}
  * a flood (a public form anyone can post to) never spends model calls (#85 audit P2b).
  * @param hook { id, tokenHash }
  * @param msg { body, email?, name?, phone?, page?, externalId?, receivedAt: Date }
+ * @param opts { recent? } the 24-hour form count the caller already took in this same transaction, so it is read once, not twice (S2L-2e).
+ *   { tx?, hit? } a caller that must write more in the SAME transaction (the speed-to-lead adapter, S2L-2b) passes the
+ *   open inbox_svc service transaction as `tx` and the already-resolved hook as `hit`; this then neither resolves the hook nor opens
+ *   a transaction of its own (transactions do not nest: an inner COMMIT would commit the caller's too).
  * @returns { outcome: 'recorded'|'duplicate'|'unknown_hook', id?, intent?, slaDueAt? }
  */
 export const FORM_DAILY_CAP = 500;
-export async function ingestForm(client, hook, msg, { classify = classifyReply, dailyCap = FORM_DAILY_CAP } = {}) {
-  const hit = await withoutTenant(client, { role: 'inbox_svc' }, async (tx) =>
+/** A usable daily cap: a finite integer of at least 1 (a number or a numeric string); anything else (Infinity, 1e309, 0, negatives, NaN, junk) is the default. */
+export function formDailyCap(v) {
+  const n = typeof v === 'string' && v.trim() === '' ? NaN : Number(v);
+  return Number.isFinite(n) && n >= 1 && n <= Number.MAX_SAFE_INTEGER ? Math.floor(n) : FORM_DAILY_CAP;
+}
+export async function ingestForm(client, hook, msg, { classify = classifyReply, dailyCap = FORM_DAILY_CAP, recent: known = null, tx: outer = null, hit: given = null } = {}) {
+  if (outer && !given) throw new Error('ingestForm: a caller-supplied tx needs the resolved hook as well');
+  const hit = given ?? await withoutTenant(client, { role: 'inbox_svc' }, async (tx) =>
     (await tx.query(`SELECT * FROM inbox_resolve_hook($1, $2)`, [hook.id, hook.tokenHash])).rows[0]);
   if (!hit) return { outcome: 'unknown_hook' };
   const email = msg.email ? String(msg.email).trim().toLowerCase() : null;
   const verdict = classify({ subject: '', body: msg.body ?? '', from: email ?? '' });
-  return withService(client, { orgId: hit.org_id, workspaceId: hit.workspace_id, role: 'inbox_svc' }, async (tx) => {
+  const inScope = (fn) => (outer ? fn(outer) : withService(client, { orgId: hit.org_id, workspaceId: hit.workspace_id, role: 'inbox_svc' }, fn));
+  return inScope(async (tx) => {
     if (msg.externalId) {
       const dup = (await tx.query(`SELECT id FROM inbound_messages WHERE workspace_id = $1 AND channel = 'form' AND external_id = $2`,
         [hit.workspace_id, msg.externalId])).rows[0];
@@ -230,7 +255,7 @@ export async function ingestForm(client, hook, msg, { classify = classifyReply, 
     const conversation = await threadFor(tx, { orgId: hit.org_id, workspaceId: hit.workspace_id, channel: 'form',
       threadKey: contactId ? emailThreadKey(contactId) : `submission:${msg.externalId ?? randomUUID()}`, contactId,
       at: msg.receivedAt, category: verdict.intent });
-    const recent = (await tx.query(`SELECT count(*)::int AS n FROM inbound_messages WHERE workspace_id = $1 AND channel = 'form'
+    const recent = known ?? (await tx.query(`SELECT count(*)::int AS n FROM inbound_messages WHERE workspace_id = $1 AND channel = 'form'
       AND received_at > $2::timestamptz - interval '24 hours'`, [hit.workspace_id, msg.receivedAt])).rows[0].n;
     const capped = recent >= dailyCap;
     // ON CONFLICT: two concurrent retries with one externalId record one row (#85 audit P3-1).
@@ -250,15 +275,16 @@ export async function ingestForm(client, hook, msg, { classify = classifyReply, 
     const id = ins.id;
     // Safe-side effects only, as for an email reply: an opt-out suppresses the address, and a real message stops any
     // sequence the person is in.
-    if (verdict.intent === 'unsubscribe' && email) {
-      await tx.query(`INSERT INTO suppression (scope_org_id, value_hash, kind, reason) VALUES ($1, value_hash($2), 'email', 'form_unsubscribe')
-                      ON CONFLICT DO NOTHING`, [hit.org_id, email]);
+    if (verdict.intent === 'unsubscribe' && contactId) {
+      await tx.query(`SELECT suppress_person($1, 'form_unsubscribe')`, [contactId]);
     }
     if (contactId && verdict.intent !== 'out_of_office') {
       await tx.query(`UPDATE enrollments SET state = 'stopped', stop_reason = $2, next_run_at = NULL
                       WHERE contact_id = $1 AND state NOT IN ${TERMINAL}`, [contactId, `form:${verdict.intent}`]);
     }
     if (slaDueAt) await notifyInApp(tx, { orgId: hit.org_id, workspaceId: hit.workspace_id, inboundId: id, at: msg.receivedAt });
+    // A real submission alerts the owner; a capped one (decided, skipped) and an opt-out are not leads.
+    if (!capped && verdict.intent !== 'unsubscribe') await notifyNewLead(tx, { orgId: hit.org_id, workspaceId: hit.workspace_id, inboundId: id, at: msg.receivedAt });
     await tx.query(`INSERT INTO outbox (org_id, topic, key, payload) VALUES ($1, 'inbound.received', $2, $3)`,
       [hit.org_id, id, JSON.stringify({ inbound_id: id, channel: 'form', intent: verdict.intent, sla_due_at: slaDueAt })]);
     return { outcome: 'recorded', id, conversationId: conversation.id, intent: verdict.intent, slaDueAt: slaDueAt?.toISOString() ?? null };
@@ -275,9 +301,12 @@ export async function ingestForm(client, hook, msg, { classify = classifyReply, 
  */
 export async function ingestPasted(client, { orgId, workspaceId, actor }, msg, { classify = classifyReply } = {}) {
   const email = msg.email ? String(msg.email).trim().toLowerCase() : null;
-  const profile = msg.profileUrl ? normalizeLinkedIn(msg.profileUrl) : null;
+  const rawProfile = msg.profileUrl ? normalizeLinkedIn(msg.profileUrl) : null;
   const verdict = classify({ subject: '', body: msg.body ?? '', from: email ?? '' });
   return withService(client, { orgId, workspaceId, role: 'inbox_svc' }, async (tx) => {
+    // A profile the database refuses to canonicalise (a reserved escape such as %2f, nesting over 3 deep) must not sink the paste:
+    // the stop and the opt-out still apply, only the profile link is dropped (ADV N-4).
+    const profile = await usableProfile(tx, rawProfile);
     let contactId = null;
     if (email) {
       await tx.query(`INSERT INTO contacts (org_id, workspace_id, name, email) VALUES ($1, $2, $3, $4) ON CONFLICT (workspace_id, email) DO NOTHING`,
@@ -306,10 +335,11 @@ export async function ingestPasted(client, { orgId, workspaceId, actor }, msg, {
       [orgId, workspaceId, contactId, profile ?? email, `LinkedIn: ${String(msg.name).slice(0, 180)}`, String(msg.body ?? '').slice(0, 100000),
         msg.receivedAt, verdict.intent, verdict.confidence, verdict.by, slaDueAt, conversation.id])).rows[0].id;
     // Safe-side effects only, as for any reply.
-    if (verdict.intent === 'unsubscribe' && email) {
-      await tx.query(`INSERT INTO suppression (scope_org_id, value_hash, kind, reason) VALUES ($1, value_hash($2), 'email', 'linkedin_unsubscribe')
-                      ON CONFLICT DO NOTHING`, [orgId, email]);
-    }
+    // A paste that names both a profile and an address links them for good: the address contact owns the profile too, so an
+    // opt-out on either reaches both (the conversation fill only sees the thread's contact).
+    if (profile?.startsWith('in/')) await tx.query(`SELECT record_identity($1, $2, 'paste')`, [contactId, profile]);
+    // A profile-only person has no address to suppress; the person is suppressed all the same.
+    if (verdict.intent === 'unsubscribe') await tx.query(`SELECT suppress_person($1, 'linkedin_unsubscribe')`, [contactId]);
     if (contactId && verdict.intent !== 'out_of_office') {
       await tx.query(`UPDATE enrollments SET state = 'stopped', stop_reason = $2, next_run_at = NULL
                       WHERE contact_id = $1 AND state NOT IN ${TERMINAL}`, [contactId, `linkedin:${verdict.intent}`]);
@@ -322,6 +352,21 @@ export async function ingestPasted(client, { orgId, workspaceId, actor }, msg, {
       [orgId, id, JSON.stringify({ inbound_id: id, channel: 'linkedin', intent: verdict.intent, sla_due_at: slaDueAt })]);
     return { outcome: 'recorded', id, conversationId: conversation.id, intent: verdict.intent, slaDueAt: slaDueAt?.toISOString() ?? null };
   });
+}
+
+/** The profile if the database can canonicalise it, else null. Company pages (`company/…`) pass through as before. */
+async function usableProfile(tx, profile) {
+  if (!profile?.startsWith('in/')) return profile;
+  await tx.query('SAVEPOINT canon_profile');
+  try {
+    await tx.query(`SELECT canon_linkedin_slug($1)`, [profile]);
+    await tx.query('RELEASE SAVEPOINT canon_profile');
+    return profile;
+  } catch (e) {
+    await tx.query('ROLLBACK TO SAVEPOINT canon_profile');
+    if (e.code === '22023') return null;
+    throw e;
+  }
 }
 
 /** linkedin.com/in/<slug> as `in/<slug>`, lower-cased; anything else is refused by the route before it gets here. */

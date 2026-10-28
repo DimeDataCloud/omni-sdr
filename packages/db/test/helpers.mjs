@@ -14,12 +14,15 @@ const one = async (db, sql, params) => (await q(db, sql, params))[0];
 export async function as(db, role, ctx, fn) {
   await db.query(`SELECT set_config('app.org_id', $1, false), set_config('app.workspace_ids', $2, false)`,
     [ctx?.org ?? '', (ctx?.ws ?? []).join(',')]);
+  // ctx.user (optional) is the signed-in user (app.user_id). Left alone when absent, so a test that set it itself keeps it.
+  if (ctx && ctx.user !== undefined) await db.query(`SELECT set_config('app.user_id', $1, false)`, [ctx.user ?? '']);
   await db.exec(`SET ROLE ${role}`);
   try {
     return await fn();
   } finally {
     await db.exec('RESET ROLE');
     await db.query(`SELECT set_config('app.org_id', '', false), set_config('app.workspace_ids', '', false)`);
+    if (ctx && ctx.user !== undefined) await db.query(`SELECT set_config('app.user_id', '', false)`);
   }
 }
 
@@ -70,6 +73,9 @@ export async function seedTenant(db, label, { cap = 5, trust = 1, heat = 1 } = {
   // 0014: an inbound webhook (form). The token behind this hash is `hook-token-<label>`.
   await db.query(`INSERT INTO inbound_hooks (org_id, workspace_id, name, token_hash) VALUES ($1, $2, 'Website form', encode(sha256(convert_to($3, 'UTF8')), 'hex'))`,
     [org, ws, `hook-token-${label}`]);
+  // 0027: an inbound lead address. The token behind this hash is `lead-addr-<label>`.
+  await db.query(`INSERT INTO inbound_lead_addresses (org_id, workspace_id, name, token_hash) VALUES ($1, $2, 'Lead address', encode(sha256(convert_to($3, 'UTF8')), 'hex'))`,
+    [org, ws, `lead-addr-${label}`]);
   await db.query(`INSERT INTO unsubscribe_tokens (token_hash, org_id, workspace_id, contact_id)
     VALUES (encode(sha256(convert_to($1, 'UTF8')), 'hex'), $2, $3, $4)`, [`unsub-${label}`, org, ws, contact]);
   await db.query(`INSERT INTO invites (org_id, email_hash, role, token_hash, invited_by, expires_at)
@@ -85,11 +91,16 @@ export async function seedTenant(db, label, { cap = 5, trust = 1, heat = 1 } = {
     [org, ws, agent, user]);
   await db.query(`INSERT INTO routines (org_id, workspace_id, agent_id, name, category, schedule) VALUES ($1, $2, $3, 'Morning briefing', 'briefing', 'daily 08:00')`,
     [org, ws, agent]);
+  // 0020: a salt, a name seed and a phone origin per tenant, so the RLS matrix and the FK rule cover the new tables.
+  await db.query(`INSERT INTO org_salts (org_id, salt) VALUES ($1, $2)`, [org, `seed-salt-${label}-`.padEnd(40, "0")]);
+  await db.query(`INSERT INTO optout_name_seeds (org_id, name_hash, seed_value_hash) VALUES ($1, $2, $3)`, [org, `name-${label}`, `seed-${label}`]);
+  await db.query(`INSERT INTO suppression_origins (org_id, workspace_id, value_hash, origin_contact_id) VALUES ($1, $2, $3, $4)`, [org, ws, `origin-${label}`, contact]);
   const t = { org, ws, user, contact, campaign, enrollment, mailbox, agent };
   const draft = await approvedDraft(db, t);
   const message = (await as(db, 'sender_svc', { org, ws: [ws] }, () => one(db,
     `INSERT INTO messages (org_id, workspace_id, draft_id, mailbox_id, channel) VALUES ($1, $2, $3, $4, 'email') RETURNING id`,
     [org, ws, draft, mailbox]))).id;
+  await db.query(`INSERT INTO mail_events (provider_message_id, type, org_id, workspace_id, message_id, acted) VALUES ($1, 'delivered', $2, $3, $4, 'none')`, [`seed-${label}`, org, ws, message]);
   const inbound = (await one(db,
     `INSERT INTO inbound_messages (org_id, workspace_id, contact_id, message_id, channel, from_address, body, received_at, intent)
      VALUES ($1, $2, $3, $4, 'email', $5, 'Thanks, not now.', now(), 'not_interested') RETURNING id`,
@@ -125,7 +136,16 @@ export async function seedTenant(db, label, { cap = 5, trust = 1, heat = 1 } = {
   await db.query(`INSERT INTO qualification_questions (org_id, workspace_id, position, key, question) VALUES ($1, $2, 1, 'timing', 'When are you hoping to start?')`, [org, ws]);
   await db.query(`INSERT INTO reply_drafts (org_id, workspace_id, conversation_id, inbound_message_id, playbook_reply_id, category, body_proposed)
     VALUES ($1, $2, $3, $4, $5, 'not_interested', 'Understood, Pat. Thanks for letting us know.')`, [org, ws, conversation, inbound, playbook]);
-  return { ...t, message, inbound, conversation, playbook };
+  // 0022: a touched lead event per tenant, for the RLS matrix, the FK rule and the metric.
+  const lead = (await one(db, `INSERT INTO lead_events (org_id, workspace_id, contact_id, source, channel, external_id, consent_basis, received_at,
+      first_touch_at, first_touch_channel, first_touch_by)
+    VALUES ($1, $2, $3, 'web_form', 'form', $4, 'express_form', now() - interval '10 minutes', now() - interval '9 minutes', 'email', 'system') RETURNING id`,
+    [org, ws, contact, `seed-lead-${label}`])).id;
+  // 0031: a reply draft for that lead, so the RLS matrix and the FK rule cover lead_drafts.
+  const leadDraft = (await one(db, `INSERT INTO lead_drafts (org_id, workspace_id, contact_id, lead_event_id, channel, subject, body)
+    VALUES ($1, $2, $3, $4, 'email', 'Thanks for reaching out', 'Thanks for your note, Pat. When is a good time to talk?') RETURNING id`,
+    [org, ws, contact, lead])).id;
+  return { ...t, message, inbound, conversation, playbook, lead, leadDraft };
 }
 
 // A new draft for the tenant's enrollment, passed through the gate and approved.

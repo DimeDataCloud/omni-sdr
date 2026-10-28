@@ -1,5 +1,7 @@
 // Connector modules (SPEC §9) and the free email checks (Station 11). Data, not screens: adding a module is
 // a row here. Status is derived from what the workspace really has; nothing reports "Connected" on faith.
+// `activation: 'live'` means the backend can connect and use it today (ops.mjs derives its status). A module with no
+// backend yet is 'later', so the console shows "activates later" instead of a Connect button that goes nowhere.
 
 export const CONNECTORS = Object.freeze([
   { id: 'gmail', name: 'Gmail', category: 'mail', auth: 'oauth', activation: 'live', costOwner: 'omni',
@@ -9,21 +11,21 @@ export const CONNECTORS = Object.freeze([
     scopes: [], note: 'Fallback sending lane while Google verification is pending.' },
   { id: 'email_routing', name: 'Reply routing (reply.omnisdr.com)', category: 'mail', auth: 'provider', activation: 'live', costOwner: 'omni',
     scopes: [], note: 'Replies to your outreach land in the Omni-SDR inbox.' },
-  { id: 'google_calendar', name: 'Google Calendar', category: 'calendar', auth: 'oauth', activation: 'live', costOwner: 'omni',
+  { id: 'google_calendar', name: 'Google Calendar', category: 'calendar', auth: 'oauth', activation: 'later', costOwner: 'omni',
     scopes: [{ scope: '[VERIFY] free/busy + events', why: 'Offer three open slots and book the meeting.' }] },
-  { id: 'calendly', name: 'Calendly', category: 'booking', auth: 'api_key', activation: 'live', costOwner: 'customer', scopes: [] },
-  { id: 'cal_com', name: 'Cal.com', category: 'booking', auth: 'api_key', activation: 'live', costOwner: 'customer', scopes: [] },
-  { id: 'linkedin_official', name: 'LinkedIn (official API)', category: 'social', auth: 'oauth', activation: 'live', costOwner: 'omni', scopes: [] },
-  { id: 'linkedin_provider', name: 'LinkedIn automation (provider)', category: 'social', auth: 'provider', activation: 'live', costOwner: 'customer',
+  { id: 'calendly', name: 'Calendly', category: 'booking', auth: 'api_key', activation: 'later', costOwner: 'customer', scopes: [] },
+  { id: 'cal_com', name: 'Cal.com', category: 'booking', auth: 'api_key', activation: 'later', costOwner: 'customer', scopes: [] },
+  { id: 'linkedin_official', name: 'LinkedIn (official API)', category: 'social', auth: 'oauth', activation: 'later', costOwner: 'omni', scopes: [] },
+  { id: 'linkedin_provider', name: 'LinkedIn automation (provider)', category: 'social', auth: 'provider', activation: 'later', costOwner: 'customer',
     scopes: [], consent: { required: true, version: 'draft-1' },
     note: 'Opt-in per account. Automation breaks LinkedIn\'s User Agreement and the account may be restricted.' },
-  { id: 'shopify', name: 'Shopify', category: 'commerce', auth: 'oauth', activation: 'live', costOwner: 'omni', scopes: [] },
-  { id: 'gohighlevel', name: 'GoHighLevel', category: 'crm', auth: 'oauth', activation: 'live', costOwner: 'omni', scopes: [] },
-  { id: 'whop', name: 'Whop', category: 'commerce', auth: 'api_key', activation: 'live', costOwner: 'omni', scopes: [] },
-  { id: 'google_drive', name: 'Google Drive, Docs, Sheets (exports)', category: 'export', auth: 'oauth', activation: 'live', costOwner: 'omni', scopes: [] },
-  { id: 'webhooks', name: 'Outbound webhooks (signed)', category: 'export', auth: 'api_key', activation: 'live', costOwner: 'omni', scopes: [] },
-  { id: 'mcp', name: 'MCP (two-way)', category: 'mcp', auth: 'api_key', activation: 'live', costOwner: 'omni', scopes: [] },
-  { id: 'warmup', name: 'Third-party warm-up', category: 'warmup', auth: 'api_key', activation: 'live', costOwner: 'customer', scopes: [],
+  { id: 'shopify', name: 'Shopify', category: 'commerce', auth: 'oauth', activation: 'later', costOwner: 'omni', scopes: [] },
+  { id: 'gohighlevel', name: 'GoHighLevel', category: 'crm', auth: 'oauth', activation: 'later', costOwner: 'omni', scopes: [] },
+  { id: 'whop', name: 'Whop', category: 'commerce', auth: 'api_key', activation: 'later', costOwner: 'omni', scopes: [] },
+  { id: 'google_drive', name: 'Google Drive, Docs, Sheets (exports)', category: 'export', auth: 'oauth', activation: 'later', costOwner: 'omni', scopes: [] },
+  { id: 'webhooks', name: 'Outbound webhooks (signed)', category: 'export', auth: 'api_key', activation: 'later', costOwner: 'omni', scopes: [] },
+  { id: 'mcp', name: 'MCP (two-way)', category: 'mcp', auth: 'api_key', activation: 'later', costOwner: 'omni', scopes: [] },
+  { id: 'warmup', name: 'Third-party warm-up', category: 'warmup', auth: 'api_key', activation: 'later', costOwner: 'customer', scopes: [],
     note: 'Reply-network warm-up can put your mailbox at risk. Your hard daily cap always applies.' },
   { id: 'hubspot', name: 'HubSpot (two-way)', category: 'crm', auth: 'oauth', activation: 'later', costOwner: 'omni', scopes: [] },
   { id: 'other_social', name: 'Other social', category: 'social', auth: 'oauth', activation: 'later', costOwner: 'omni', scopes: [] },

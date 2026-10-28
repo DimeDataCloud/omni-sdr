@@ -26,6 +26,18 @@ const EXPECTED = {
   sender_due_workspaces: ['sender_svc'],
   app_contact_suppressed: ['app_rw'],   // 0017: no reply drafted to someone who opted out
   send_guard: [], send_guard_enrollment: [], handoffs_sync: [],  // trigger-only
+  // 0020: identity-keyed suppression. Triggers and internals have no caller; the rest are named here.
+  _suppress_person: ['unsub_owner'], suppress_person: ['inbox_svc'], record_identity: ['app_rw', 'inbox_svc'], import_suppress_held: ['app_rw'], _person_suppressed: [],
+  close_component: [], name_seed_hash: [], org_salts_immutable: [], contacts_fill_identities: [], conversations_fill_identity: [],
+  identities_close_person: [], suppression_close_person: [], suppression_org_lock: [], contacts_name_hold: [],
+  can_resolve_hold: ['rename_owner'], clear_name_hold: ['app_rw'], rename_opted_out_contact: ['app_rw'],
+  contact_opted_out: ['app_rw', 'ops', 'rename_owner'], person_suppressed: ['app_rw', 'lead_owner'], message_handoff_ok: ['sender_svc'],
+  record_mail_event: ['inbox_svc'],   // 0021: provider bounce and complaint events
+  // 0022: speed to lead
+  inbox_resolve_lead_address: ['inbox_svc'],   // 0027
+  record_lead_event: ['inbox_svc'], lead_touch_blocker: ['app_rw', 'inbox_svc', 'sender_svc'], record_first_touch: ['inbox_svc', 'sender_svc'],
+  alert_claim: ['alert_svc'], alert_recipients: ['alert_svc'], alert_publish: ['alert_svc'],
+  lead_approver_ok: [], lead_send_blocker: [], lead_drafts_approver_binding: [],   // 0032: guard-internal, no caller
 };
 
 async function asProdOwner() {

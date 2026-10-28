@@ -1,5 +1,6 @@
 // No session. Health, unsubscribe (CAN-SPAM + RFC 8058 one-click), and the signed internal inbound hook.
 import { ingestReply } from '../services/inbox.mjs';
+import { relayAlerts } from '../services/alerts.mjs';
 import { badRequest } from '../errors.mjs';
 import { v, parse } from '../validate.mjs';
 
@@ -47,5 +48,33 @@ export function registerPublic(r) {
     }), json);
     const out = await ingestReply(ctx.client, { ...msg, channel: 'email', receivedAt: new Date(msg.receivedAt) });
     return { outcome: out.outcome, id: out.id ?? null };
+  });
+
+  // One relay pass for owner alerts (0030), HMAC-signed like the others. Called by the one-minute Cron Trigger (the safety net for
+  // the intake kick). Answers counts only.
+  r.post('/internal/relay', { auth: 'internal', body: 'raw' }, async (ctx) => relayAlerts(ctx.client,
+    { transport: ctx.config.alertTransport, consoleBase: ctx.config.appUrl, sendTimeoutMs: ctx.config.alertSendTimeoutMs }));
+
+  // Cloudflare Email Sending has no webhooks: a Queue consumer (edge/, a later card) forwards each queue event here,
+  // HMAC-signed like /internal/inbound. Exactly the normalized shape of the event, nothing else is accepted. The DB
+  // decides what a type means: only a complaint, or a terminal bounce/failure, suppresses (record_mail_event, 0021).
+  r.post('/internal/mail-events', { auth: 'internal', body: 'raw' }, async (ctx) => {
+    let json;
+    try { json = JSON.parse(ctx.body.toString('utf8')); } catch { throw badRequest('body is not valid JSON'); }
+    const e = parse(v.object({
+      type: v.string({ min: 1, max: 100 }),
+      source: v.object({ type: v.string({ max: 50 }), zoneId: v.optional(v.string({ max: 100 })), domain: v.optional(v.string({ max: 255 })) }),
+      payload: v.object({
+        messageId: v.string({ min: 1, max: 998 }),
+        recipient: v.string({ min: 3, max: 320 }),
+        terminal: v.optional(v.bool()),
+        delivery: v.optional(v.json({ maxBytes: 2000 })),
+      }),
+    }), json);
+    const m = /^cf\.email\.sending\.message\.(delivered|deferred|bounced|failed|rejected|complained)$/.exec(e.type);
+    if (!m || e.source.type !== 'email.sending') throw badRequest('not a cf.email.sending.message event');
+    const outcome = await ctx.noTenant(async (tx) => (await tx.query(`SELECT record_mail_event($1, $2, $3, $4) AS outcome`,
+      [e.payload.messageId, m[1], e.payload.terminal === true, e.payload.recipient])).rows[0].outcome, { role: 'inbox_svc' });
+    return { outcome };
   });
 }

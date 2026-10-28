@@ -2,24 +2,27 @@
 // Config is environment only; secrets arrive from Secret Manager as env vars, never files in the repo.
 //
 //   DATABASE_URL            Cloud SQL connection (login role: member of app_rw, gate_svc, sender_svc, inbox_svc only)
-//   OMNI_FIREBASE_PROJECT   Identity Platform project id; ID tokens must have this audience
+//   ACCESS_TEAM_DOMAIN      the Cloudflare Access team domain, <team>.cloudflareaccess.com (required)
+//   ACCESS_AUD              the Access application's AUD tag; the JWT in Cf-Access-Jwt-Assertion must carry it (required)
 //   OMNI_CORS_ORIGINS       comma-separated exact origins allowed to call the API from a browser
-//   OMNI_APP_URL            base for invite links (default https://app.omnisdr.com)
-//   OMNI_UNSUBSCRIBE_BASE   base for /u/<token> links
+//   OMNI_APP_URL            base for invite links (required: the old default, app.omnisdr.com, has no DNS record)
+//   OMNI_UNSUBSCRIBE_BASE   the API's public origin, for /u/<token> and hook URLs (required, same reason)
 //   OMNI_INBOUND_SECRET     HMAC key shared with the email-worker; /internal/* is 404 without it
+//   OMNI_FORM_DAILY_CAP     most website-form submissions a workspace may record per 24 hours (429 over it; default 500)
 //   OMNI_EDGE_SECRET        HMAC key shared with the api.omnisdr.com Worker, which signs the caller's IP (#52 audit)
 //   OMNI_TRUST_PROXY=<n>    the client IP is the n-th entry from the end of X-Forwarded-For. 1 behind Cloud Run (the live value).
 //                           2 ONLY when every request must pass Cloudflare or a load balancer first: while the *.run.app URL
 //                           is reachable directly, 2 lets a caller pick its own rate-limit bucket with one forged entry
 //                           (claude-local's #33 audit: 60 spoofed calls never limited, vs 31 at 1). Unset: the socket address
-//   OMNI_MODEL=off|vertex   default off; vertex needs OMNI_VERTEX_PROJECT and OMNI_MODEL_{FLASH_LITE,FLASH,PRO} [VERIFY IDs]
+//   OMNI_MODEL=off|gemini_api   default off; gemini_api needs OMNI_GEMINI_KEY, OMNI_DATA_IS_DEMO=1 and OMNI_MODEL_{FLASH_LITE,FLASH,PRO} [VERIFY IDs]
 import { createServer } from 'node:http';
 import { createApp } from './app.mjs';
 import { pgPool } from './pool.mjs';
-import { firebaseVerifier } from './auth.mjs';
-import { offModel, vertexModel, geminiApiModel } from './services/model.mjs';
+import { accessVerifier } from './access.mjs';
+import { offModel, geminiApiModel } from './services/model.mjs';
 import { offPlaces, googlePlaces } from './services/places.mjs';
 import { offVerifier } from './services/verify.mjs';
+import { formDailyCap } from './services/inbox.mjs';
 import { zeroBounceVerifier } from './services/zerobounce.mjs';
 
 const env = process.env;
@@ -37,13 +40,16 @@ export async function main() {
     console.error('OMNI_MODEL=gemini_api is for demo data only: set OMNI_DATA_IS_DEMO=1 on a deployment that holds no real prospect or customer data');
     process.exit(1);
   }
+  // A leftover OMNI_MODEL=vertex must stop the start, not quietly turn the model off.
+  if (env.OMNI_MODEL && !['off', 'gemini_api'].includes(env.OMNI_MODEL)) {
+    console.error(`OMNI_MODEL=${env.OMNI_MODEL} is not supported: use off or gemini_api (Vertex was removed)`);
+    process.exit(1);
+  }
   const pool = await pgPool({ connectionString: need('DATABASE_URL'), max: Number(env.OMNI_DB_POOL ?? 10) });
   const models = () => ({ flash_lite: need('OMNI_MODEL_FLASH_LITE'), flash: need('OMNI_MODEL_FLASH'), pro: need('OMNI_MODEL_PRO') });
-  const model = env.OMNI_MODEL === 'vertex'
-    ? vertexModel({ project: need('OMNI_VERTEX_PROJECT'), location: env.OMNI_VERTEX_LOCATION ?? 'us-central1', models: models() })
-    : env.OMNI_MODEL === 'gemini_api'
-      ? geminiApiModel({ key: need('OMNI_GEMINI_KEY'), models: models(), perDay: Number(env.OMNI_GEMINI_PER_DAY ?? 20) || 20 })
-      : offModel();
+  const model = env.OMNI_MODEL === 'gemini_api'
+    ? geminiApiModel({ key: need('OMNI_GEMINI_KEY'), models: models(), perDay: Number(env.OMNI_GEMINI_PER_DAY ?? 20) || 20 })
+    : offModel();
   // Vendor verification ships off: OMNI_VERIFY=zerobounce reads the key by name from OMNI_SENDER_SECRETS.zeroBounceKey
   // (Secret Manager `omni-sender-secrets`). Asked for and missing is a refusal to start, not a silent 'off'.
   const verifier = env.OMNI_VERIFY === 'zerobounce' ? zeroBounceVerifier({ key: senderSecret('zeroBounceKey') }) : offVerifier();
@@ -51,13 +57,15 @@ export async function main() {
   const places = env.OMNI_PLACES === 'google' ? googlePlaces({ key: need('OMNI_PLACES_KEY') }) : offPlaces();
   const app = createApp({
     pool,
-    verifyToken: firebaseVerifier({ projectId: need('OMNI_FIREBASE_PROJECT') }),
+    verifyToken: accessVerifier({ teamDomain: need('ACCESS_TEAM_DOMAIN'), aud: need('ACCESS_AUD') }),
     model,
     config: {
       corsOrigins: (env.OMNI_CORS_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
-      appUrl: env.OMNI_APP_URL ?? 'https://app.omnisdr.com',
-      unsubscribeBase: env.OMNI_UNSUBSCRIBE_BASE ?? 'https://app.omnisdr.com',
+      appUrl: need('OMNI_APP_URL'),
+      unsubscribeBase: need('OMNI_UNSUBSCRIBE_BASE'),
       inboundSecret: env.OMNI_INBOUND_SECRET || null,
+      // Most website-form submissions a workspace may record per 24 hours (429 over it). Unset: 500.
+      formDailyCap: formDailyCap(env.OMNI_FORM_DAILY_CAP),
       places,
       // Free checks always run; the vendor check only with OMNI_VERIFY=zerobounce (above).
       verifier,

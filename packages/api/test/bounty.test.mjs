@@ -20,6 +20,7 @@ test('malformed %-encoding in a path is a 404, not a 500 with a stack trace', as
 test('trusted proxy hops: the client IP is the n-th X-Forwarded-For entry from the end', async () => {
   const mk = (trustProxy) => {
     const app = createApp({ pool: { acquire: async () => ({ client: {}, release() {} }) }, verifyToken: async () => { throw new Error('x'); },
+      tokenFrom: (req) => /^Bearer (.+)$/.exec(req.headers.authorization ?? '')?.[1] ?? null,
       config: { trustProxy }, log: () => {} });
     const s = createServer((req, res) => app.handle(req, res));
     return new Promise((r) => s.listen(0, '127.0.0.1', () => r(s)));
@@ -78,6 +79,7 @@ test('api.omnisdr.com (#52 audit): a signed client IP from the Worker gives each
   const SECRET = 'edge-test-secret';
   const mk = (edgeSecret) => {
     const app = createApp({ pool: { acquire: async () => ({ client: {}, release() {} }) }, verifyToken: async () => { throw new Error('x'); },
+      tokenFrom: (req) => /^Bearer (.+)$/.exec(req.headers.authorization ?? '')?.[1] ?? null,
       config: { trustProxy: 1, ...(edgeSecret ? { edgeSecret } : {}) }, log: () => {} });
     const s = createServer((req, res) => app.handle(req, res));
     return new Promise((r) => s.listen(0, '127.0.0.1', () => r(s)));

@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { generateKeyPairSync, createSign, createHmac } from 'node:crypto';
 import { PGlite } from '@electric-sql/pglite';
 import { migrate } from '../../db/src/migrate.mjs';
-import { createApp } from '../src/app.mjs';
+import { createApp, PUBLIC_ROUTES } from '../src/app.mjs';
 import { pglitePool } from '../src/pool.mjs';
 import { firebaseVerifier, staticKeySource } from '../src/auth.mjs';
 import { fakeModel } from '../src/services/model.mjs';
@@ -39,6 +39,9 @@ export async function startApi({ model = fakeModel(), config = {}, seed = true }
   const app = createApp({
     pool: pglitePool(db),
     verifyToken: firebaseVerifier({ projectId: PROJECT, getKey: staticKeySource(KEYS) }),
+    // The hooks route is closed in production (B-11); its own tests open it here, in the test config only.
+    publicRoutes: new Set([...PUBLIC_ROUTES, 'POST /v1/hooks/:id']),
+    tokenFrom: (req) => /^Bearer (.+)$/.exec(req.headers.authorization ?? '')?.[1] ?? null,   // the suite's own sign-in; production reads the Access header
     model,
     config: { corsOrigins: ['https://console.example'], inboundSecret: INBOUND_SECRET, appUrl: 'https://app.test', ...config },
     log: (e) => logs.push(e),
@@ -59,16 +62,18 @@ export async function startApi({ model = fakeModel(), config = {}, seed = true }
     return { status: res.status, body: json, text, headers: res.headers };
   }
 
-  function signedInbound(payload, { secret = INBOUND_SECRET, ts = Math.floor(Date.now() / 1000) } = {}) {
+  function signedPost(path, payload, { secret = INBOUND_SECRET, ts = Math.floor(Date.now() / 1000) } = {}) {
     const raw = JSON.stringify(payload);
     const sig = createHmac('sha256', secret).update(`${ts}.`).update(raw).digest('hex');
-    return call('POST', '/internal/inbound', { as: null, raw, headers: { 'content-type': 'application/json',
+    return call('POST', path, { as: null, raw, headers: { 'content-type': 'application/json',
       'x-omni-timestamp': String(ts), 'x-omni-signature': `sha256=${sig}` } });
   }
+  const signedInbound = (payload, opts) => signedPost('/internal/inbound', payload, opts);
+  const signedMailEvent = (payload, opts) => signedPost('/internal/mail-events', payload, opts);
 
   const W = demo ? `/v1/o/${demo.org}/w/${demo.workspaces[0]}` : null;
   return {
-    db, demo, base, call, signedInbound, logs, W, model,
+    db, demo, base, call, kickAlerts: app.kickAlerts, signedPost, signedInbound, signedMailEvent, logs, W, model,
     ws: (i) => `/v1/o/${demo.org}/w/${demo.workspaces[i]}`,
     q: async (sql, params) => (await db.query(sql, params)).rows,
     stop: () => new Promise((r) => server.close(r)),

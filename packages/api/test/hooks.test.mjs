@@ -52,9 +52,9 @@ test('hooks: a submission becomes a contact + an inbound form message, triaged l
 test('hooks: an opt-out suppresses the address; a repeated externalId is recorded once', async () => {
   const { api, post } = await withHook();
   try {
-    assert.equal((await post({ message: 'Please stop contacting me. Remove me from your list.', email: 'gone@lead.example', externalId: 'sub-1' })).status, 202);
-    assert.equal((await post({ message: 'Please stop contacting me. Remove me from your list.', email: 'gone@lead.example', externalId: 'sub-1' })).status, 200);
-    const [{ n }] = await api.q(`SELECT count(*)::int AS n FROM inbound_messages WHERE external_id = 'sub-1'`);
+    assert.equal((await post({ message: 'Please stop contacting me. Remove me from your list.', email: 'gone@lead.example', externalId: 'form-1' })).status, 202);
+    assert.equal((await post({ message: 'Please stop contacting me. Remove me from your list.', email: 'gone@lead.example', externalId: 'form-1' })).status, 200);
+    const [{ n }] = await api.q(`SELECT count(*)::int AS n FROM inbound_messages WHERE external_id = 'form-1'`);
     assert.equal(n, 1);
     const [{ s }] = await api.q(`SELECT count(*)::int AS s FROM suppression WHERE value_hash = value_hash('gone@lead.example') AND reason = 'form_unsubscribe'`);
     assert.equal(s, 1);

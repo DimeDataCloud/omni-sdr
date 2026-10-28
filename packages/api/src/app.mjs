@@ -10,7 +10,9 @@ import { withTenant, withoutTenant } from '../../db/src/context.mjs';
 import { can } from '../../db/src/permissions.mjs';
 import { HttpError, toHttp, forbidden, notFound, badRequest } from './errors.mjs';
 import { AuthError } from './auth.mjs';
+import { accessToken } from './access.mjs';
 import { withClient } from './pool.mjs';
+import { relayAlerts } from './services/alerts.mjs';
 import { registerAll } from './routes/index.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -29,24 +31,50 @@ function limiter() {
   };
 }
 
+// Deny by default (B-11): only these exact method+path pairs may skip the Access JWT. A route that asks for
+// auth 'none' or 'internal' but isn't listed here is registered as a user route, so a new route is closed until
+// someone lists it on purpose. 'internal' routes keep their HMAC check as well; a JWT never replaces it.
+export const PUBLIC_ROUTES = new Set([
+  'GET /v1/health', 'GET /healthz', 'GET /u/:token', 'POST /u/:token',
+  'POST /internal/inbound', 'POST /internal/mail-events',
+]);
+// POST /v1/hooks/:id (inbound form webhooks) is deliberately NOT listed: hooks route closed until a later card;
+// reopening needs one allowlist entry plus an Access Bypass policy by exact path.
+
 function compile(path) {
   const names = [];
   const re = new RegExp('^' + path.replace(/:([a-zA-Z]+)/g, (_, n) => { names.push(n); return '([^/]+)'; }) + '/?$');
   return { re, names };
 }
 
-export function createApp({ pool, verifyToken, config = {}, model = null, now = () => new Date(), log = () => {} }) {
+// tokenFrom reads the credential off the request: the Access header in production; only dev.mjs and tests pass another.
+export function createApp({ pool, verifyToken, tokenFrom = accessToken, extraRoutes = null, publicRoutes = PUBLIC_ROUTES, config = {}, model = null, now = () => new Date(), log = () => {} }) {
   const cfg = {
     corsOrigins: [], appUrl: 'https://app.omnisdr.com', unsubscribeBase: 'https://app.omnisdr.com',
-    replyDomain: 'reply.omnisdr.com', inboundSecret: null, trustProxy: false, ...config,
+    replyDomain: 'reply.omnisdr.com', inboundSecret: null, trustProxy: false, formDailyCap: undefined, ...config,
+  };
+  // The alert relay (0030) after a lead is committed. Fired and forgotten: it must never fail or slow the intake request, so every
+  // failure is swallowed (the one-minute cron is the safety net). No transport wired: nothing to do.
+  // Single flight: one pass at a time per process; a kick while one runs does nothing (that pass, or the cron, takes the new row).
+  let kicking = false;
+  const kickAlerts = () => {
+    if (!cfg.alertTransport || kicking) return;
+    kicking = true;
+    try {
+      withClient(pool, (c) => relayAlerts(c, { transport: cfg.alertTransport, consoleBase: cfg.appUrl, sendTimeoutMs: cfg.alertSendTimeoutMs }))
+        .catch(() => {}).finally(() => { kicking = false; });
+    } catch { kicking = false; }
   };
   const routes = [];
   const add = (method) => (path, opts, handler) => {
     if (typeof opts === 'function') { handler = opts; opts = {}; }
-    routes.push({ method, path, ...compile(path), opts: { auth: 'user', ...opts }, handler });
+    const o = { auth: 'user', ...opts };
+    if (o.auth !== 'user' && !publicRoutes.has(`${method} ${path}`)) o.auth = 'user';
+    routes.push({ method, path, ...compile(path), opts: o, handler });
   };
   const r = { get: add('GET'), post: add('POST'), patch: add('PATCH'), put: add('PUT'), delete: add('DELETE') };
   registerAll(r);
+  extraRoutes?.(r);
 
   const allow = limiter();
   const userCache = new Map();   // idp uid → { id, email, at }
@@ -170,10 +198,10 @@ export function createApp({ pool, verifyToken, config = {}, model = null, now = 
 
       let identity = null;
       if (rt.opts.auth === 'user') {
-        const m = /^Bearer (.+)$/.exec(req.headers.authorization ?? '');
-        if (!m) throw new AuthError('no bearer token');
+        const tok = tokenFrom(req);
+        if (!tok) throw new AuthError('no credential');
         try {
-          identity = await verifyToken(m[1]);
+          identity = await verifyToken(tok);
         } catch (err) {
           if (!allow(`authfail:${ip}`, 30, 60000, nowMs)) throw new HttpError(429, 'rate_limited', 'too many requests');
           throw err;
@@ -184,7 +212,7 @@ export function createApp({ pool, verifyToken, config = {}, model = null, now = 
         const user = identity ? await resolveUser(client, identity) : null;
         if (user && !allow(`user:${user.id}`, 600, 60000, nowMs)) throw new HttpError(429, 'rate_limited', 'too many requests');
         const ctx = {
-          req, params, body, user, client, config: cfg, model, now, ip, reqId, allow,
+          req, params, body, user, client, config: cfg, model, now, ip, reqId, allow, kickAlerts,
           query: Object.fromEntries(url.searchParams),
           tenant: (fn, { action } = {}) => {
             if (!params.org || !params.ws) throw new Error('ctx.tenant used on a route without :org/:ws');
@@ -233,7 +261,7 @@ export function createApp({ pool, verifyToken, config = {}, model = null, now = 
     }
   }
 
-  return { handle, routes: routes.map((x) => `${x.method} ${x.path}`), config: cfg };
+  return { handle, kickAlerts, routes: routes.map((x) => `${x.method} ${x.path}`), config: cfg };
 }
 
 // Unsubscribe and invite tokens are credentials; they never reach logs.

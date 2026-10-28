@@ -13,3 +13,7 @@
 !packages/gate/src/**
 !packages/sender/src/**
 !packages/enrich/src/**
+# Dev-only entry points never ship (B-11): dev.mjs accepts unsigned dev tokens, seed-demo.mjs builds the demo tenant.
+# Later rules win, so these re-exclude files the packages/api/src/** include above would admit.
+packages/api/src/dev.mjs
+packages/api/src/seed-demo.mjs

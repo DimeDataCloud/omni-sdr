@@ -17,6 +17,7 @@ import { registerVerify } from './verify.mjs';
 import { registerConversations } from './conversations.mjs';
 import { registerHooks } from './hooks.mjs';
 import { registerPlaybook } from './playbook.mjs';
+import { registerPipeline } from './pipeline.mjs';
 
 // Specific paths before parameterized ones within each module; modules don't overlap.
 export function registerAll(r) {
@@ -39,6 +40,7 @@ export function registerAll(r) {
   registerConversations(r);
   registerHooks(r);
   registerPlaybook(r);
+  registerPipeline(r);
 }
 
 // Tenant route prefix.

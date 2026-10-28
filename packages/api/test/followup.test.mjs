@@ -67,7 +67,10 @@ test('an out-of-office snoozes to the return date; with no date, a week; a later
   const resume = e.resume_state;
   assert.ok(['waiting', 'drafting', 'awaiting_approval', 'scheduled', 'sent'].includes(resume), `remembers ${resume}`);
   // A second auto-reply naming a date 3 days out doesn't bring the wake-up forward...
-  await api.signedInbound({ to: t.to, body: 'Automatic reply: back Monday.', receivedAt: new Date().toISOString() });
+  // The day name is taken from the clock, three days out, so it never resolves to a day past the default week (a fixed "Monday"
+  // resolves to next Monday 09:00 when the test runs on a Monday morning, later than at+7d).
+  const soon = new Date(Date.now() + 3 * 86400000).toLocaleString('en-US', { weekday: 'long', timeZone: 'America/Chicago' });
+  await api.signedInbound({ to: t.to, body: `Automatic reply: back ${soon}.`, receivedAt: new Date().toISOString() });
   assert.equal(new Date((await enrollment(t.contactId)).next_run_at).getTime(), at.getTime() + 7 * 86400000);
   // ...and one naming a later date pushes it out, keeping the remembered state.
   const later = new Date(Date.now() + 40 * 86400000);
@@ -150,8 +153,9 @@ test('no-show: the sequence reopens and a reschedule note waits in Approvals, ga
   assert.equal(ns.body.status, 'no_show');
   assert.equal(ns.body.reschedule.gate, 'passed');
   assert.equal((await enrollment(t.contactId)).state, 'awaiting_approval');
-  const [d] = await api.q(`SELECT status, step, subject, body, purpose FROM drafts WHERE id = $1`, [ns.body.reschedule.draftId]);
+  const [d] = await api.q(`SELECT status, step, subject, body, purpose, agent_id FROM drafts WHERE id = $1`, [ns.body.reschedule.draftId]);
   assert.equal(d.status, 'review', 'waits for a person; nothing approves it automatically');
+  assert.ok(d.agent_id, 'the reschedule note is credited to the workspace SDR agent');
   assert.equal(d.purpose, 'reschedule', 'the send loop sends it once approved, without the sequence wait (#45 audit)');
   assert.ok(d.step >= 1);
   assert.match(d.subject, /^Re: /);

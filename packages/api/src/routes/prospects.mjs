@@ -6,6 +6,7 @@ import { T, camel, audit } from './index.mjs';
 import { v, parse } from '../validate.mjs';
 import { notFound, HttpError } from '../errors.mjs';
 import { freeEmailChecks } from '../services/catalog.mjs';
+import { normalizeLinkedIn } from '../services/inbox.mjs';
 import { gateDraft } from '../../../gate/src/apply.mjs';
 import { enrichContact, websiteFor } from '../../../enrich/src/enrich.mjs';
 import { safeFetch } from '../../../enrich/src/fetch.mjs';
@@ -19,6 +20,8 @@ const CONTACT = {
   phone: v.optional(v.nullable(v.string({ max: 40, pattern: /^\+?[0-9 ().-]{7,40}$/ }))),
   company: v.optional(v.nullable(v.string({ max: 200 }))),
   title: v.optional(v.nullable(v.string({ max: 200 }))),
+  // A person's own profile. Company pages are not people and are refused; the database stores the canonical slug.
+  linkedinUrl: v.optional(v.nullable(v.string({ max: 300 }))),
 };
 
 export function registerProspects(r) {
@@ -36,23 +39,63 @@ export function registerProspects(r) {
   });
 
   // One or many (CSV rows mapped by the client). Duplicates by email are skipped, not overwritten.
+  // A row that is, or turns out to be, an opted-out person is REFUSED: it is not stored (each row runs in a savepoint that is
+  // rolled back) and comes back under `held`, while the rest of the batch goes on. A held row is never left in a sendable state.
+  // A duplicate skipped by address still keeps its profile link as an identity of the existing contact: the import is the
+  // evidence that links it to the person who opted out by profile.
   r.post(`${T}/contacts`, (ctx) => {
     const b = parse(v.object({ contacts: v.array(v.object(CONTACT), { min: 1, max: 500 }) }), ctx.body);
     return ctx.tenant(async (tx, m) => {
       const created = [];
       const skipped = [];
+      const held = [];
       for (const [i, c] of b.contacts.entries()) {
         const check = c.email ? freeEmailChecks(c.email) : null;
-        const row = (await tx.query(
-          `INSERT INTO contacts (org_id, workspace_id, name, email, email_status, phone, company, title)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (workspace_id, email) DO NOTHING RETURNING id, email_status`,
-          [m.orgId, m.workspaceId, c.name ?? null, check?.email ?? null, check?.status ?? 'unknown', c.phone ?? null,
-            c.company ?? null, c.title ?? null])).rows[0];
-        if (row) created.push({ index: i, id: row.id, emailStatus: row.email_status, role: check?.role ?? false, reason: check?.reason ?? null });
-        else skipped.push({ index: i, reason: 'email already in this workspace' });
+        const profile = c.linkedinUrl ? normalizeLinkedIn(c.linkedinUrl) : null;
+        if (c.linkedinUrl && !profile?.startsWith('in/')) throw new HttpError(400, 'bad_request', 'use a linkedin.com/in/… link to a person', { field: `contacts.${i}.linkedinUrl` });
+        await tx.query('SAVEPOINT import_row');
+        // A slug the database cannot canonicalise (a reserved escape, nested encoding) is a bad link, not a server error.
+        let row;
+        try {
+          row = (await tx.query(
+            `INSERT INTO contacts (org_id, workspace_id, name, email, email_status, phone, company, title, linkedin_slug)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (workspace_id, email) DO NOTHING RETURNING id, email_status`,
+            [m.orgId, m.workspaceId, c.name ?? null, check?.email ?? null, check?.status ?? 'unknown', c.phone ?? null,
+              c.company ?? null, c.title ?? null, profile])).rows[0];
+        } catch (e) {
+          if (e.code === '22023') throw new HttpError(400, 'bad_request', 'that linkedin link cannot be used', { field: `contacts.${i}.linkedinUrl` });
+          throw e;
+        }
+        if (row) {
+          // person_suppressed is STABLE, so it cannot see the row inserted by the statement that calls it: ask in a new statement.
+          if ((await tx.query(`SELECT person_suppressed($1) AS held`, [row.id])).rows[0].held) {
+            await tx.query('ROLLBACK TO SAVEPOINT import_row');
+            // The rollback also took the suppression of the row's own address and phone. When the row was held through a profile that
+            // is opted out, they are that person's: write them back, outside the rolled-back work (ADV N-3).
+            if (profile) await tx.query(`SELECT import_suppress_held($1, $2, $3)`, [profile, check?.email ?? null, c.phone ?? null]);
+            held.push({ index: i, reason: 'matches an opted-out person' });
+          } else created.push({ index: i, id: row.id, emailStatus: row.email_status, role: check?.role ?? false, reason: check?.reason ?? null });
+        } else {
+          skipped.push({ index: i, reason: 'email already in this workspace' });
+          if (profile && check?.email) {
+            const existing = (await tx.query(`SELECT id FROM contacts WHERE workspace_id = $1 AND email = $2`, [m.workspaceId, check.email])).rows[0];
+            if (existing) {
+              // A slug the identity table refuses (22023) must not sink the batch: the row stays skipped, unlinked. Anything else
+              // (a deadlock, a serialization failure, a timeout) propagates so withTenant can retry the whole import (ADV P2-1).
+              await tx.query('SAVEPOINT import_link');
+              try { await tx.query(`SELECT record_identity($1, $2, 'import')`, [existing.id, profile]); await tx.query('RELEASE SAVEPOINT import_link'); }
+              catch (e) {
+                if (e?.code !== '22023') throw e;
+                await tx.query('ROLLBACK TO SAVEPOINT import_link');
+              }
+              if ((await tx.query(`SELECT person_suppressed($1) AS held`, [existing.id])).rows[0].held) held.push({ index: i, reason: 'existing contact matches an opted-out person' });
+            }
+          }
+        }
+        await tx.query('RELEASE SAVEPOINT import_row');
       }
       await audit(tx, m, 'import', 'contacts', `${created.length}`);
-      return { status: 201, body: { created, skipped } };
+      return { status: 201, body: { created, skipped, held } };
     }, { action: 'build' });
   });
 

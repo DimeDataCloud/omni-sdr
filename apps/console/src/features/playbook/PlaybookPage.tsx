@@ -58,7 +58,7 @@ export default function PlaybookPage() {
           <Questions initial={pb.data.questions.map((q) => ({ key: q.key, question: q.question }))} editable={edit} />
           <p className="text-xs text-muted">
             Fields you can use: {pb.data.fields.map((f) => `{${f}}`).join(', ')}. A reply that needs a field Omni doesn’t have for that person isn’t offered.
-            Auto-send is off. A category shows as ready after {Math.round(pb.data.autonomy.rate * 100)}% of its last {pb.data.autonomy.window} replies were approved unedited
+            Nothing is sent without your approval. A category shows as ready after {Math.round(pb.data.autonomy.rate * 100)}% of its last {pb.data.autonomy.window} replies were approved unedited
             (website-form replies never count, since anyone can type any address into a form).
           </p>
         </div>

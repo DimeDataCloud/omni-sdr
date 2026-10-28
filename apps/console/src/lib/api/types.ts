@@ -2,7 +2,7 @@
 // Written from the route code on 2026-09-29. Timestamps are ISO strings. All ids are uuids.
 // Base path for workspace routes: /v1/o/{orgId}/w/{workspaceId}
 
-export type Role = 'admin' | 'operator' | 'reviewer' | 'client_viewer' | 'closer';
+export type Role = 'admin' | 'operator' | 'reviewer' | 'client_viewer' | 'closer' | 'rep';
 export type AccountType = 'owner' | 'agency';
 export type ModelTier = 'flash_lite' | 'flash' | 'pro';
 export type Iso = string;
@@ -241,3 +241,93 @@ export interface Dataset {
   rules: string[]; manage: string;                                  // manage: the page (and query) where its rows are corrected
   always: boolean;                                                  // true: every agent and every send honors it; not a toggle
 }
+
+// ── Dev portal: the client record, shaped like Backend's 6a (omnisdr-pivot/DESIGN-backend-6a-api-shape.md). camelCase here, snake_case on the wire. ──
+export type ClientStatus = 'lead' | 'closed' | 'onboarding' | 'building' | 'ready' | 'live' | 'paused' | 'ended';
+export type DealLevel = 'L1 pilot' | 'L2 recurring' | 'L3 outcome';
+/** GET clients rows. One call, no N+1. */
+export interface ClientSummary {
+  id: Id; name: string; status: ClientStatus; statusChangedAt: Iso; ownerUserId: Id | null;
+  deal: { repId: Id; level: DealLevel; priceCents: number; priceIsDraft: boolean; closedAt: Iso };
+  appliedVersion: number | null; pendingVersions: number;
+  checklist: { done: number; required: number; nextBlocked: string | null };
+}
+/** GET clients/:id. Profile is record keeping only: edited now, no review. Anything the system reads at run time is config (versioned). */
+export interface ClientRecord extends ClientSummary { workspaceId: Id | null; profile: { niche: string; contactName: string; contactEmail: string; notes: string } }
+
+export type ChecklistGroup = 'Account' | 'Connections' | 'Compliance' | 'Setup' | 'Launch';
+export type ChecklistState = 'todo' | 'in_progress' | 'blocked' | 'done' | 'waived';
+export interface ChecklistItem {
+  key: string; section: ChecklistGroup; title: string; required: boolean; kind: 'manual' | 'auto'; state: ChecklistState;
+  ownerUserId: Id | null; evidenceRef: string | null; waivedReason: string | null; blockedBy: string | null; doneBy: Id | null; doneAt: Iso | null;
+}
+/** GET clients/:id/events. Append-only. detail carries ids and enum values only, so the UI composes the sentence. */
+export interface ClientEvent { id: Id; at: Iso; actorUserId: Id | null; actorKind: 'user' | 'system'; kind: string; subjectId: Id | null; detail: Record<string, string | number | boolean | null> }
+
+// Setup versions (CI/CD). The config is everything the system reads at run time.
+export type Risk = 'low' | 'medium' | 'high';
+export interface SetupConfig {
+  hours: string; timezone: string; quietHours: string; services: string; ownerContacts: string; consentBasis: string;
+  closers: string; booking: string; payment: string; resolution: string; unknown: string;
+  followUpDays: number[]; tone: 'warm' | 'direct' | 'formal'; replyNotes: string;
+}
+export interface SetupChange { area: string; path: keyof SetupConfig & string; before: string; after: string; risk: Risk }
+export type VersionStatus = 'draft' | 'in_review' | 'approved' | 'applied' | 'superseded' | 'rejected' | 'rolled_back';   // exactly one applied per client; applying a newer one supersedes it
+export interface SetupVersion {
+  version: number; status: VersionStatus; authorId: Id; reviewerId: Id | null; parentVersion: number | null; note: string; reviewNote: string | null; risk: Risk; diff: SetupChange[];
+  createdAt: Iso; reviewedAt: Iso | null; appliedAt: Iso | null;
+  checks: { label: string; ok: boolean; why: string | null }[];   // 6a returns []; the demo fills labelled demo checks
+}
+export interface SetupDraft { version: number; parentVersion: number | null; config: SetupConfig }
+
+/** Management rollup, 6d (not 6a): one call, a row per client. The demo returns made-up numbers so the table can be built now. */
+export interface ClientHealth {
+  clientId: Id; replyMedianMinutes: number | null; replyWindowMinutes: number; openDrafts: number; openHandoffs: number; alertFailures: number; sendErrors: number;
+  appliedVersion: number | null; pendingVersions: number; billing: { state: 'not_connected' };
+}
+
+/** A deal as the rep portal shows it: the closed sale plus where the client record is now. A rep sees only their own. */
+export interface SalesDeal { id: Id; business: string; niche: string; level: DealLevel; priceCents: number; priceIsDraft: boolean; status: ClientStatus; closedAt: Iso; repId: Id }
+/** Close a sale. No price and no rep: the server takes the amount from the price config and the rep from the session. */
+export interface CloseSaleInput { business: string; niche: string; level: DealLevel; contactName: string; contactEmail: string; notes: string }
+
+/** What a client sees of their own record: one word, the live setup version and when it went out. No price, checklist, drafts or contacts. */
+export type ClientStatusWord = 'Setting up' | 'Approval week' | 'Live' | 'Paused';
+export interface ClientStatusView { word: ClientStatusWord; appliedVersion: number | null; appliedAt: Iso | null }
+
+/** The live setup as a client reads it. Read-only; a change request goes by email. No drafts, no review notes, no reply notes. */
+export interface ClientSetupView {
+  appliedVersion: number; appliedAt: Iso; hours: string; timezone: string; services: string; booking: string; handoffRoute: string; alertContacts: string; tone: string;
+  history: { version: number; appliedAt: Iso }[];
+}
+/** One conversation as a client sees it: a name, a masked phone, a short summary. The transcript is by request only. */
+export interface ClientConversation {
+  id: Id; name: string; maskedPhone: string | null; channel: string; lastAt: Iso; summary: string; status: 'open' | 'handled';
+}
+
+/** Rep prospect lists (fictional rows until Christian approves real prospect data and the privacy page says so). */
+export type ProspectStatus = 'new' | 'contacted' | 'audit_run' | 'results_call' | 'proposed' | 'signed';
+export interface Prospect { id: Id; repId: Id; business: string; niche: string; signal: string; lastTouch: string | null; nextStep: string; status: ProspectStatus; notes: string }
+export interface ProspectPatch { status?: ProspectStatus; nextStep?: string; notes?: string }
+/** One rep's day. Counts are whole numbers; objectionWords is what owners actually said, in their words. */
+export interface SalesLog { date: string; repId: Id; attempts: number; conversations: number; audits: number; resultsCalls: number; pilotsProposed: number; pilotsSigned: number; objectionWords: string }
+export type SalesLogInput = Omit<SalesLog, 'repId'>;
+
+/** Rep portal price ladder (SALES-DECK-COPY slide 13). Data, not copy: every amount is DRAFT until `isFinal`, which only Christian sets. */
+export type PriceUnit = 'free' | 'one_time' | 'per_month' | 'per_kept_appointment';
+export interface PriceLevel {
+  level: 0 | 1 | 2 | 3; label: string; what: string; amountCents: number; unit: PriceUnit;
+  /** Top of a range (Level 2 is $299 to $499 a month), else null. */
+  rangeToCents: number | null;
+  /** Monthly floor that goes with a per-appointment fee (Level 3), else null. */
+  floorCents: number | null;
+  /** Reps may say this number out loud. Until Christian confirms, only Level 0 and Level 1 are. */
+  quotable: boolean;
+}
+export interface PriceConfig { levels: PriceLevel[]; isFinal: boolean; effectiveDate: string | null }
+
+// Demo only, NOT in 6a (connection cards and the draft approval queue come later). Labelled as demo on screen.
+export type ConnState = 'live' | 'simulated' | 'needs_approval';
+export type ConnChannel = 'mailbox' | 'calendar' | 'phone' | 'voice' | 'crm';
+export interface DemoConnection { channel: ConnChannel; state: ConnState; lastTest: Iso | null; note: string }
+export interface DemoReplyDraft { id: Id; subject: string; body: string; state: 'pending' | 'approved' | 'rejected' }
