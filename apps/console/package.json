@@ -9,6 +9,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
+    "test": "node --experimental-strip-types --test src/lib/safe-next.test.mjs src/lib/api/demo/email.test.mjs src/lib/api/demo/clientConvo.test.mjs",
     "gates": "node gates/run-gates.mjs"
   },
   "dependencies": {

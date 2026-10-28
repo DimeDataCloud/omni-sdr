@@ -54,7 +54,7 @@ export interface World {
   playbook: PlaybookRow[]; questions: QuestionRow[]; replyDrafts: ReplyDraftRow[]; clients: ClientRow[]; priceConfig: PriceConfig; prospects: Prospect[]; salesLogs: SalesLog[];
 }
 
-export const WORLD_VERSION = 18;
+export const WORLD_VERSION = 20;
 
 // Deterministic randomness so the demo looks the same on every device.
 function rng(seed: number) {
@@ -297,8 +297,10 @@ export function buildWorld(now = new Date()): World {
     w.enrollments.push({ id: uid('enr'), ws: w1.id, campaignId: lawCamp.id, contactId: c.id, state: 'waiting', step: 0, heat: 1, stopReason: null });
   }
 
+  // Fictional numbers (555-01xx is reserved for fiction) so the client portal has something to mask.
+  w.contacts.filter((c) => c.ws === w0.id && c.name).forEach((c, k) => { c.phone ??= `+1615555${String(100 + k).padStart(4, '0')}`; });
   w.prospects = seedProspects((d) => iso(ago(now, 60 * 24 * d)), members);
-  w.clients = seedClients((d) => iso(ago(now, 60 * 24 * d)), members);
+  w.clients = seedClients((d) => iso(ago(now, 60 * 24 * d)), members, w0.id);
   w.audit.push({ id: uid('audit'), ws: null, actor: 'seed', action: 'create', entityType: 'org', entityId: org.id, at: iso(ago(now, 60 * 24 * 21)) });
   (w as World & { _todays?: unknown })._todays = todays.map((t) => ({ firstDraftId: t.first.id, sendNow: Boolean(t.p.sent), reply: t.p.reply ?? null, email: t.p.email, subject: t.p.subject }));
   return w;

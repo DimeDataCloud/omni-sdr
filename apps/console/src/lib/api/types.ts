@@ -291,6 +291,20 @@ export interface SalesDeal { id: Id; business: string; niche: string; level: Dea
 /** Close a sale. No price and no rep: the server takes the amount from the price config and the rep from the session. */
 export interface CloseSaleInput { business: string; niche: string; level: DealLevel; contactName: string; contactEmail: string; notes: string }
 
+/** What a client sees of their own record: one word, the live setup version and when it went out. No price, checklist, drafts or contacts. */
+export type ClientStatusWord = 'Setting up' | 'Approval week' | 'Live' | 'Paused';
+export interface ClientStatusView { word: ClientStatusWord; appliedVersion: number | null; appliedAt: Iso | null }
+
+/** The live setup as a client reads it. Read-only; a change request goes by email. No drafts, no review notes, no reply notes. */
+export interface ClientSetupView {
+  appliedVersion: number; appliedAt: Iso; hours: string; timezone: string; services: string; booking: string; handoffRoute: string; alertContacts: string; tone: string;
+  history: { version: number; appliedAt: Iso }[];
+}
+/** One conversation as a client sees it: a name, a masked phone, a short summary. The transcript is by request only. */
+export interface ClientConversation {
+  id: Id; name: string; maskedPhone: string | null; channel: string; lastAt: Iso; summary: string; status: 'open' | 'handled';
+}
+
 /** Rep prospect lists (fictional rows until Christian approves real prospect data and the privacy page says so). */
 export type ProspectStatus = 'new' | 'contacted' | 'audit_run' | 'results_call' | 'proposed' | 'signed';
 export interface Prospect { id: Id; repId: Id; business: string; niche: string; signal: string; lastTouch: string | null; nextStep: string; status: ProspectStatus; notes: string }

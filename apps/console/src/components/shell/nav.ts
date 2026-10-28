@@ -1,12 +1,12 @@
 // One nav list; each entry says who sees it (DESIGN 5.3). The shell, bottom bar, palette and route guards all read this.
 // Pages are grouped into six sections (DECISIONS 2026-10-01, WORKSPACE-PLAN.md): the top bar shows sections, and a
 // section with more than one page shows its pages as tabs under the bar. URLs stay one page each (/w/:ws/:page).
-import { Home, CheckCheck, Inbox, CalendarDays, Users, BarChart3, Sparkles, Bot, Plug, Database, Settings as Cog, Send, MessageSquareReply, Megaphone, SlidersHorizontal, Handshake, BookOpenText, Briefcase, Calculator, MessageCircleQuestion, MonitorPlay, HandCoins, ListTodo, ClipboardList, type LucideIcon } from 'lucide-react';
+import { Home, CheckCheck, Inbox, CalendarDays, Users, BarChart3, Sparkles, Bot, Plug, Database, Settings as Cog, Send, MessageSquareReply, Megaphone, SlidersHorizontal, Handshake, BookOpenText, Briefcase, Calculator, MessageCircleQuestion, MonitorPlay, HandCoins, ListTodo, ClipboardList, MessageSquare, Settings2, CreditCard, type LucideIcon } from 'lucide-react';
 import type { Role } from '@/lib/api/types';
 import type { Action } from '@/lib/session';
 import { salesAccess } from '@/features/sales/access';
 
-export type PageKey = 'home' | 'approvals' | 'inbox' | 'handoffs' | 'playbook' | 'meetings' | 'leads' | 'analytics' | 'studio' | 'agents' | 'data' | 'connections' | 'settings' | 'clients' | 'quote' | 'objections' | 'demo' | 'deals' | 'prospects' | 'saleslog';
+export type PageKey = 'home' | 'approvals' | 'inbox' | 'handoffs' | 'playbook' | 'meetings' | 'leads' | 'analytics' | 'studio' | 'agents' | 'data' | 'connections' | 'settings' | 'clients' | 'quote' | 'objections' | 'demo' | 'deals' | 'prospects' | 'saleslog' | 'myservice' | 'conversations' | 'billing';
 export type SectionKey = 'home' | 'outbound' | 'inbound' | 'marketing' | 'results' | 'setup' | 'dev' | 'sales';
 export interface NavItem { key: PageKey; section: SectionKey; label: string; hint: string; icon: LucideIcon; shortcut?: string; visible: (role: Role, can: (a: Action) => boolean) => boolean }
 export interface Section { key: SectionKey; label: string; hint: string; icon: LucideIcon }
@@ -38,6 +38,9 @@ export const NAV: NavItem[] = [
   { key: 'meetings', section: 'inbound', label: 'Meetings', hint: 'Booked calls and their outcomes', icon: CalendarDays, shortcut: 'g m', visible: (_, can) => can('reports_view') },
   { key: 'studio', section: 'marketing', label: 'Studio', hint: 'Make and review images and video', icon: Sparkles, shortcut: 'g s', visible: (r) => !OUTSIDE.includes(r) },
   { key: 'analytics', section: 'results', label: 'Analytics', hint: 'Replies, meetings and approval rates', icon: BarChart3, shortcut: 'g r', visible: (_, can) => can('reports_view') },
+  { key: 'conversations', section: 'results', label: 'Conversations', hint: 'Who wrote in and what it was about', icon: MessageSquare, visible: (r) => r === 'client_viewer' },
+  { key: 'myservice', section: 'results', label: 'My setup', hint: 'What your system does for you today', icon: Settings2, visible: (r) => r === 'client_viewer' },
+  { key: 'billing', section: 'results', label: 'Billing', hint: 'Your plan and invoices, read-only', icon: CreditCard, visible: (r) => r === 'client_viewer' && import.meta.env.VITE_CLIENT_BILLING === 'on' },
   { key: 'agents', section: 'setup', label: 'Agents', hint: 'Role, autonomy, data access, guardrails', icon: Bot, shortcut: 'g t', visible: (r) => !OUTSIDE.includes(r) },
   { key: 'data', section: 'setup', label: 'Data', hint: 'What agents read, and who reads what', icon: Database, shortcut: 'g d', visible: (r) => !OUTSIDE.includes(r) },
   { key: 'quote', section: 'sales', label: 'Quote sheet', hint: 'The ladder and the exact sentence to say', icon: Calculator, shortcut: 'g q', visible: (r) => salesAccess(r).portal },

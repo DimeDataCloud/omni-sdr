@@ -1,10 +1,11 @@
 // Dev portal demo store, shaped like Backend's 6a (omnisdr-pivot/DESIGN-backend-6a-api-shape.md): same resources, same 403/409 codes, so the swap is a base-URL change.
 // Fake data only. Role checks live here because packages/db has no client-record actions yet; in 6a the server checks each action and the database refuses again.
 import { looksLikeEmail } from './email';
-import { ApiError } from '../client';
+import { projectConversation } from './clientConvo';
+import { ApiError, type Scope } from '../client';
 import type {
   ChecklistGroup, ChecklistItem, ChecklistState, ClientEvent, ClientHealth, ClientRecord, ClientStatus, ClientSummary, ConnChannel, DealLevel, DemoConnection, DemoReplyDraft,
-  SetupConfig, SetupDraft, SetupVersion, VersionStatus, SalesDeal, CloseSaleInput,
+  SetupConfig, SetupDraft, SetupVersion, VersionStatus, SalesDeal, CloseSaleInput, ClientStatusView, ClientSetupView, ClientConversation,
 } from '../types';
 import type { MemberRow, World } from './seed';
 import { EMPTY_CONFIG, PATHS, demoChecks, diffConfig, topRisk } from './setup-versions';
@@ -117,6 +118,16 @@ export function makeClientApi({ read, write, me, nf }: Helpers) {
   const version = (c: ClientRow, n: number) => { const v = c.versions.find((x) => x.version === n); if (!v) throw nf('version'); return v; };
   const staleCheck = (c: ClientRow, v: VersionRow) => { if (v.parentVersion !== (appliedOf(c)?.version ?? null)) throw new ApiError(409, 'stale_parent', 'The live version changed since this one was written. Start again from the live version.'); };
 
+  /** Client portal reads: a client_viewer of that workspace, or an admin or operator previewing. Anyone else is refused. */
+  // Notes for Backend 5 (PR #155 V-49 P3): (1) here an operator may read any workspace's portal view; the real route must also apply the operator's workspace list.
+  // (2) The setup's closer and owner-contact fields are free text the client will read; the real route must show them as written by us, not as typed by a prospect.
+  const viewerGate = (w: World, s: Scope) => {
+    if (s.orgId !== w.org.id) throw nf('organization');
+    const m = me(w);
+    if (m.role === 'client_viewer') { if (!m.workspaceIds?.includes(s.workspaceId)) throw nf('workspace'); } else opsOnly(m, 'client_status');
+    return m;
+  };
+
   return {
     clients: (orgId: string, q?: { status?: ClientStatus }) => read((w) => {
       org(w, orgId); const m = me(w); readAny(m);
@@ -138,7 +149,7 @@ export function makeClientApi({ read, write, me, nf }: Helpers) {
       if (!reason.trim()) throw bad('Say why in a few words');
       if (!EDGES[c.status].includes(to)) throw new ApiError(409, 'transition_not_allowed', `A ${c.status} client cannot move to ${to}`, { from: c.status, to });
       let unmet: string[] = [];
-      if (to === 'live' && c.status === 'ready') unmet = unmetForLive(c);   // resume from paused skips the launch guard
+      if (to === 'live' && (c.status === 'ready' || c.status === 'paused')) unmet = unmetForLive(c);   // Resume runs the same launch guard as Go live (PR #153 V-46 P3)
       if (to === 'ready' && !c.versions.some((v) => v.status === 'approved' || v.status === 'applied')) unmet = ['A setup version approved by a second person'];
       if (unmet.length) throw new ApiError(409, 'transition_not_allowed', 'Not ready yet', { from: c.status, to, unmet });
       if (c.status === 'closed' && to === 'onboarding') c.checklist = checklistFor();
@@ -269,6 +280,39 @@ export function makeClientApi({ read, write, me, nf }: Helpers) {
       w.clients.push(c);
       return dealOf(c);
     }),
+    /** The client portal's one read. A client_viewer gets only their own workspace's record, reduced to a word; admin and operator may preview it. */
+    clientStatus: (s: Scope) => read((w): ClientStatusView | null => {
+      viewerGate(w, s);
+      const c = w.clients.find((x) => x.workspaceId === s.workspaceId);
+      if (!c || c.status === 'ended' || c.status === 'lead') return null;
+      const a = appliedOf(c);
+      const first = c.versions.map((v) => v.appliedAt).filter((t): t is string => Boolean(t)).sort()[0];
+      const word = c.status === 'paused' ? 'Paused' : c.status === 'live'
+        ? (first && Date.now() - Date.parse(first) < 7 * 86400e3 ? 'Approval week' : 'Live') : 'Setting up';
+      return { word, appliedVersion: a?.version ?? null, appliedAt: a?.appliedAt ?? null };
+    }),
+    clientSetup: (s: Scope) => read((w): ClientSetupView | null => {
+      const m = viewerGate(w, s);
+      void m;
+      const c = w.clients.find((x) => x.workspaceId === s.workspaceId);
+      const a = c ? appliedOf(c) : null;
+      if (!c || !a || !a.appliedAt) return null;
+      const cfg = a.config;
+      return {
+        appliedVersion: a.version, appliedAt: a.appliedAt, hours: cfg.hours, timezone: cfg.timezone, services: cfg.services, booking: cfg.booking, handoffRoute: cfg.closers, alertContacts: cfg.ownerContacts, tone: cfg.tone,
+        history: c.versions.filter((v) => v.appliedAt).map((v) => ({ version: v.version, appliedAt: v.appliedAt! })).sort((x, y) => y.version - x.version),
+      };
+    }),
+    clientConversations: (s: Scope) => read((w): ClientConversation[] => {
+      viewerGate(w, s);
+      const byContact = new Map<string, World['inbound']>();
+      for (const i of w.inbound.filter((x) => x.ws === s.workspaceId && x.contactId)) byContact.set(i.contactId!, [...(byContact.get(i.contactId!) ?? []), i]);
+      return [...byContact.entries()].map(([contactId, msgs]) => {
+        const last = msgs.sort((x, y) => y.receivedAt.localeCompare(x.receivedAt))[0]!;
+        const ct = w.contacts.find((x) => x.id === contactId);
+        return projectConversation(contactId, ct?.name ?? 'Unknown', ct?.phone ?? null, last);
+      }).sort((x, y) => y.lastAt.localeCompare(x.lastAt)).slice(0, 50);
+    }),
     clientEvents: (orgId: string, id: string, q?: { kind?: string; after?: string }) => read((w) => {
       const { c } = open(w, orgId, id, (x) => opsOnly(x, 'client_read'));
       const all = [...c.events].reverse().filter((e) => !q?.kind || e.kind === q.kind);
@@ -310,7 +354,7 @@ export function makeClientApi({ read, write, me, nf }: Helpers) {
 }
 
 // ── seed: three fictional clients (closed, onboarding, live). Fictional names and .example addresses only. ──
-export function seedClients(at: (daysAgo: number) => string, members: MemberRow[]): ClientRow[] {
+export function seedClients(at: (daysAgo: number) => string, members: MemberRow[], viewerWorkspaceId: string): ClientRow[] {
   const maya = members[0].userId, sam = members[1].userId, riley = members[2].userId;
   void maya;
   const jordan = members.find((x) => x.role === 'rep')!.userId;
@@ -368,9 +412,15 @@ export function seedClients(at: (daysAgo: number) => string, members: MemberRow[
   dental.profile = { niche: 'Dental practice', contactName: 'Dr. Ana Pruitt', contactEmail: 'ana@maple.example', notes: 'Wants recall reminders and new-patient booking.' };
   dental.deal = { ...dental.deal, level: 'L1 pilot', priceCents: 49900, closedAt: at(25) };
   dental.versions = dental.versions.slice(0, 3);
+  // Nothing of Ridgeline's may survive the rename (PR #153 V-46 P3): swap the setup content and the drafts for dental ones.
+  const dentalCfg = (c: SetupConfig): SetupConfig => ({ ...c, services: 'New-patient exams, cleanings, recall reminders and whitening', ownerContacts: 'ana@maple.example', consentBasis: 'Existing patients and web inquiries',
+    closers: 'Dr. Ana Pruitt', booking: 'Book on the front desk calendar', resolution: 'Front desk calls back same day', replyNotes: 'Always offer the next open new-patient exam slot.' });
+  dental.versions.forEach((v) => { v.config = dentalCfg(v.config); });
+  dental.connections = conns('live', at(33));
+  dental.replyDrafts = drafts(dental.id, dental.name, 'Dental practice', 'approved');
   dental.events = dental.events.filter((e) => e.kind !== 'setup.draft_saved');
   dental.health = { replyMedianMinutes: 52, replyWindowMinutes: 30, openDrafts: 6, openHandoffs: 3, alertFailures: 2, sendErrors: 1 };
-  dental.workspaceId = 'ws-maple';
+  dental.workspaceId = viewerWorkspaceId;   // the client_viewer persona's workspace, so their status is this record's
 
   // Onboarding: five items done, one in progress, A2P blocked on carrier review.
   const onb = mk('cl-ironwood', 'Ironwood Martial Arts', 'Martial arts school', 'onboarding', 'Priya Nair', 'priya@ironwood.example', 'L1 pilot', 49900, 6, 'Three locations, trial-class booking is the goal.');

@@ -24,7 +24,7 @@ function Screen() {
   const item = NAV.find((n) => n.key === page);
   if (!item) return <Navigate to={`../${homeFor(role)}`} replace />;
   if (!settings) return <Loading />;
-  if (!item.visible(role, can)) return <Page><NoAccess what={item.label} /></Page>;
+  if (!item.visible(role, can)) return <Page><NoAccess what={item.label} client={role === 'client_viewer'} /></Page>;
   const S = screens[item.key];
   return <Suspense fallback={<Loading />}><S /></Suspense>;
 }
