@@ -11,9 +11,9 @@ let hits = 0, last = null, mode = 'ok';
 const mock = http.createServer((req, res) => {
   let raw = ''; req.on('data', (c) => raw += c);
   req.on('end', () => {
-    if (req.method === 'POST' && req.url === '/v2/create-web-call') {
+    if (req.method === 'POST' && req.url === '/v3/create-web-call') {
       hits++; let body = null; try { body = JSON.parse(raw); } catch (e) {} last = { headers: req.headers, body };
-      if (mode === 'ok') { res.writeHead(200, { 'content-type': 'application/json' }); return res.end(JSON.stringify({ access_token: 'mock-access-' + hits, call_id: 'call_mock' })); }
+      if (mode === 'ok') { res.writeHead(200, { 'content-type': 'application/json' }); return res.end(JSON.stringify({ access_token: 'mock-access-' + hits, call_id: 'call_mock', transport: 'gateway', ice_servers: [], expires_at: 1, extra_field: 'must-not-pass' })); }
       res.writeHead(500); return res.end('UPSTREAM-SECRET-DETAIL');
     }
     res.writeHead(404); res.end();
@@ -33,7 +33,7 @@ const startSession = async () => (await (await post('/api/session', {}, nextIp()
     ok('unknown session -> 404', (await post('/api/voice', { sid: 'nope' })).status === 404);
     const sid = await startSession();
     const a = await post('/api/voice', { sid }), aj = await a.json();
-    ok('mint ok returns an access token and the capped duration', a.status === 200 && aj.ok && /^mock-access-/.test(aj.accessToken) && aj.maxSeconds > 0 && aj.maxSeconds <= 180, JSON.stringify(aj));
+    ok('mint ok returns an access token and the capped duration', a.status === 200 && aj.ok && /^mock-access-/.test(aj.call.access_token) && aj.call.transport === 'gateway' && !('extra_field' in aj.call) && aj.agentId.startsWith('agent_') && aj.maxSeconds > 0 && aj.maxSeconds <= 180, JSON.stringify(aj));
     ok('request carries the agent id, the Bearer key, and nothing the browser chose', last.body.agent_id.startsWith('agent_') && last.headers.authorization === 'Bearer ' + KEY && Object.keys(last.body).sort().join() === 'agent_id,metadata');
     ok('response never contains the API key', !JSON.stringify(aj).includes(KEY));
     const b = await post('/api/voice', { sid }); ok('second mint on the same session -> 429', b.status === 429);

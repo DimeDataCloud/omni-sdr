@@ -247,17 +247,19 @@ async function mintToken(env, b) {
   return json({ ok: true, token: j.name, model });
 }
 
-// Retell web call for the OmniSDR waitlist agent. The API key never leaves the Worker; the browser gets a one-use access token. The agent itself caps the call at 3 minutes.
+// Retell web call for the OmniSDR waitlist agent (POST /v3/create-web-call; v2 was retired 2026-09-30; SDK 3.0.2 RetellWebClient takes the same accessToken). The API key never leaves the Worker; the browser gets a one-use access token. The agent itself caps the call at 3 minutes.
 // Spend is bounded three ways: the session caps (daily, per IP, kill switch), this lifetime ceiling, and the agent's own duration cap. No RETELL_API_KEY secret means the tab does not appear.
 async function mintVoice(env, b) {
   if (!voiceOn(env)) return json({ ok: false, message: 'Not available.' }, 501);
   if (typeof b.sid !== 'string') return json({ ok: false, message: 'Start a session first.' }, 400);
   const g = await gate(env, { op: 'vtoken', sid: b.sid.slice(0, 64), ceiling: voiceCeiling(env) });
   if (!g.ok) return json({ ok: false, reason: g.reason, message: g.reason === 'used' ? 'The voice call for this session was already started.' : g.reason === 'expired' ? 'Session expired.' : g.reason === 'paused' ? 'The demo is paused.' : 'The voice demo has reached its test limit.' }, g._s);
-  const r = await fetch(retellBase(env) + '/v2/create-web-call', { method: 'POST', headers: { authorization: 'Bearer ' + env.RETELL_API_KEY, 'content-type': 'application/json' }, body: JSON.stringify({ agent_id: env.RETELL_AGENT_ID, metadata: { source: 'demo-panel', session: b.sid.slice(0, 8) } }) }).catch(() => null);
+  const r = await fetch(retellBase(env) + '/v3/create-web-call', { method: 'POST', headers: { authorization: 'Bearer ' + env.RETELL_API_KEY, 'content-type': 'application/json' }, body: JSON.stringify({ agent_id: env.RETELL_AGENT_ID, metadata: { source: 'demo-panel', session: b.sid.slice(0, 8) } }) }).catch(() => null);
   if (!r || !r.ok) return json({ ok: false, message: 'Could not start the voice call.' }, 502);
-  const j = await r.json().catch(() => null); if (!j || typeof j.access_token !== 'string') return json({ ok: false, message: 'Could not start the voice call.' }, 502);
-  return json({ ok: true, accessToken: j.access_token, maxSeconds: Math.min(180, Math.floor(g.leftMs / 1000)) });
+  const j = await r.json().catch(() => null); if (!j || typeof j.access_token !== 'string' || typeof j.call_id !== 'string') return json({ ok: false, message: 'Could not start the voice call.' }, 502);
+  // The v3 SDK starts the call from this create-web-call response (token, transport, ICE servers); only those fields go to the browser, never the API key.
+  const call = { call_id: j.call_id, access_token: j.access_token, transport: j.transport, ice_servers: j.ice_servers, expires_at: j.expires_at };
+  return json({ ok: true, call, agentId: env.RETELL_AGENT_ID, maxSeconds: Math.min(180, Math.floor(g.leftMs / 1000)) });
 }
 // RETELL_BASE exists so the offline test can point at a local mock; honoured ONLY for localhost or the real Retell host, so a bad var can never send the API key elsewhere.
 function retellBase(env) {

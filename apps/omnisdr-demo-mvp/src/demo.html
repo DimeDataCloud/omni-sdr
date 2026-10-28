@@ -184,7 +184,7 @@ if(document.querySelector('meta[name=voice]')){$('t3').hidden=false;
  if(TSKEY&&TSKEY.content)$('vstart').disabled=true;
  var vc=null,vt=null,vleft=180;
  var vErr=function(m){var e=$('vErr');e.textContent=m;e.hidden=false;$('vstart').disabled=false};
- var vDone=function(){clearInterval(vt);$('vlive').hidden=true;$('vover').hidden=false;if(vc){try{vc.stopCall()}catch(x){}}};
+ var vDone=function(){clearInterval(vt);$('vlive').hidden=true;$('vover').hidden=false;if(vc){try{vc.end()}catch(x){}}};
  $('vstart').addEventListener('click',function(){
   var b=$('vstart');b.disabled=true;$('vErr').hidden=true;
   post('/api/session',{tenant:'riverbend',turnstile:tsTok}).then(function(r){
@@ -192,13 +192,13 @@ if(document.querySelector('meta[name=voice]')){$('t3').hidden=false;
    return post('/api/voice',{sid:r.sid})}).then(function(v){
    if(!v.ok)throw new Error(v.message||'Could not start the voice call.');
    vleft=v.maxSeconds;
-   return import('https://cdn.jsdelivr.net/npm/retell-client-js-sdk@2.0.8/+esm').then(function(m){
-    vc=new m.RetellWebClient();
-    vc.on('call_started',function(){$('vstate').textContent='Connected. Say hello.'});
-    vc.on('agent_start_talking',function(){$('vstate').textContent='Assistant speaking'});
-    vc.on('agent_stop_talking',function(){$('vstate').textContent='Listening'});
-    vc.on('call_ended',vDone);vc.on('error',function(){vDone()});
-    return vc.startCall({accessToken:v.accessToken})})}).then(function(){
+   return import('https://cdn.jsdelivr.net/npm/retell-client-js-sdk@3.0.2/+esm').then(function(m){
+    /* The SDK normally posts to Retell with a browser key. Here its fetch is answered with the response our Worker already fetched with the real key, so no key ever reaches the page. */
+    var client=new m.RetellClient({key:'unused',fetch:function(){return Promise.resolve(new Response(JSON.stringify(v.call),{status:201,headers:{'content-type':'application/json'}}))}});
+    vc=client.createWebCall({agent_id:v.agentId,hooks:{
+     onStatus:function(s){$('vstate').textContent=s==='live'?'Connected. Say hello.':s==='ended'?'Ended':'Connecting...'},
+     onEnd:vDone,onError:function(){vDone()}}});
+    return vc.ready})}).then(function(){
    $('vgate').hidden=true;$('vlive').hidden=false;
    vt=setInterval(function(){vleft--;if(vleft<0){vDone();return}$('vtimer').textContent=Math.floor(vleft/60)+':'+String(vleft%60).padStart(2,'0')},1000)}).catch(function(e){
    vErr(e&&e.message&&!/Failed to fetch|import|module/i.test(e.message)?e.message:'The voice call could not start. Check your microphone permission and try again.')})});
