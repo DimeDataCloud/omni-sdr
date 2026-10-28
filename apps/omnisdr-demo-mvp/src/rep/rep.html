@@ -60,6 +60,7 @@ dialog[open]{animation:dlgIn .2s ease}dialog[open]::backdrop{animation:backdropI
 @keyframes toastIn{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}
 .toast:not([hidden]){animation:toastIn .2s ease}
 .acts{margin:4px 0 16px}.acts label{margin:0}.acts select{width:auto;min-width:180px}
+.show-sm{display:none}@media (max-width:640px){.hide-sm{display:none}.show-sm{display:inline}}
 </style></head>
 <body><div class="wrap">
 <header class="top"><div class="brand">__LOGO__<b>OmniSDR · Rep</b></div><span class="muted" id="who"></span></header>
@@ -216,16 +217,33 @@ const screens = {
     $('#board').onchange = (e) => { const s = e.target.closest('select[data-id]'); if (s) api('/accounts/' + s.dataset.id, { method: 'PATCH', body: { stage: s.value } }).then(() => { toast('Moved'); route(); }, fail); };
   },
 
+  // Accounts and Leads in one list. Reps see their own rows; admins see everyone, or one rep through the Viewing switch,
+  // which the Rep filter drives. Admin-only controls are not rendered for reps, and the server refuses them anyway.
   async accounts() {
-    view.innerHTML = `<h1>Accounts</h1><p class="sub">Every business you are working, prospect to live.</p>
-      <div class="card stack"><div class="row"><input class="grow" id="q" type="search" placeholder="Search name, niche, city or phone" aria-label="Search accounts">
-        <select id="st" aria-label="Stage" class="grow"><option value="">All stages</option>${K.stages.map((s) => `<option value="${s}">${STAGE_LABEL[s]}</option>`).join('')}</select></div>
-        <div class="row"><button class="btn" id="add">New account</button><label class="btn ghost" for="csv">Import CSV</label><input id="csv" type="file" accept=".csv,text/csv" class="sr"><button class="btn ghost" id="exp">Export CSV</button>${ME.role === 'admin' ? `<label for="impOwner" class="muted">Import for</label><select id="impOwner" class="grow">${repOptions(ME.email)}</select>` : ''}</div>
-        ${ME.role === 'admin' ? `<div class="row" id="bulk" hidden><b id="selN"></b><label for="assignTo" class="muted">Assign to</label><select id="assignTo" class="grow">${repOptions(VIEW && VIEW !== ME.email ? VIEW : '')}</select><button class="btn" id="doAssign">Assign</button><button class="btn ghost" id="selNone">Clear</button></div>` : ''}
-        <div class="tbl"><table><thead><tr>${ME.role === 'admin' ? '<th class="sel"><input type="checkbox" id="selAll" aria-label="Select all"></th>' : ''}<th>Business</th><th>Stage</th><th>Next</th><th>Phone</th>${ME.role === 'admin' ? '<th>Rep</th>' : ''}</tr></thead><tbody id="rows"></tbody></table></div></div>
+    const admin = ME.role === 'admin', picked = new Set();
+    let rows = [], facets = { niche: [], state: [], owner: [], pool: 0, total: 0 };
+    const KEEP = 'rep.accounts', F = { q: '', st: '', ni: '', sa: '', pool: false };
+    try { Object.assign(F, JSON.parse(sessionStorage.getItem(KEEP) || '{}')); } catch {}
+    if (!admin || VIEW) F.pool = false;
+    const keep = () => { try { sessionStorage.setItem(KEEP, JSON.stringify(F)); } catch {} }; // this tab only, never sent anywhere
+    view.innerHTML = `<h1>Accounts</h1><p class="sub">${admin ? 'Every lead and account in the book. Filter, sort into categories and hand them out.' : 'Every business you are working, prospect to live.'}</p>
+      ${admin ? '<div class="stats" id="tiles"></div>' : ''}
+      <section class="card stack"><div class="row"><input class="grow" id="q" type="search" placeholder="Search name, category, city or phone" aria-label="Search accounts">
+        <select id="st" aria-label="Stage" class="grow"><option value="">All stages</option>${K.stages.map((s) => `<option value="${s}">${STAGE_LABEL[s]}</option>`).join('')}</select>
+        <select id="sa" aria-label="State" class="grow"><option value="">All states</option></select></div>
+        <div><p class="muted">Category</p><div class="chips" id="fNiche"></div></div>
+        ${admin ? '<div><p class="muted">Rep</p><div class="chips" id="fOwner"></div></div>' : ''}
+        <div class="row"><button class="btn" id="add" type="button">New account</button><label class="btn ghost" for="csv">Import CSV</label><input id="csv" type="file" accept=".csv,text/csv" class="sr"><button class="btn ghost" id="exp" type="button">Export CSV</button>${admin ? `<label for="impOwner" class="muted">Import for</label><select id="impOwner" class="grow">${repOptions(ME.email)}</select>` : ''}</div></section>
+      <section class="card"><p class="muted" id="count" aria-live="polite"></p>
+        <div class="tbl"><table><thead><tr>${admin ? '<th class="sel"><input type="checkbox" id="selAll" aria-label="Select all shown"></th>' : ''}<th>Business</th><th>Stage</th><th class="hide-sm">Next</th><th class="hide-sm">Phone</th>${admin ? '<th>Rep</th>' : ''}</tr></thead><tbody id="rows"></tbody></table></div></section>
+      ${admin ? `<section class="card stack bulk" id="bulk" hidden><div class="row"><b id="selN"></b><button class="btn ghost sm" id="selNone" type="button">Clear</button></div>
+        <div class="row"><label for="assignTo" class="muted">Assign to</label><select id="assignTo" class="grow"><option value="">Pick a rep</option>${repOptions('')}</select><button class="btn" id="doAssign" type="button">Assign</button></div>
+        <details><summary>Split evenly between reps</summary><div class="splitlist" id="split">${REPS.filter((r) => r.active).map((r) => `<label class="row"><input type="checkbox" value="${esc(r.email)}"> ${esc(r.name)}</label>`).join('')}</div><button class="btn ghost" id="splitGo" type="button">Split</button></details>
+        <div class="row"><label for="cat" class="muted">Set category</label><input id="cat" class="grow" list="cats" maxlength="80" placeholder="Remodeler, Generator dealer"><datalist id="cats"></datalist><button class="btn ghost" id="catGo" type="button">Set</button><button class="btn ghost" id="arch" type="button">Archive</button></div>
+        <div class="row" id="archAsk" hidden><span id="archQ"></span><button class="btn danger" id="archGo" type="button">Archive</button><button class="btn ghost" id="archNo" type="button">Cancel</button></div></section>` : ''}
       <dialog id="dlg"><form id="nf" class="stack"><h2>New account</h2><div class="fields">
         <div class="full"><label for="nb">Business name</label><input id="nb" name="business" required maxlength="160"></div>
-        <div><label for="nn">Niche</label><input id="nn" name="niche" maxlength="80" placeholder="Remodeler, HVAC, med spa"></div>
+        <div><label for="nn">Category</label><input id="nn" name="niche" maxlength="80" placeholder="Remodeler, HVAC, med spa"></div>
         <div><label for="np">Phone</label><input id="np" name="phone" type="tel" maxlength="40"></div>
         <div><label for="nc">Owner or contact</label><input id="nc" name="contact" maxlength="120"></div>
         <div><label for="nw">Website</label><input id="nw" name="website" maxlength="300"></div>
@@ -233,26 +251,72 @@ const screens = {
         <div><label for="ns">State</label><input id="ns" name="state" maxlength="40"></div>
         <div class="full"><label for="ng">Why we are calling (the signal)</label><input id="ng" name="signal" maxlength="300" placeholder="Form went unanswered 6 hours on a Tuesday"></div>
       </div><div class="row"><button class="btn">Save</button><button class="btn ghost" type="button" id="cx">Cancel</button></div></form></dialog>`;
-    const admin = ME.role === 'admin', picked = new Set();
-    const syncSel = () => { if (!admin) return; $$('[data-sel]').forEach((c) => (c.checked = picked.has(c.dataset.sel))); $('#bulk').hidden = !picked.size; $('#selN').textContent = picked.size + ' selected'; };
-    const load = async () => {
-      const p = new URLSearchParams(); if ($('#q').value.trim()) p.set('q', $('#q').value.trim()); if ($('#st').value) p.set('stage', $('#st').value);
-      const { accounts } = await api('/accounts?' + p);
-      $('#rows').innerHTML = accounts.length ? accounts.map((a) => `<tr data-id="${esc(a.id)}">${admin ? `<td class="sel"><input type="checkbox" data-sel="${esc(a.id)}" aria-label="Select ${esc(a.business)}"></td>` : ''}<td><a class="lnk" href="#account/${esc(a.id)}">${esc(a.business)}</a><br><small class="muted">${esc([a.niche, a.city].filter(Boolean).join(' · '))}</small></td><td>${STAGE_LABEL[a.stage]}</td><td>${esc(a.next_step)}<br><small class="muted">${when(a.next_action_at)}</small></td><td>${esc(a.phone)}</td>${admin ? `<td>${esc(repName(a.owner_email))}</td>` : ''}</tr>`).join('') : `<tr><td colspan="${admin ? 6 : 4}" class="muted">No accounts match.</td></tr>`; syncSel();
+    const chip = (key, text, n, on) => `<button class="chip" type="button" data-k="${esc(key)}" aria-pressed="${on}">${esc(text)} <b>${n}</b></button>`;
+    const tally = (list, k) => Object.entries(list.reduce((m, a) => ((m[a[k] || ''] = (m[a[k] || ''] || 0) + 1), m), {})).map(([key, n]) => ({ key, n })).sort((x, y) => y.n - x.n || x.key.localeCompare(y.key));
+    // Reps have no facet endpoint (needs API), so their counts come from their own rows, which the list caps at 500.
+    const loadFacets = async () => {
+      if (admin) { facets = await api('/leads/facets', { noView: true }); return; }
+      const all = (await api('/accounts')).accounts; facets = { niche: tally(all, 'niche'), state: tally(all, 'state'), owner: [], pool: 0, total: all.length };
     };
-    // The search and stage filter survive opening an account and coming back. Per tab, never sent anywhere.
-    const KEEP = 'rep.accounts', keep = () => { try { sessionStorage.setItem(KEEP, JSON.stringify({ q: $('#q').value, st: $('#st').value })); } catch {} };
-    try { const k = JSON.parse(sessionStorage.getItem(KEEP) || '{}'); $('#q').value = k.q || ''; $('#st').value = k.st || ''; } catch {}
-    let tq; $('#q').oninput = () => { keep(); clearTimeout(tq); tq = setTimeout(() => load().catch(fail), 250); }; $('#st').onchange = () => { keep(); load().catch(fail); };
-    $('#q').onkeydown = (e) => { if (e.key === 'Escape' && $('#q').value) { $('#q').value = ''; keep(); load().catch(fail); } };
-    if (matchMedia('(pointer: fine)').matches) $('#q').focus(); // no keyboard popping up on a phone
-    $('#rows').onclick = (e) => { const c = e.target.closest('[data-sel]'); if (c) { c.checked ? picked.add(c.dataset.sel) : picked.delete(c.dataset.sel); syncSel(); return; }
+    // A filter restored from the session but missing from the counts still shows as pressed, so it is never invisible.
+    const drawFacets = () => {
+      const x = facets, ni = x.niche.map((r) => ({ k: r.key || '(none)', t: r.key || 'No category', n: r.n }));
+      if (F.ni && !ni.some((r) => r.k === F.ni)) ni.push({ k: F.ni, t: F.ni === '(none)' ? 'No category' : F.ni, n: 0 });
+      $('#fNiche').innerHTML = chip('', 'All', x.total, F.ni === '') + ni.map((r) => chip(r.k, r.t, r.n, F.ni === r.k)).join('');
+      const sa = $('#sa'); sa.innerHTML = '<option value="">All states</option>' + x.state.filter((r) => r.key).map((r) => `<option value="${esc(r.key)}">${esc(r.key)} (${r.n})</option>`).join('');
+      if (F.sa && ![...sa.options].some((o) => o.value === F.sa)) sa.add(new Option(F.sa, F.sa)); sa.value = F.sa;
+      if (!admin) return;
+      $('#tiles').innerHTML = [['Leads', x.total], ['Waiting to hand out', x.pool], ['Categories', x.niche.filter((r) => r.key).length], ['Reps with leads', x.owner.filter((r) => (REPS.find((p) => p.email === r.key) || {}).role !== 'admin').length]]
+        .map(([k, v]) => `<div class="card stat"><b>${v}</b><span>${k}</span></div>`).join('');
+      const own = x.owner.map((r) => ({ k: r.key, n: r.n })); if (VIEW && !own.some((r) => r.k === VIEW)) own.push({ k: VIEW, n: 0 });
+      $('#fOwner').innerHTML = chip('', 'All', x.total, !VIEW && !F.pool) + chip('pool', 'Waiting to hand out', x.pool, F.pool) + own.map((r) => chip(r.k, repName(r.k), r.n, VIEW === r.k)).join('');
+      $('#cats').innerHTML = x.niche.filter((r) => r.key).map((r) => `<option value="${esc(r.key)}">`).join('');
+    };
+    const sync = () => {
+      if (!admin) return;
+      $$('[data-sel]').forEach((c) => (c.checked = picked.has(c.dataset.sel)));
+      $('#selAll').checked = rows.length > 0 && rows.every((a) => picked.has(a.id));
+      $('#bulk').hidden = !picked.size; $('#archAsk').hidden = true; $('#selN').textContent = picked.size + ' selected';
+    };
+    // Category and place under the name; on a phone the Phone column folds in here instead of wrapping over three lines.
+    const line = (a) => { const t = esc([a.niche, [a.city, a.state].filter(Boolean).join(', ')].filter(Boolean).join(' · ')); return t + (a.phone ? `<span class="show-sm">${t ? ' · ' : ''}${esc(a.phone)}</span>` : ''); };
+    const load = async () => {
+      const p = new URLSearchParams();
+      if (F.q) p.set('q', F.q); if (F.st) p.set('stage', F.st); if (F.ni) p.set('niche', F.ni); if (F.sa) p.set('state', F.sa); if (admin && F.pool) p.set('pool', '1');
+      rows = (await api('/accounts?' + p)).accounts;
+      for (const id of [...picked]) if (!rows.some((a) => a.id === id)) picked.delete(id); // bulk actions only ever touch rows on screen
+      $('#count').textContent = rows.length === 500 ? '500 shown. Narrow the filter to see the rest.' : rows.length + ' shown';
+      $('#rows').innerHTML = rows.length ? rows.map((a) => `<tr data-id="${esc(a.id)}">${admin ? `<td class="sel"><input type="checkbox" data-sel="${esc(a.id)}" aria-label="Select ${esc(a.business)}"></td>` : ''}<td><a class="lnk" href="#account/${esc(a.id)}">${esc(a.business)}</a><br><small class="muted">${line(a)}</small></td><td>${STAGE_LABEL[a.stage] || ''}</td><td class="hide-sm">${esc(a.next_step)}<br><small class="muted">${when(a.next_action_at)}</small></td><td class="hide-sm">${esc(a.phone)}</td>${admin ? `<td>${esc(repName(a.owner_email))}</td>` : ''}</tr>`).join('') : `<tr><td colspan="${admin ? 6 : 4}" class="muted">No accounts match.</td></tr>`;
+      sync();
+    };
+    const refresh = () => Promise.all([loadFacets().then(drawFacets), load()]);
+    $('#q').value = F.q; $('#st').value = F.st;
+    let tq; $('#q').oninput = () => { clearTimeout(tq); tq = setTimeout(() => { F.q = $('#q').value.trim(); keep(); load().catch(fail); }, 250); };
+    $('#q').onkeydown = (e) => { if (e.key === 'Escape' && $('#q').value) { $('#q').value = ''; F.q = ''; keep(); load().catch(fail); } };
+    $('#st').onchange = () => { F.st = $('#st').value; keep(); load().catch(fail); };
+    $('#sa').onchange = () => { F.sa = $('#sa').value; keep(); load().catch(fail); };
+    $('#fNiche').onclick = (e) => { const b = e.target.closest('[data-k]'); if (!b) return; F.ni = b.dataset.k; keep(); drawFacets(); load().catch(fail); };
+    $('#rows').onclick = (e) => { const c = e.target.closest('[data-sel]'); if (c) { c.checked ? picked.add(c.dataset.sel) : picked.delete(c.dataset.sel); sync(); return; }
       const tr = e.target.closest('tr[data-id]'); if (tr && !e.target.closest('a')) location.hash = 'account/' + tr.dataset.id; };
     if (admin) {
-      $('#selAll').onchange = (e) => { $$('[data-sel]').forEach((c) => (e.target.checked ? picked.add(c.dataset.sel) : picked.delete(c.dataset.sel))); syncSel(); };
-      $('#selNone').onclick = () => { picked.clear(); $('#selAll').checked = false; syncSel(); };
+      const ids = () => [...picked], done = async (msg) => { toast(msg); picked.clear(); await refresh(); };
+      $('#fOwner').onclick = (e) => { const b = e.target.closest('[data-k]'); if (!b) return; F.pool = b.dataset.k === 'pool'; setView(F.pool ? '' : b.dataset.k); keep(); drawFacets(); load().catch(fail); };
+      $('#selAll').onchange = (e) => { rows.forEach((a) => (e.target.checked ? picked.add(a.id) : picked.delete(a.id))); sync(); };
+      $('#selNone').onclick = () => { picked.clear(); sync(); };
       $('#doAssign').onclick = async () => { const to = $('#assignTo').value; if (!to) return toast('Pick a rep');
-        try { const r = await api('/assign', { method: 'POST', body: { accountIds: [...picked], owner: to } }); toast(`Assigned ${r.assigned} to ${repName(to)}`); picked.clear(); $('#selAll').checked = false; await load(); } catch (er) { fail(er); } };
+        try { const r = await api('/assign', { method: 'POST', body: { accountIds: ids(), owner: to } }); await done(`Assigned ${r.assigned} to ${repName(to)}`); } catch (er) { fail(er); } };
+      // Round-robin in the order shown, so each rep gets a fair mix of the list.
+      $('#splitGo').onclick = async () => {
+        const to = $$('#split input:checked').map((c) => c.value); if (to.length < 2) return toast('Pick at least two reps');
+        const order = rows.map((a) => a.id).filter((id) => picked.has(id)), share = Object.fromEntries(to.map((e) => [e, []]));
+        order.forEach((id, i) => share[to[i % to.length]].push(id));
+        try { for (const [e, list] of Object.entries(share)) if (list.length) await api('/assign', { method: 'POST', body: { accountIds: list, owner: e } });
+          await done(`Split ${order.length} between ${to.map(repName).join(', ')}`); } catch (er) { fail(er); refresh().catch(fail); } };
+      $('#catGo').onclick = async () => { const v = $('#cat').value.trim();
+        try { const r = await api('/bulk', { method: 'POST', body: { accountIds: ids(), niche: v } }); await done(v ? `${r.updated} set to ${v}` : `Category cleared on ${r.updated}`); } catch (er) { fail(er); } };
+      $('#arch').onclick = () => { const n = picked.size; $('#archQ').textContent = `Archive ${n} ${n === 1 ? 'account' : 'accounts'}? ${n === 1 ? 'It' : 'They'} will no longer show in any list.`; $('#archAsk').hidden = false; $('#archGo').focus(); };
+      $('#archNo').onclick = () => { $('#archAsk').hidden = true; $('#arch').focus(); };
+      $('#archGo').onclick = async () => { try { const r = await api('/bulk', { method: 'POST', body: { accountIds: ids(), archived: true } }); await done(`Archived ${r.updated}`); } catch (er) { fail(er); } };
     }
     $('#add').onclick = () => $('#dlg').showModal(); $('#cx').onclick = () => $('#dlg').close();
     $('#nf').onsubmit = async (e) => { e.preventDefault(); const f = form(e.target);
@@ -260,10 +324,11 @@ const screens = {
     $('#csv').onchange = async (e) => { const file = e.target.files[0]; e.target.value = ''; if (!file) return;
       if (file.size > 500000) return toast('That file is over 500 KB. Split it.');
       try { const r = await api('/import', { method: 'POST', body: { csv: await file.text(), ...(admin ? { owner: $('#impOwner').value } : {}) } });
-        if (r.errors.length) toast(`Nothing imported. Row ${r.errors[0].row}: ${r.errors[0].message}` + (r.errors.length > 1 ? ` (+${r.errors.length - 1} more)` : '')); else { toast(`Imported ${r.imported}`); load(); }
+        if (r.errors.length) toast(`Nothing imported. Row ${r.errors[0].row}: ${r.errors[0].message}` + (r.errors.length > 1 ? ` (+${r.errors.length - 1} more)` : '')); else { toast(`Imported ${r.imported}`); refresh().catch(fail); }
       } catch (er) { fail(er); } };
     $('#exp').onclick = async () => { try { const r = await api('/export.csv', { raw: true }); const url = URL.createObjectURL(await r.blob()); const a = Object.assign(document.createElement('a'), { href: url, download: 'omnisdr-accounts.csv' }); a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); } catch (er) { fail(er); } };
-    await load();
+    if (matchMedia('(pointer: fine)').matches) $('#q').focus(); // no keyboard popping up on a phone
+    await refresh();
   },
 
   async account(id) {
@@ -275,7 +340,7 @@ const screens = {
       <div class="row acts"><label for="stg" class="muted">Stage</label><select id="stg">${stageOptions(a.stage)}</select>${next ? `<button class="btn" type="button" id="nextGo" data-tab="${next[0]}">${next[1]}</button>` : ''}</div>
       <div class="tabs" role="tablist">${[['Details', 0], ['Audit', 4], ['Messages', 5], ['Timeline', 1], ['Onboarding', 2], ['Close', 3]].map(([t, k]) => `<button class="tab" role="tab" data-t="${k}" aria-selected="${k === 0}">${t}</button>`).join('')}</div>
       <div data-p="0" class="grid two"><form class="card" id="ef"><div class="fields">
-        ${[['business', 'Business name', 'full'], ['niche', 'Niche'], ['phone', 'Phone'], ['email', 'Email'], ['website', 'Website', 'full'], ['address', 'Address', 'full'], ['city', 'City'], ['state', 'State'], ['signal', 'Why we are calling', 'full'], ['next_step', 'Next step', 'full']]
+        ${[['business', 'Business name', 'full'], ['niche', 'Category'], ['phone', 'Phone'], ['email', 'Email'], ['website', 'Website', 'full'], ['address', 'Address', 'full'], ['city', 'City'], ['state', 'State'], ['signal', 'Why we are calling', 'full'], ['next_step', 'Next step', 'full']]
           .map(([k, l, c]) => `<div class="${c || ''}"><label for="f_${k}">${l}</label><input id="f_${k}" name="${k}" value="${esc(a[k])}"></div>`).join('')}
         <div class="full"><label for="f_next">Next action</label><input id="f_next" name="next_action_at" type="datetime-local" value="${local(a.next_action_at)}"></div>
         <div class="full"><label for="f_notes">Notes</label><textarea id="f_notes" name="notes" rows="4" maxlength="4000">${esc(a.notes)}</textarea></div>
@@ -428,70 +493,6 @@ const screens = {
       <section class="card stack"><h2>Say this</h2><p>${esc(H.say)}</p><a class="btn" href="/tryme" target="_blank" rel="noopener">Open the live demo</a></section>`;
   },
 
-  // Admin lead dashboard: see what is in the book, sort it into categories, and hand it out.
-  async leads() {
-    if (ME.role !== 'admin') { location.hash = 'today'; return; }
-    const F = { niche: '', owner: '', stage: '', state: '', q: '' }, picked = new Set();
-    let rows = [];
-    view.innerHTML = `<h1>Leads</h1><p class="sub">Every lead in the book. Filter, sort into categories, and hand them out.</p>
-      <div class="stats" id="lTiles"></div>
-      <section class="card stack"><div class="row"><input class="grow" id="lq" type="search" placeholder="Search name, category, city or phone" aria-label="Search leads">
-        <select id="lst" class="grow" aria-label="Stage"><option value="">All stages</option>${K.stages.map((x) => `<option value="${x}">${STAGE_LABEL[x]}</option>`).join('')}</select>
-        <select id="lsa" class="grow" aria-label="State"><option value="">All states</option></select></div>
-        <div><p class="muted">Category</p><div class="chips" id="lNiche"></div></div>
-        <div><p class="muted">Rep</p><div class="chips" id="lOwner"></div></div></section>
-      <section class="card"><div class="row"><b id="lCount"></b><button class="btn ghost sm" id="lAll">Select all shown</button><button class="btn ghost sm" id="lNone">Clear</button></div>
-        <div class="tbl"><table><thead><tr><th class="sel"></th><th>Business</th><th>Category</th><th>Where</th><th>Stage</th><th>Rep</th><th>Phone</th></tr></thead><tbody id="lRows"></tbody></table></div></section>
-      <section class="card stack bulk" id="lBulk" hidden><b id="lSel"></b>
-        <div class="row"><label for="lTo" class="muted">Assign to</label><select id="lTo" class="grow"><option value="">Pick a rep</option>${repOptions('')}</select><button class="btn" id="lAssign">Assign</button></div>
-        <details><summary>Split evenly between reps</summary><div class="splitlist" id="lSplit">${REPS.filter((r) => r.active).map((r) => `<label class="row"><input type="checkbox" value="${esc(r.email)}"> ${esc(r.name)}</label>`).join('')}</div><button class="btn ghost" id="lSplitGo">Split</button></details>
-        <div class="row"><label for="lCat" class="muted">Set category</label><input id="lCat" class="grow" list="lCats" maxlength="80" placeholder="Remodeler, Generator dealer"><datalist id="lCats"></datalist><button class="btn ghost" id="lCatGo">Set</button><button class="btn ghost" id="lArch">Archive</button></div></section>`;
-    const chip = (key, label, n, on) => `<button class="chip" data-k="${esc(key)}" aria-pressed="${on}">${esc(label)} <b>${n}</b></button>`;
-    const drawFacets = async () => {
-      const x = await api('/leads/facets', { noView: true });
-      $('#lTiles').innerHTML = [['Leads', x.total], ['Waiting to hand out', x.pool], ['Categories', x.niche.filter((r) => r.key).length], ['Reps with leads', x.owner.filter((r) => (REPS.find((p) => p.email === r.key) || {}).role !== 'admin').length]]
-        .map(([k, v]) => `<div class="card stat"><b>${v}</b><span>${k}</span></div>`).join('');
-      $('#lNiche').innerHTML = chip('', 'All', x.total, F.niche === '') + x.niche.map((r) => chip(r.key || '(none)', r.key || 'No category', r.n, F.niche === (r.key || '(none)'))).join('');
-      $('#lOwner').innerHTML = chip('', 'All', x.total, F.owner === '') + chip('pool', 'Waiting to hand out', x.pool, F.owner === 'pool') + x.owner.map((r) => chip(r.key, repName(r.key), r.n, F.owner === r.key)).join('');
-      $('#lCats').innerHTML = x.niche.filter((r) => r.key).map((r) => `<option value="${esc(r.key)}">`).join('');
-      const sa = $('#lsa'), cur = sa.value; sa.innerHTML = '<option value="">All states</option>' + x.state.filter((r) => r.key).map((r) => `<option value="${esc(r.key)}">${esc(r.key)} (${r.n})</option>`).join(''); sa.value = cur;
-    };
-    const sync = () => { $$('[data-sel]').forEach((c) => (c.checked = picked.has(c.dataset.sel))); $('#lBulk').hidden = !picked.size; $('#lSel').textContent = picked.size + (picked.size === 1 ? ' lead selected' : ' leads selected'); };
-    const load = async () => {
-      const p = new URLSearchParams();
-      if (F.q) p.set('q', F.q); if (F.stage) p.set('stage', F.stage); if (F.state) p.set('state', F.state); if (F.niche) p.set('niche', F.niche);
-      if (F.owner === 'pool') p.set('pool', '1'); else if (F.owner) p.set('owner', F.owner);
-      rows = (await api('/accounts?' + p, { noView: true })).accounts;
-      $('#lCount').textContent = rows.length + (rows.length === 500 ? '+ shown (narrow the filter)' : ' shown');
-      $('#lRows').innerHTML = rows.length ? rows.map((a) => `<tr data-id="${esc(a.id)}"><td class="sel"><input type="checkbox" data-sel="${esc(a.id)}" aria-label="Select ${esc(a.business)}"></td><td><a class="lnk" href="#account/${esc(a.id)}">${esc(a.business)}</a>${a.signal ? `<br><small class="muted">${esc(a.signal)}</small>` : ''}</td><td>${esc(a.niche) || '<span class="muted">None</span>'}</td><td>${esc([a.city, a.state].filter(Boolean).join(', '))}</td><td>${STAGE_LABEL[a.stage] || ''}</td><td>${esc(repName(a.owner_email))}</td><td>${esc(a.phone)}</td></tr>`).join('') : '<tr><td colspan="7" class="muted">No leads match.</td></tr>';
-      sync();
-    };
-    const refresh = async () => { await Promise.all([drawFacets(), load()]); };
-    const ids = () => [...picked];
-    const done = async (msg) => { toast(msg); picked.clear(); await refresh(); };
-    $('#lNiche').onclick = (e) => { const b = e.target.closest('[data-k]'); if (b) { F.niche = b.dataset.k; refresh().catch(fail); } };
-    $('#lOwner').onclick = (e) => { const b = e.target.closest('[data-k]'); if (b) { F.owner = b.dataset.k; refresh().catch(fail); } };
-    let tq; $('#lq').oninput = () => { clearTimeout(tq); tq = setTimeout(() => { F.q = $('#lq').value.trim(); load().catch(fail); }, 250); };
-    $('#lst').onchange = () => { F.stage = $('#lst').value; load().catch(fail); };
-    $('#lsa').onchange = () => { F.state = $('#lsa').value; load().catch(fail); };
-    $('#lRows').onclick = (e) => { const c = e.target.closest('[data-sel]'); if (c) { c.checked ? picked.add(c.dataset.sel) : picked.delete(c.dataset.sel); sync(); } };
-    $('#lAll').onclick = () => { rows.forEach((a) => picked.add(a.id)); sync(); };
-    $('#lNone').onclick = () => { picked.clear(); sync(); };
-    $('#lAssign').onclick = async () => { const to = $('#lTo').value; if (!to) return toast('Pick a rep');
-      try { const r = await api('/assign', { method: 'POST', body: { accountIds: ids(), owner: to } }); await done(`Assigned ${r.assigned} to ${repName(to)}`); } catch (er) { fail(er); } };
-    // Round-robin in the order shown, so each rep gets a fair mix of the list.
-    $('#lSplitGo').onclick = async () => {
-      const to = $$('#lSplit input:checked').map((c) => c.value); if (to.length < 2) return toast('Pick at least two reps');
-      const order = rows.map((a) => a.id).filter((id) => picked.has(id)), share = Object.fromEntries(to.map((e) => [e, []]));
-      order.forEach((id, i) => share[to[i % to.length]].push(id));
-      try { for (const [e, list] of Object.entries(share)) if (list.length) await api('/assign', { method: 'POST', body: { accountIds: list, owner: e } });
-        await done(`Split ${order.length} between ${to.map(repName).join(', ')}`); } catch (er) { fail(er); refresh(); } };
-    $('#lCatGo').onclick = async () => { const v = $('#lCat').value.trim();
-      try { const r = await api('/bulk', { method: 'POST', body: { accountIds: ids(), niche: v } }); await done(v ? `${r.updated} set to ${v}` : `Category cleared on ${r.updated}`); } catch (er) { fail(er); } };
-    $('#lArch').onclick = async () => { try { const r = await api('/bulk', { method: 'POST', body: { accountIds: ids(), archived: true } }); await done(`Archived ${r.updated}`); } catch (er) { fail(er); } };
-    await refresh();
-  },
-
   async team() {
     if (ME.role !== 'admin') { location.hash = 'today'; return; }
     const { reps } = await api('/reps'); REPS = reps; fillView();
@@ -518,12 +519,14 @@ function clearCallsKey() { if (callsKeyHandler) { document.removeEventListener('
 // Top-level groups. Hash routes are unchanged; a tab's third value marks it admin only.
 const GROUPS = [
   { key: 'home', tabs: [['today', 'Today']] },
-  { key: 'sales', tabs: [['calls', 'Call Room'], ['pipeline', 'Pipeline'], ['accounts', 'Accounts'], ['leads', 'Leads', 'admin']] },
+  { key: 'sales', tabs: [['calls', 'Call Room'], ['pipeline', 'Pipeline'], ['accounts', 'Accounts']] },
   { key: 'learn', tabs: [['playbook', 'Playbook'], ['kit', 'Toolkit'], ['how', 'How it works']] },
   { key: 'deals', tabs: [['deals', 'My deals']] },
   { key: 'team', tabs: [['team', 'Team']] },
 ];
 async function route() {
+  // Leads now lives in Accounts; old #leads links land there.
+  if (location.hash === '#leads') history.replaceState(null, '', '#accounts');
   const [name, arg] = (location.hash.slice(1) || 'today').split('/');
   if (name !== 'calls') clearCallsKey();
   const fn = screens[name] && !name.endsWith('Panel') ? screens[name] : screens.today;
