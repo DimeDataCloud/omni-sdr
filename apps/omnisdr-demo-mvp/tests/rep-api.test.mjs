@@ -378,3 +378,23 @@ test('rep isolation: a rep never sees another rep by id, by ?owner=, by admin ro
   // The admin still sees who did what.
   assert.match(JSON.stringify((await j(await api(BOSS, `/accounts/${a.id}`))).body), /rep-a@example\.test/);
 });
+
+test('only an admin can send or swap leads: a rep cannot change ownership through create, edit, import or bulk', async () => {
+  const DB = setup(); DB.db.prepare("INSERT INTO reps (email, name, role, active, created_at) VALUES (?, 'Boss', 'admin', 1, '2026-01-01')").run(BOSS);
+  const mine = await newAccount(DB, A, { business: 'Mine' });
+  const owner = (id) => DB.db.prepare('SELECT owner_email FROM accounts WHERE id = ?').get(id).owner_email;
+  // edit: owner_email in the body is not a patchable field, so it is ignored
+  await call(DB, A, `/rep/api/accounts/${mine.id}`, { method: 'PATCH', body: { owner_email: B, owner: B, notes: 'x' } });
+  assert.equal(owner(mine.id), A);
+  // create: a rep naming another owner still owns the new account
+  const made = (await j(await call(DB, A, '/rep/api/accounts', { method: 'POST', body: { business: 'Made', owner_email: B } }))).body.account;
+  assert.equal(owner(made.id), A);
+  // bulk and assign carry no owner for a rep
+  await call(DB, A, '/rep/api/bulk', { method: 'POST', body: { accountIds: [mine.id], owner_email: B, niche: 'Roofer' } });
+  assert.equal(owner(mine.id), A);
+  assert.equal((await call(DB, A, '/rep/api/assign', { method: 'POST', body: { accountIds: [mine.id], owner: B } })).status, 403);
+  assert.equal(owner(mine.id), A);
+  // and the admin still can
+  assert.equal((await call(DB, BOSS, '/rep/api/assign', { method: 'POST', body: { accountIds: [mine.id], owner: B } })).status, 200);
+  assert.equal(owner(mine.id), B);
+});
