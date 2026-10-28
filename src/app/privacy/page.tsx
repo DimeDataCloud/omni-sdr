@@ -2,26 +2,16 @@ import React from 'react';
 import Link from 'next/link';
 
 export const metadata = {
-  title: 'Privacy Policy | Omni SDR',
-  description: 'Privacy Policy and Zero-Training AI data protection standards for Omni SDR.',
+  title: 'Privacy Policy | OmniSDR',
+  description: 'How OmniSDR collects, uses and shares personal information, including calls, texts and recordings.',
 };
 
 export default function PrivacyPage() {
   return (
     <div className="min-h-screen w-full relative overflow-x-hidden flex flex-col items-center justify-start font-sans antialiased text-[#111111] bg-[#f5f3ef] selection:bg-[#a3ffb1] selection:text-[#111111]">
-      <div 
-        className="pointer-events-none absolute inset-0 z-0 opacity-100"
-        style={{
-          backgroundImage: `
-            radial-gradient(circle at top right, #fdfbf7, transparent 70%),
-            radial-gradient(circle at bottom left, #eae4d9, transparent 70%)
-          `
-        }}
-      />
-
       <nav className="w-full max-w-4xl px-6 py-8 flex justify-between items-center z-10">
         <Link href="/" className="text-xl font-extrabold tracking-tight text-[#111111]">
-          Omni SDR
+          OmniSDR
         </Link>
         <Link href="/" className="text-xs font-semibold text-[#111111]/70 hover:text-[#111111] transition-colors py-1.5 px-3 rounded-full hover:bg-black/5">
           &larr; Back to Home
@@ -33,82 +23,122 @@ export default function PrivacyPage() {
           <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-[#111111] mb-3">
             Privacy Policy
           </h1>
-          <p className="text-sm font-medium text-gray-500">Effective Date: September 28, 2026 · Last Updated: September 2026</p>
+          <p className="text-sm font-medium text-gray-500">Effective date: October 31, 2026</p>
         </header>
 
-        <div 
+        <div
           className="rounded-3xl p-8 md:p-12 space-y-8 text-sm leading-relaxed text-[#2a2a2a]"
           style={{
             background: 'rgba(253, 251, 248, 0.75)',
-            backdropFilter: 'blur(20px)',
             border: '1px solid rgba(255, 255, 255, 0.7)',
             boxShadow: '0 20px 40px rgba(0, 0, 0, 0.04)'
           }}
         >
+            <p>This policy explains how OmniSDR, a Tennessee general partnership (&quot;OmniSDR&quot;, &quot;we&quot;, &quot;us&quot;), 713 Harpeth Knoll Court, Nashville, TN 37221, collects, uses and shares personal information. It covers our website at omnisdr.com, the people who contact us, and the people our business clients ask us to answer, call or text.</p>
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">1. Overview & Commitment</h2>
-            <p>Omni SDR ("we", "our", or "us"), operating at <strong>omnisdr.com</strong>, is committed to safeguarding the privacy and security of your personal data. This Privacy Policy details how we collect, process, store, and protect information when you visit our website, join our early-access waitlist, or use our enterprise AI SDR platform services.</p>
-          </section>
-
-          <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">2. Information We Collect</h2>
+            <h2 className="text-xl font-bold text-[#111111]">1. Who we are and whose data this is</h2>
+            <p>OmniSDR answers calls, sends texts and follow-up messages, and books appointments for small businesses (&quot;Clients&quot;), using AI voice and messaging technology.</p>
             <ul className="list-disc pl-5 space-y-2">
-              <li><strong>Contact & Account Data:</strong> Name, professional email address, company name, phone number, and business location provided when requesting early access or registering an account.</li>
-              <li><strong>Outreach & Evidence Data:</strong> Public digital footprint data and business signals gathered strictly on behalf of customers for verifiable outbound engagement.</li>
-              <li><strong>Technical Telemetry:</strong> Anonymized browser metadata, IP addresses, session timestamps, and device headers used exclusively for rate limiting, bot protection, and security auditing.</li>
+              <li><strong>When you visit omnisdr.com, contact us, or are a Client,</strong> OmniSDR decides how your information is used.</li>
+              <li><strong>When you call, text or fill in a form for one of our Clients,</strong> that Client decides how your information is used. We process it for the Client under a written agreement and only to provide our services to that Client. Questions or requests about that information are best sent to the Client. We will also pass on any request you send us.</li>
             </ul>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">3. AI Processing & Foundation Models</h2>
-            <p>Omni SDR is engineered with a strict <strong>Zero-Training Enterprise Guarantee</strong>:</p>
+            <h2 className="text-xl font-bold text-[#111111]">2. What we collect</h2>
             <ul className="list-disc pl-5 space-y-2">
-              <li>Customer data, prospect information, and message drafts processed through our AI gateway are <strong>never</strong> used to train, retrain, or improve foundational commercial AI models (Google Vertex AI / Gemini).</li>
-              <li>All generative tasks run within private, enterprise-tier Google Cloud boundaries governed by SOC 2, ISO 27001, and HIPAA-compliant data agreements.</li>
+              <li><strong>Contact details:</strong> name, phone number, email address, business name and address.</li>
+              <li><strong>Calls:</strong> call recordings, transcripts, call times and lengths, and the phone numbers involved.</li>
+              <li><strong>Texts and messages:</strong> message content, times, delivery status and replies, including STOP and HELP.</li>
+              <li><strong>Consent records:</strong> what you agreed to, the exact wording shown, when, the page or form, and your IP address and browser details.</li>
+              <li><strong>Requests:</strong> what you asked about and any appointment you booked.</li>
+              <li><strong>Website data:</strong> IP address, browser and device type, pages viewed, and security logs.</li>
+              <li><strong>Client account data:</strong> billing contact, plan and payment records. Card and bank details are handled by our payment processor; we do not store full card numbers.</li>
             </ul>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">4. Data Storage & Multi-Tenant Isolation</h2>
-            <p>We deploy modern defense-in-depth data architecture:</p>
+            <h2 className="text-xl font-bold text-[#111111]">3. How we use it</h2>
             <ul className="list-disc pl-5 space-y-2">
-              <li><strong>Storage:</strong> Assets and records are encrypted at rest with AES-256 via Google Cloud Storage and private Cloud SQL PostgreSQL instances.</li>
-              <li><strong>Tenant Isolation:</strong> Data boundaries are cryptographically enforced at the database level using Postgres Row-Level Security (RLS). Cross-tenant queries are structurally refused by database triggers.</li>
-              <li><strong>Edge Shielding:</strong> All internet traffic terminates via Cloudflare edge networks with strict TLS 1.3 encryption and automated DDoS mitigation.</li>
+              <li>To answer calls, reply to requests, send follow-up messages the person agreed to, and book appointments for our Clients.</li>
+              <li>To honor opt-outs and keep consent and do-not-contact records.</li>
+              <li>To run, secure and fix our services and website, and to prevent fraud and abuse.</li>
+              <li>To bill Clients and keep business records.</li>
+              <li>To meet legal obligations and respond to lawful requests.</li>
+            </ul>
+            <p>We do not sell personal information. We do not use Client call recordings, transcripts or messages to train AI models, and we use the no-training settings our providers offer. Our current providers and their settings are listed in Exhibit B of our Master Services Agreement, available from support@omnisdr.com.</p>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="text-xl font-bold text-[#111111]">4. Text messaging</h2>
+            <ul className="list-disc pl-5 space-y-2">
+              <li>We send texts only for a Client to people who gave that Client the required consent, or who just contacted that Client and asked to hear back.</li>
+              <li>Message frequency varies. Message and data rates may apply.</li>
+              <li>Reply <strong>STOP</strong> to stop texts and <strong>HELP</strong> for help. After STOP you get one confirmation and no further texts from that business unless you opt in again.</li>
+              <li><strong>No mobile information will be shared with third parties or affiliates for marketing or promotional purposes.</strong> Text messaging opt-in data and consent are not shared with any third party, except the service providers that deliver the messages for us.</li>
+              <li>Carriers are not liable for delayed or undelivered messages.</li>
             </ul>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">5. Sharing & Disclosures</h2>
-            <p>We never sell, rent, or monetize your personal information. Data is shared strictly with essential infrastructure sub-processors under confidentiality obligations:</p>
-            <ul className="list-disc pl-5 space-y-1">
-              <li><strong>Cloud Infrastructure:</strong> Google Cloud Platform (Compute, Storage, Database)</li>
-              <li><strong>Security & Network:</strong> Cloudflare (Edge DNS, WAF, Workers)</li>
-              <li><strong>Billing:</strong> Stripe (PCI-DSS Level 1 payment processing)</li>
+            <h2 className="text-xl font-bold text-[#111111]">5. Calls and recordings</h2>
+            <ul className="list-disc pl-5 space-y-2">
+              <li>Calls may be answered by an AI assistant, and the caller is told so at the start of the call.</li>
+              <li>Calls may be recorded and transcribed. The caller is told this at the start of the call, and for Clients in states that require everyone&apos;s consent, before recording begins.</li>
             </ul>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">6. Your Rights (GDPR & CCPA/CPRA)</h2>
-            <p>You maintain the right to access, rectify, port, or request permanent deletion of your personal data at any time. To exercise your rights or request removal from our waitlist or databases, email us at <a href="mailto:privacy@omnisdr.com" className="font-bold underline text-[#111111]">privacy@omnisdr.com</a>. We respond to all verified requests within 30 days.</p>
+            <h2 className="text-xl font-bold text-[#111111]">6. Who we share it with</h2>
+            <ul className="list-disc pl-5 space-y-2">
+              <li><strong>The Client</strong> whose calls or messages it relates to.</li>
+              <li><strong>Service providers</strong> who help us run the services: telephone and texting carriers, voice AI and language-model providers, hosting, email, and payment processing. They are bound by contract to use the data only to provide services to us. The list is in Exhibit B of our Master Services Agreement, available from support@omnisdr.com.</li>
+              <li><strong>Dime Data,</strong> which supplies our software platform and bills Clients on our behalf.</li>
+              <li><strong>Authorities,</strong> when the law requires it, or to protect people&apos;s safety or our legal rights.</li>
+              <li><strong>A buyer or successor entity,</strong> if OmniSDR&apos;s business is transferred, including when it becomes a limited liability company. That entity remains bound by this policy.</li>
+            </ul>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">7. Contact Information</h2>
-            <p>For inquiries regarding this policy or data practices, contact:</p>
-            <p className="font-mono text-xs bg-black/5 p-4 rounded-xl border border-black/10">
-              Omni SDR Legal & Privacy Operations<br />
-              713 Harpeth Knoll Court<br />
-              Nashville, Tennessee 37221<br />
-              Website: https://omnisdr.com<br />
-              Email: privacy@omnisdr.com
-            </p>
+            <h2 className="text-xl font-bold text-[#111111]">7. How long we keep it</h2>
+            <ul className="list-disc pl-5 space-y-2">
+              <li>Call recordings: 90 days by default. A Client can set from 30 to 365 days.</li>
+              <li>Consent and opt-out records: 5 years, to prove consent and honor opt-outs.</li>
+              <li>Other Client data: for the length of the Client&apos;s agreement plus 90 days, then deleted or returned to the Client.</li>
+              <li>Billing records: as long as tax law requires.</li>
+            </ul>
           </section>
+
+          <section className="space-y-3">
+            <h2 className="text-xl font-bold text-[#111111]">8. Security</h2>
+            <p>We use encryption in transit, access controls, and logging. If a breach affects your information, we will notify the Client concerned, and you where the law requires.</p>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="text-xl font-bold text-[#111111]">9. Your choices and rights</h2>
+            <ul className="list-disc pl-5 space-y-2">
+              <li>You can ask us to access, correct or delete information about you, or to stop contacting you. Email support@omnisdr.com.</li>
+              <li>If your information was collected for a Client, we will forward your request to that Client and help them respond.</li>
+              <li>Depending on your state, you may have further rights under its privacy law. We will not treat you differently for using them.</li>
+            </ul>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="text-xl font-bold text-[#111111]">10. Children</h2>
+            <p>Our services are for businesses and adults. We do not knowingly collect information from children under 13.</p>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="text-xl font-bold text-[#111111]">11. Changes</h2>
+            <p>We will post changes here and update the effective date. If a change is material, we will tell Clients in advance.</p>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="text-xl font-bold text-[#111111]">12. Contact</h2>
+            <p>OmniSDR, 713 Harpeth Knoll Court, Nashville, TN 37221 · support@omnisdr.com</p>
+          </section>
+
         </div>
-
-        <footer className="mt-12 text-center text-xs text-gray-400">
-          &copy; 2026 Omni SDR. All rights reserved.
-        </footer>
       </main>
     </div>
   );
