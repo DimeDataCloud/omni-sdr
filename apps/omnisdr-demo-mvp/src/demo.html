@@ -11,6 +11,11 @@
 .sms small{display:block;color:var(--muted);margin-bottom:2px}
 .stack>*+*{margin-top:12px}
 .sim{border:1px dashed var(--control);border-radius:8px;padding:2px 8px;font-size:12px;color:var(--muted);display:inline-block}
+@keyframes pop{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.bubble.in,.sms.in{animation:pop .2s ease both}
+#p1:not([hidden]),#p2:not([hidden]){animation:fadeIn .2s ease}
+.ctl{flex-wrap:wrap}.ctl .btn{flex:1 1 auto;white-space:nowrap}
 
 .u-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}.u-mb12{margin-bottom:12px}.u-mt10{margin-top:10px}.u-mt12{margin-top:12px}.u-mt14{margin-top:14px}.u-mt8{margin-top:8px}
 .u-m0-0-12{margin:0 0 12px}.u-m0-0-8{margin:0 0 8px}.u-m0{margin:0}.u-m12-0-16{margin:12px 0 16px}.u-m8-0-0{margin:8px 0 0}.u-pl18{padding-left:18px}.u-full-mt18{width:100%;margin-top:18px}.u-w0{width:0}
@@ -32,12 +37,12 @@
   <div id="live" hidden>
    <div id="log" role="log" aria-live="polite"></div>
    <form class="row" id="f"><label class="sr" for="msg">Your message</label><input id="msg" autocomplete="off" placeholder="Type what you would say" required><button class="btn" type="submit">Send</button></form>
-   <div class="row"><button class="btn ghost" id="mic" type="button" hidden>Hold to talk</button><button class="btn ghost" id="speak" type="button" aria-pressed="false">Agent voice: off</button><button class="btn ghost" id="end" type="button">Hang up</button></div>
+   <div class="row ctl"><button class="btn ghost" id="mic" type="button" hidden>Hold to talk</button><button class="btn ghost" id="speak" type="button" aria-pressed="false">Agent voice: off</button><button class="btn ghost" id="end" type="button">Hang up</button></div>
   </div>
   <div id="over" hidden class="note u-mt12"></div>
  </div>
  <div class="stack">
-  <div class="card"><h2>Captured details</h2><dl class="kv" id="cap"></dl><div id="flags" class="u-mt8"></div></div>
+  <div class="card"><h2>Captured details</h2><p class="muted u-m0" id="capEmpty">Fills in as the caller answers.</p><dl class="kv" id="cap"></dl><div id="flags" class="u-mt8"></div></div>
   <div class="card"><h2>Text the owner would get</h2><span class="sim">Simulated, not sent</span><div id="ownerSms" class="muted u-mt8">Appears when the call ends.</div></div>
   <div class="card"><h2>Booked time</h2><span class="sim">Simulated calendar</span><p id="booked" class="muted u-m8-0-0">Not booked yet.</p></div>
  </div>
@@ -48,7 +53,7 @@
   <form id="lf"><label for="ln">First name</label><input id="ln" value="Dana" maxlength="40"><label for="lp">Mobile (fake)</label><input id="lp" value="615-555-0142" maxlength="20"><button class="btn u-mt14" type="submit">Submit lead</button></form>
   <div class="note u-mt12" id="lnote" hidden></div></div>
  <div class="card"><h2>Text thread</h2><span class="sim">Simulated, not sent</span><div id="thread" class="muted u-mt10">Submit a lead to see the thread.</div>
-  <div class="row" id="lact" hidden><button class="btn ghost" data-a="reply">Lead replies</button><button class="btn ghost" data-a="book">Lead books</button><button class="btn ghost" data-a="stop">Lead texts STOP</button></div>
+  <div class="row ctl" id="lact" hidden><button class="btn ghost" data-a="reply">Lead replies</button><button class="btn ghost" data-a="book">Lead books</button><button class="btn ghost" data-a="stop">Lead texts STOP</button></div>
   <ul class="muted u-pl18" id="rules"></ul></div>
 </section>
 </div>
@@ -81,11 +86,11 @@ var QUESTION={
  slot:null, confirm:null
 };
 function later(fn,ms){var id=setTimeout(function(){if(!S.over)fn()},ms);S.tm.push(id)}
-function say(t){if(S.over)return;var b=el('div','bubble a',t);$('log').appendChild(b);$('log').scrollTop=1e9;S.last=t;ev('agent',t.slice(0,200));
+function say(t){if(S.over)return;var b=el('div','bubble a in',t);$('log').appendChild(b);$('log').scrollTop=1e9;S.last=t;ev('agent',t.slice(0,200));
  if(S.speak&&window.speechSynthesis){try{var u=new SpeechSynthesisUtterance(t);u.rate=1.05;speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){}}}
-function you(t){$('log').appendChild(el('div','bubble u',t));$('log').scrollTop=1e9}
+function you(t){$('log').appendChild(el('div','bubble u in',t));$('log').scrollTop=1e9}
 function renderCap(){
- var d=$('cap');d.textContent='';var F=S.f;
+ var d=$('cap');d.textContent='';var F=S.f;$('capEmpty').hidden=true;
  [['Project',F.service],['Bathroom and size',F.scope],['Timeline',F.timeline],['Name',F.name],['Mobile',F.phone],['Zip',F.zip],['Estimate slot',F.slot]].forEach(function(p){
   d.appendChild(el('dt',null,p[0]));d.appendChild(el('dd',null,p[1]||'none'))});
  var fl=$('flags');fl.textContent='';S.flags.forEach(function(x){fl.appendChild(el('span','pill '+(x.bad?'bad':'warn'),x.t));fl.appendChild(document.createTextNode(' '))})}
@@ -156,18 +161,18 @@ var BOOK_EMAIL='getomnisdr@gmail.com'; // same address as BOOK_URL in worker.js
 function finish(why){if(S.over)return;S.over=true;clearInterval(S.timer);S.tm.forEach(clearTimeout);S.queue=[];if(window.speechSynthesis)try{speechSynthesis.cancel()}catch(e){}
  $('f').hidden=true;$('end').hidden=true;
  var o=$('over');o.hidden=false;o.textContent=(why==='time'?'The demo call reached its 3 minute limit.':'Call ended.')+' Start over to run it again, or email '+BOOK_EMAIL+' to book a live walkthrough.';
- var sms=$('ownerSms');sms.className='';sms.textContent='';var b=el('div','sms');b.appendChild(el('small',null,'To '+S.t.owner+' · simulated'));b.appendChild(el('div',null,ownerSms(why)));sms.appendChild(b);
+ var sms=$('ownerSms');sms.className='';sms.textContent='';var b=el('div','sms in');b.appendChild(el('small',null,'To '+S.t.owner+' · simulated'));b.appendChild(el('div',null,ownerSms(why)));sms.appendChild(b);
  ev('end',{why:why,fields:S.f,hot:S.hot,flags:S.flags.map(function(x){return x.t})});
  var again=el('button','btn',' Start over');again.textContent='Start over';again.style.marginLeft='8px';again.addEventListener('click',function(){location.reload()});o.appendChild(document.createTextNode(' '));o.appendChild(again)}
 
 $('start').addEventListener('click',function(){
- var b=$('start');b.disabled=true;$('startErr').hidden=true;
+ var b=$('start');b.disabled=true;b.textContent='Starting the call...';$('startErr').hidden=true;
  post('/api/session',{tenant:'riverbend',turnstile:tsTok}).then(function(r){
-  if(!r.ok){var e=$('startErr');e.textContent=r.message||'Could not start the demo.';e.hidden=false;b.disabled=false;if(window.turnstile){try{window.turnstile.reset();tsTok='';if(TSKEY&&TSKEY.content)b.disabled=true}catch(x){}}return}
+  if(!r.ok){var e=$('startErr');e.textContent=r.message||'Could not start the demo.';e.hidden=false;b.disabled=false;b.textContent='Start the call';if(window.turnstile){try{window.turnstile.reset();tsTok='';if(TSKEY&&TSKEY.content)b.disabled=true}catch(x){}}return}
   S.sid=r.sid;S.t=r.tenant;S.secs=r.maxSeconds;$('bizName').textContent=S.t.business;
   $('gate').hidden=true;$('live').hidden=false;renderCap();open();
   say('Hi, thanks for calling '+S.t.business+'. This is '+S.t.persona+', an automated assistant for the team, and this call may be recorded. How can I help you today?');
-  $('msg').focus()}).catch(function(){var e=$('startErr');e.textContent='Could not reach the server. Check your connection.';e.hidden=false;b.disabled=false})});
+  $('msg').focus()}).catch(function(){var e=$('startErr');e.textContent='Could not reach the server. Check your connection.';e.hidden=false;b.disabled=false;b.textContent='Start the call'})});
 $('f').addEventListener('submit',function(e){e.preventDefault();var v=$('msg').value.trim();if(!v||S.over)return;$('msg').value='';reply(v.slice(0,300))});
 $('end').addEventListener('click',function(){you('(hung up)');finish('hangup')});
 $('speak').addEventListener('click',function(){S.speak=!S.speak;this.setAttribute('aria-pressed',String(S.speak));this.textContent='Agent voice: '+(S.speak?'on':'off');if(!S.speak&&window.speechSynthesis)speechSynthesis.cancel()});
@@ -180,15 +185,19 @@ if(SR){var mic=$('mic');mic.hidden=false;var rec=null;
 
 /* ---- CHASE tab ---- */
 var plan=null,stopped=false,timers=[];
-function sms(from,text,at){var b=el('div','sms');b.appendChild(el('small',null,from+' · '+at));b.appendChild(el('div',null,text));$('thread').appendChild(b)}
+function sms(from,text,at){var b=el('div','sms in');b.appendChild(el('small',null,from+' · '+at));b.appendChild(el('div',null,text));$('thread').appendChild(b)}
 function clearT(){timers.forEach(clearTimeout);timers=[]}
 $('lf').addEventListener('submit',function(e){e.preventDefault();clearT();stopped=false;
- post('/api/lead',{tenant:'riverbend',name:$('ln').value}).then(function(r){
+ var sb=$('lf').querySelector('[type=submit]'),n=$('lnote'),done=function(){sb.disabled=false;sb.textContent='Submit lead'};
+ sb.disabled=true;sb.textContent='Sending...';
+ post('/api/lead',{tenant:'riverbend',name:$('ln').value}).then(function(r){done();
+  if(!r.steps){n.hidden=false;n.textContent=r.message||'Could not start the texts. Try again.';return}
   plan=r;$('thread').textContent='';$('thread').className='';$('lact').hidden=false;
-  var n=$('lnote');n.hidden=false;n.textContent=r.note;
+  n.hidden=false;n.textContent=r.note;
   var ul=$('rules');ul.textContent='';r.rules.forEach(function(x){ul.appendChild(el('li',null,x))});
   r.steps.forEach(function(s,i){var delay=i===0?800:(i===1?3500:(i===2?6500:9500));
-   timers.push(setTimeout(function(){if(!stopped)sms('Agent',s.text,s.at)},delay))})})});
+   timers.push(setTimeout(function(){if(!stopped)sms('Agent',s.text,s.at)},delay))})})
+ .catch(function(){done();n.hidden=false;n.textContent='Could not reach the server. Check your connection.'})});
 $('lact').addEventListener('click',function(e){var a=e.target.dataset&&e.target.dataset.a;if(!a)return;
  stopped=true;clearT();
  if(a==='reply')sms('Lead','Yes, can someone come Tuesday?','just now');
