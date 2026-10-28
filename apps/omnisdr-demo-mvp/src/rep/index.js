@@ -170,6 +170,10 @@ async function api(req, env, me, path, m) {
     if (m === 'GET' && seg.length === 1) {
       const u = new URL(req.url), where = [`archived = ${u.searchParams.get('archived') === '1' ? 1 : 0}`, s.sql], args = [...s.args];
       const st = u.searchParams.get('stage'); if (st) { if (!STAGES.includes(st)) throw bad('Unknown stage'); where.push('stage = ?'); args.push(st); }
+      const ni = u.searchParams.get('niche'); if (ni != null && ni !== '') { where.push('niche = ?'); args.push(ni === '(none)' ? '' : ni.slice(0, 80)); }
+      const sa = u.searchParams.get('state'); if (sa) { where.push('state = ?'); args.push(sa.slice(0, 40)); }
+      // The pool: leads still held by an admin, waiting to be handed out. Admin only; a rep's scope already limits them.
+      if (isAdmin(me) && u.searchParams.get('pool') === '1') where.push("owner_email IN (SELECT email FROM reps WHERE role = 'admin')");
       const q = (u.searchParams.get('q') || '').trim().slice(0, 80); if (q) { where.push("(business LIKE ? ESCAPE '\\' OR niche LIKE ? ESCAPE '\\' OR city LIKE ? ESCAPE '\\' OR phone LIKE ? ESCAPE '\\')"); const like = '%' + q.replace(/[\\%_]/g, (c) => '\\' + c) + '%'; args.push(like, like, like, like); }
       const r = await D.prepare(`SELECT * FROM accounts WHERE ${where.join(' AND ')} ORDER BY updated_at DESC LIMIT 500`).bind(...args).all();
       return { accounts: r.results.map(shape) };
@@ -335,6 +339,36 @@ async function api(req, env, me, path, m) {
     if (errors.length) return { imported: 0, errors: errors.slice(0, 50) }; // all or nothing, so a fixed file can be re-imported cleanly
     for (let i = 0; i < stmts.length; i += 90) await D.batch(stmts.slice(i, i + 90));
     return { imported: rows.length - 1, errors: [] };
+  }
+
+  // Lead dashboard counts (admin only): live, non-archived leads by category, rep, stage and state.
+  if (m === 'GET' && path === '/leads/facets') {
+    if (!isAdmin(me)) throw forbidden();
+    const q = (col) => D.prepare(`SELECT ${col} k, COUNT(*) n FROM accounts WHERE archived = 0 GROUP BY ${col} ORDER BY n DESC, k LIMIT 200`);
+    const [niche, owner, stage, state, pool] = await D.batch([q('niche'), q('owner_email'), q('stage'), q('state'),
+      D.prepare("SELECT COUNT(*) n FROM accounts WHERE archived = 0 AND owner_email IN (SELECT email FROM reps WHERE role = 'admin')")]);
+    const m2 = (r) => r.results.map((x) => ({ key: x.k ?? '', n: x.n }));
+    return { niche: m2(niche), owner: m2(owner), stage: m2(stage), state: m2(state), pool: pool.results[0]?.n || 0, total: stage.results.reduce((n, x) => n + x.n, 0) };
+  }
+
+  // Bulk category or archive (admin only). Same shape as /assign: validate everything, then write in batches.
+  if (m === 'POST' && path === '/bulk') {
+    if (!isAdmin(me)) throw forbidden();
+    const b = await body(req), ids = Array.isArray(b.accountIds) ? [...new Set(b.accountIds)] : [];
+    if (!ids.length || ids.length > 500 || !ids.every((x) => typeof x === 'string' && x.length <= 64)) throw bad('Pick between 1 and 500 accounts');
+    const set = {};
+    if ('niche' in b) set.niche = str(b.niche, 80, 'Category') ?? '';
+    if ('archived' in b) set.archived = b.archived ? 1 : 0;
+    if (!Object.keys(set).length) throw bad('Nothing to change');
+    const found = (await D.prepare(`SELECT id, niche, archived FROM accounts WHERE id IN (${ids.map(() => '?').join(',')})`).bind(...ids).all()).results;
+    if (found.length !== ids.length) throw notFound('account');
+    const t = now(), stmts = [];
+    for (const a of found) {
+      stmts.push(D.prepare(`UPDATE accounts SET ${Object.keys(set).map((k) => k + ' = ?').join(', ')}, updated_at = ? WHERE id = ?`).bind(...Object.values(set), t, a.id),
+        audit(env, me.email, 'bulk', 'account', a.id, { niche: a.niche, archived: a.archived }, set));
+    }
+    for (let i = 0; i < stmts.length; i += 90) await D.batch(stmts.slice(i, i + 90));
+    return { updated: found.length };
   }
 
   // Hand leads to a rep (admin only). The rep's open tasks on those leads move with them; calls, notes and closed deals stay
