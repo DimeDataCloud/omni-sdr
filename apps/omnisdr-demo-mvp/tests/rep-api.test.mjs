@@ -261,15 +261,29 @@ test('import: the admin can give a whole file to one rep; a rep import is always
   assert.equal(DB.db.prepare('SELECT COUNT(*) n FROM accounts WHERE owner_email = ?').get(A).n, 2); // owner ignored for reps
 });
 
-test('lead dashboard: facets, pool and category filters, bulk category and archive; all admin only', async () => {
+test('lead dashboard: facets, pool and category filters, bulk category and archive (reps: own rows, category only)', async () => {
   // Christian 2026-10-27: an easier lead dashboard for seeing, categorizing and assigning leads.
   const DB = setup(); DB.db.prepare("INSERT INTO reps (email, name, role, active, created_at) VALUES (?, 'Boss', 'admin', 1, '2026-01-01')").run(BOSS);
   const p1 = await newAccount(DB, BOSS, { business: 'Gen One', niche: 'Generator dealer', state: 'TN' });
   const p2 = await newAccount(DB, BOSS, { business: 'Gen Two', niche: 'Generator dealer', state: 'KY' });
   const p3 = await newAccount(DB, BOSS, { business: 'No Cat', niche: '' });
   const mine = await newAccount(DB, A, { business: 'Rep Owned', niche: 'Remodeler' });
-  for (const [path, opt] of [['/rep/api/leads/facets', {}], ['/rep/api/bulk', { method: 'POST', body: { accountIds: [mine.id], niche: 'X' } }]])
-    assert.equal((await call(DB, A, path, opt)).status, 403);
+  // A rep gets exact counts over their own rows only, never the pool or other reps' leads.
+  const rf = (await j(await call(DB, A, '/rep/api/leads/facets'))).body;
+  assert.equal(rf.total, 1); assert.equal(rf.pool, 0); assert.deepEqual(rf.niche, [{ key: 'Remodeler', n: 1 }]); assert.deepEqual(rf.owner, [{ key: A, n: 1 }]);
+  // A rep can re-categorize their own account, but not archive, and not an account that is not theirs (404, same as any probe).
+  assert.equal((await call(DB, A, '/rep/api/bulk', { method: 'POST', body: { accountIds: [mine.id], archived: true } })).status, 403);
+  assert.equal((await call(DB, A, '/rep/api/bulk', { method: 'POST', body: { accountIds: [mine.id, p1.id], niche: 'Hack' } })).status, 404);
+  assert.equal(DB.db.prepare('SELECT niche FROM accounts WHERE id = ?').get(p1.id).niche, 'Generator dealer');
+  assert.equal(DB.db.prepare('SELECT niche FROM accounts WHERE id = ?').get(mine.id).niche, 'Remodeler');
+  assert.equal((await j(await call(DB, A, '/rep/api/bulk', { method: 'POST', body: { accountIds: [mine.id], niche: 'Roofer' } }))).body.updated, 1);
+  assert.equal(DB.db.prepare('SELECT niche FROM accounts WHERE id = ?').get(mine.id).niche, 'Roofer');
+  await call(DB, A, '/rep/api/bulk', { method: 'POST', body: { accountIds: [mine.id], niche: 'Remodeler' } }); // put it back for the admin checks below
+  // archived list and unarchive already work for a rep through /accounts?archived=1 and PATCH
+  assert.equal((await call(DB, A, `/rep/api/accounts/${mine.id}`, { method: 'PATCH', body: { archived: true } })).status, 200);
+  assert.deepEqual((await j(await call(DB, A, '/rep/api/accounts?archived=1'))).body.accounts.map((a) => a.business), ['Rep Owned']);
+  assert.deepEqual((await j(await call(DB, BOSS, '/rep/api/accounts?archived=1'))).body.accounts.map((a) => a.business), ['Rep Owned']);
+  assert.equal((await call(DB, A, `/rep/api/accounts/${mine.id}`, { method: 'PATCH', body: { archived: false } })).status, 200);
   const fx = (await j(await call(DB, BOSS, '/rep/api/leads/facets'))).body;
   assert.equal(fx.total, 4); assert.equal(fx.pool, 3);
   assert.equal(fx.niche.find((r) => r.key === 'Generator dealer').n, 2);
@@ -286,7 +300,7 @@ test('lead dashboard: facets, pool and category filters, bulk category and archi
   assert.deepEqual(await names('niche=Remodeler'), ['Gen One', 'No Cat', 'Rep Owned']);
   await call(DB, BOSS, '/rep/api/bulk', { method: 'POST', body: { accountIds: [p2.id], archived: true } });
   assert.equal((await j(await call(DB, BOSS, '/rep/api/leads/facets'))).body.total, 3);
-  assert.equal(DB.db.prepare("SELECT COUNT(*) n FROM audit WHERE action = 'bulk'").get().n, 3);
+  assert.equal(DB.db.prepare("SELECT COUNT(*) n FROM audit WHERE action = 'bulk'").get().n, 5); // 3 admin writes + 2 rep category writes; refused calls write nothing
 });
 
 test('mix slider: at every step of every pilot size, price, allowance and pay are unchanged, and the mix round-trips through D1', async () => {
@@ -361,8 +375,10 @@ test('rep isolation: a rep never sees another rep by id, by ?owner=, by admin ro
   }
   assert.doesNotMatch(await (await api(B, `/export.csv?owner=${A}`)).text(), /Ridge Roofing|rep-a@/);
   // Admin-only routes refuse a rep outright, so no rep list, counts or pay reach one.
-  for (const [m, p, body] of [['GET', '/reps'], ['GET', '/leads/facets'], ['POST', '/assign', { accountIds: [a.id], owner: B }], ['POST', '/bulk', { accountIds: [a.id], archived: true }]])
+  for (const [m, p, body] of [['GET', '/reps'], ['POST', '/assign', { accountIds: [a.id], owner: B }], ['POST', '/bulk', { accountIds: [a.id], archived: true }]])
     assert.equal((await api(B, p, { method: m, body })).status, 403, `${m} ${p}`);
+  // Facets are rep-scoped, not admin-only: B sees counts over B's own rows, none of A's.
+  assert.doesNotMatch(JSON.stringify((await j(await api(B, '/leads/facets'))).body), /Ridge|rep-a@/);
   assert.equal((await api(A, `/accounts/${a.id}`)).status, 200); // and none of that touched A
   assert.equal((await j(await api(A, `/accounts/${a.id}`))).body.tasks.some((t) => t.id === task), true);
 
