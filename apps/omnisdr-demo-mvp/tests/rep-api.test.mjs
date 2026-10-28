@@ -260,3 +260,31 @@ test('import: the admin can give a whole file to one rep; a rep import is always
   assert.equal((await j(await call(DB, A, '/rep/api/import', { method: 'POST', body: { csv, owner: B } }))).body.imported, 2);
   assert.equal(DB.db.prepare('SELECT COUNT(*) n FROM accounts WHERE owner_email = ?').get(A).n, 2); // owner ignored for reps
 });
+
+test('lead dashboard: facets, pool and category filters, bulk category and archive; all admin only', async () => {
+  // Christian 2026-10-27: an easier lead dashboard for seeing, categorizing and assigning leads.
+  const DB = setup(); DB.db.prepare("INSERT INTO reps (email, name, role, active, created_at) VALUES (?, 'Boss', 'admin', 1, '2026-01-01')").run(BOSS);
+  const p1 = await newAccount(DB, BOSS, { business: 'Gen One', niche: 'Generator dealer', state: 'TN' });
+  const p2 = await newAccount(DB, BOSS, { business: 'Gen Two', niche: 'Generator dealer', state: 'KY' });
+  const p3 = await newAccount(DB, BOSS, { business: 'No Cat', niche: '' });
+  const mine = await newAccount(DB, A, { business: 'Rep Owned', niche: 'Remodeler' });
+  for (const [path, opt] of [['/rep/api/leads/facets', {}], ['/rep/api/bulk', { method: 'POST', body: { accountIds: [mine.id], niche: 'X' } }]])
+    assert.equal((await call(DB, A, path, opt)).status, 403);
+  const fx = (await j(await call(DB, BOSS, '/rep/api/leads/facets'))).body;
+  assert.equal(fx.total, 4); assert.equal(fx.pool, 3);
+  assert.equal(fx.niche.find((r) => r.key === 'Generator dealer').n, 2);
+  const names = async (q) => (await j(await call(DB, BOSS, '/rep/api/accounts?' + q))).body.accounts.map((a) => a.business).sort();
+  assert.deepEqual(await names('pool=1'), ['Gen One', 'Gen Two', 'No Cat']);
+  assert.deepEqual(await names('niche=' + encodeURIComponent('Generator dealer') + '&state=TN'), ['Gen One']);
+  assert.deepEqual(await names('niche=(none)'), ['No Cat']);
+  assert.deepEqual((await j(await call(DB, A, '/rep/api/accounts?pool=1'))).body.accounts.map((a) => a.business), ['Rep Owned']); // pool is ignored for reps
+  // bulk: all or nothing, then category and archive
+  assert.equal((await call(DB, BOSS, '/rep/api/bulk', { method: 'POST', body: { accountIds: [p3.id, 'nope'], niche: 'Remodeler' } })).status, 404);
+  assert.equal(DB.db.prepare('SELECT niche FROM accounts WHERE id = ?').get(p3.id).niche, '');
+  assert.equal((await call(DB, BOSS, '/rep/api/bulk', { method: 'POST', body: { accountIds: [p3.id] } })).status, 400);
+  assert.equal((await j(await call(DB, BOSS, '/rep/api/bulk', { method: 'POST', body: { accountIds: [p3.id, p1.id], niche: 'Remodeler' } }))).body.updated, 2);
+  assert.deepEqual(await names('niche=Remodeler'), ['Gen One', 'No Cat', 'Rep Owned']);
+  await call(DB, BOSS, '/rep/api/bulk', { method: 'POST', body: { accountIds: [p2.id], archived: true } });
+  assert.equal((await j(await call(DB, BOSS, '/rep/api/leads/facets'))).body.total, 3);
+  assert.equal(DB.db.prepare("SELECT COUNT(*) n FROM audit WHERE action = 'bulk'").get().n, 3);
+});

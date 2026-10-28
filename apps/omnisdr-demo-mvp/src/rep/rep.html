@@ -41,12 +41,16 @@ main>.card,main>section.card,main>.grid{margin-bottom:16px}
 .tpl{white-space:pre-wrap;overflow-wrap:anywhere;margin:0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);font:inherit;user-select:text}
 .est{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}.tight{margin:0;padding-left:20px}
 .viewbar{margin:-8px 0 16px}.viewbar select{width:auto;min-width:200px}.sel{width:44px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}.chip{min-height:36px;padding:0 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--text);font:inherit;font-size:14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.chip b{font-variant-numeric:tabular-nums;color:var(--muted);font-weight:600}.chip[aria-pressed=true]{border-color:var(--ink);outline:2px solid var(--ink);outline-offset:-1px}
+.bulk{position:sticky;bottom:calc(8px + env(safe-area-inset-bottom));z-index:3;box-shadow:0 6px 24px rgba(0,0,0,.18)}.splitlist{display:flex;flex-wrap:wrap;gap:4px 14px}
+@media (pointer:coarse){.chip{min-height:44px}}
 ol.path{margin:0;padding-left:22px;display:grid;gap:10px}ol.path li b{display:block}ol.path li span{display:block;max-width:72ch}
 </style></head>
 <body><div class="wrap">
 <header class="top"><div class="brand">__LOGO__<b>OmniSDR · Rep</b></div><span class="muted" id="who"></span></header>
 <nav class="main" id="nav" aria-label="Rep portal">
-  <a href="#today">Today</a><a href="#calls">Call Room</a><a href="#pipeline">Pipeline</a><a href="#accounts">Accounts</a><a href="#calendar">Calendar</a><a href="#deals">My deals</a><a href="#playbook">Playbook</a><a href="#kit">Toolkit</a><a href="#how">How it works</a><a href="#team" hidden id="navTeam">Team</a>
+  <a href="#today">Today</a><a href="#calls">Call Room</a><a href="#pipeline">Pipeline</a><a href="#accounts">Accounts</a><a href="#calendar">Calendar</a><a href="#deals">My deals</a><a href="#playbook">Playbook</a><a href="#kit">Toolkit</a><a href="#how">How it works</a><a href="#leads" hidden id="navLeads">Leads</a><a href="#team" hidden id="navTeam">Team</a>
 </nav>
 <div class="row viewbar" id="viewbar" hidden><label for="vw">Viewing</label><select id="vw"></select></div>
 <main id="view" aria-live="polite"><p class="muted">Loading…</p></main>
@@ -63,8 +67,8 @@ let REPS = [], VIEW = '';
 const repName = (e) => (REPS.find((r) => r.email === e) || {}).name || e;
 const repOptions = (sel, onlyActive = true) => REPS.filter((r) => !onlyActive || r.active).map((r) => `<option value="${esc(r.email)}"${r.email === sel ? ' selected' : ''}>${esc(r.name)}${r.email === ME.email ? ' (you)' : ''}</option>`).join('');
 
-async function api(path, { method = 'GET', body, raw = false } = {}) {
-  if (method === 'GET' && VIEW) path += (path.includes('?') ? '&' : '?') + 'owner=' + encodeURIComponent(VIEW);
+async function api(path, { method = 'GET', body, raw = false, noView = false } = {}) {
+  if (method === 'GET' && VIEW && !noView) path += (path.includes('?') ? '&' : '?') + 'owner=' + encodeURIComponent(VIEW);
   const r = await fetch('/rep/api' + path, { method, credentials: 'same-origin', headers: { 'x-rep': '1', ...(body ? { 'content-type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
   if (raw && r.ok) return r;
   const j = await r.json().catch(() => ({ message: 'The server sent something unexpected.' }));
@@ -352,6 +356,70 @@ const screens = {
       <section class="card stack"><h2>Say this</h2><p>${esc(H.say)}</p><a class="btn" href="/tryme" target="_blank" rel="noopener">Open the live demo</a></section>`;
   },
 
+  // Admin lead dashboard: see what is in the book, sort it into categories, and hand it out.
+  async leads() {
+    if (ME.role !== 'admin') { location.hash = 'today'; return; }
+    const F = { niche: '', owner: '', stage: '', state: '', q: '' }, picked = new Set();
+    let rows = [];
+    view.innerHTML = `<h1>Leads</h1><p class="sub">Every lead in the book. Filter, sort into categories, and hand them out.</p>
+      <div class="stats" id="lTiles"></div>
+      <section class="card stack"><div class="row"><input class="grow" id="lq" type="search" placeholder="Search name, category, city or phone" aria-label="Search leads">
+        <select id="lst" class="grow" aria-label="Stage"><option value="">All stages</option>${K.stages.map((x) => `<option value="${x}">${STAGE_LABEL[x]}</option>`).join('')}</select>
+        <select id="lsa" class="grow" aria-label="State"><option value="">All states</option></select></div>
+        <div><p class="muted">Category</p><div class="chips" id="lNiche"></div></div>
+        <div><p class="muted">Rep</p><div class="chips" id="lOwner"></div></div></section>
+      <section class="card"><div class="row"><b id="lCount"></b><button class="btn ghost sm" id="lAll">Select all shown</button><button class="btn ghost sm" id="lNone">Clear</button></div>
+        <div class="tbl"><table><thead><tr><th class="sel"></th><th>Business</th><th>Category</th><th>Where</th><th>Stage</th><th>Rep</th><th>Phone</th></tr></thead><tbody id="lRows"></tbody></table></div></section>
+      <section class="card stack bulk" id="lBulk" hidden><b id="lSel"></b>
+        <div class="row"><label for="lTo" class="muted">Assign to</label><select id="lTo" class="grow"><option value="">Pick a rep</option>${repOptions('')}</select><button class="btn" id="lAssign">Assign</button></div>
+        <details><summary>Split evenly between reps</summary><div class="splitlist" id="lSplit">${REPS.filter((r) => r.active).map((r) => `<label class="row"><input type="checkbox" value="${esc(r.email)}"> ${esc(r.name)}</label>`).join('')}</div><button class="btn ghost" id="lSplitGo">Split</button></details>
+        <div class="row"><label for="lCat" class="muted">Set category</label><input id="lCat" class="grow" list="lCats" maxlength="80" placeholder="Remodeler, Generator dealer"><datalist id="lCats"></datalist><button class="btn ghost" id="lCatGo">Set</button><button class="btn ghost" id="lArch">Archive</button></div></section>`;
+    const chip = (key, label, n, on) => `<button class="chip" data-k="${esc(key)}" aria-pressed="${on}">${esc(label)} <b>${n}</b></button>`;
+    const drawFacets = async () => {
+      const x = await api('/leads/facets', { noView: true });
+      $('#lTiles').innerHTML = [['Leads', x.total], ['Waiting to hand out', x.pool], ['Categories', x.niche.filter((r) => r.key).length], ['Reps with leads', x.owner.filter((r) => (REPS.find((p) => p.email === r.key) || {}).role !== 'admin').length]]
+        .map(([k, v]) => `<div class="card stat"><b>${v}</b><span>${k}</span></div>`).join('');
+      $('#lNiche').innerHTML = chip('', 'All', x.total, F.niche === '') + x.niche.map((r) => chip(r.key || '(none)', r.key || 'No category', r.n, F.niche === (r.key || '(none)'))).join('');
+      $('#lOwner').innerHTML = chip('', 'All', x.total, F.owner === '') + chip('pool', 'Waiting to hand out', x.pool, F.owner === 'pool') + x.owner.map((r) => chip(r.key, repName(r.key), r.n, F.owner === r.key)).join('');
+      $('#lCats').innerHTML = x.niche.filter((r) => r.key).map((r) => `<option value="${esc(r.key)}">`).join('');
+      const sa = $('#lsa'), cur = sa.value; sa.innerHTML = '<option value="">All states</option>' + x.state.filter((r) => r.key).map((r) => `<option value="${esc(r.key)}">${esc(r.key)} (${r.n})</option>`).join(''); sa.value = cur;
+    };
+    const sync = () => { $$('[data-sel]').forEach((c) => (c.checked = picked.has(c.dataset.sel))); $('#lBulk').hidden = !picked.size; $('#lSel').textContent = picked.size + (picked.size === 1 ? ' lead selected' : ' leads selected'); };
+    const load = async () => {
+      const p = new URLSearchParams();
+      if (F.q) p.set('q', F.q); if (F.stage) p.set('stage', F.stage); if (F.state) p.set('state', F.state); if (F.niche) p.set('niche', F.niche);
+      if (F.owner === 'pool') p.set('pool', '1'); else if (F.owner) p.set('owner', F.owner);
+      rows = (await api('/accounts?' + p, { noView: true })).accounts;
+      $('#lCount').textContent = rows.length + (rows.length === 500 ? '+ shown (narrow the filter)' : ' shown');
+      $('#lRows').innerHTML = rows.length ? rows.map((a) => `<tr data-id="${esc(a.id)}"><td class="sel"><input type="checkbox" data-sel="${esc(a.id)}" aria-label="Select ${esc(a.business)}"></td><td><a class="lnk" href="#account/${esc(a.id)}">${esc(a.business)}</a>${a.signal ? `<br><small class="muted">${esc(a.signal)}</small>` : ''}</td><td>${esc(a.niche) || '<span class="muted">None</span>'}</td><td>${esc([a.city, a.state].filter(Boolean).join(', '))}</td><td>${STAGE_LABEL[a.stage] || ''}</td><td>${esc(repName(a.owner_email))}</td><td>${esc(a.phone)}</td></tr>`).join('') : '<tr><td colspan="7" class="muted">No leads match.</td></tr>';
+      sync();
+    };
+    const refresh = async () => { await Promise.all([drawFacets(), load()]); };
+    const ids = () => [...picked];
+    const done = async (msg) => { toast(msg); picked.clear(); await refresh(); };
+    $('#lNiche').onclick = (e) => { const b = e.target.closest('[data-k]'); if (b) { F.niche = b.dataset.k; refresh().catch(fail); } };
+    $('#lOwner').onclick = (e) => { const b = e.target.closest('[data-k]'); if (b) { F.owner = b.dataset.k; refresh().catch(fail); } };
+    let tq; $('#lq').oninput = () => { clearTimeout(tq); tq = setTimeout(() => { F.q = $('#lq').value.trim(); load().catch(fail); }, 250); };
+    $('#lst').onchange = () => { F.stage = $('#lst').value; load().catch(fail); };
+    $('#lsa').onchange = () => { F.state = $('#lsa').value; load().catch(fail); };
+    $('#lRows').onclick = (e) => { const c = e.target.closest('[data-sel]'); if (c) { c.checked ? picked.add(c.dataset.sel) : picked.delete(c.dataset.sel); sync(); } };
+    $('#lAll').onclick = () => { rows.forEach((a) => picked.add(a.id)); sync(); };
+    $('#lNone').onclick = () => { picked.clear(); sync(); };
+    $('#lAssign').onclick = async () => { const to = $('#lTo').value; if (!to) return toast('Pick a rep');
+      try { const r = await api('/assign', { method: 'POST', body: { accountIds: ids(), owner: to } }); await done(`Assigned ${r.assigned} to ${repName(to)}`); } catch (er) { fail(er); } };
+    // Round-robin in the order shown, so each rep gets a fair mix of the list.
+    $('#lSplitGo').onclick = async () => {
+      const to = $$('#lSplit input:checked').map((c) => c.value); if (to.length < 2) return toast('Pick at least two reps');
+      const order = rows.map((a) => a.id).filter((id) => picked.has(id)), share = Object.fromEntries(to.map((e) => [e, []]));
+      order.forEach((id, i) => share[to[i % to.length]].push(id));
+      try { for (const [e, list] of Object.entries(share)) if (list.length) await api('/assign', { method: 'POST', body: { accountIds: list, owner: e } });
+        await done(`Split ${order.length} between ${to.map(repName).join(', ')}`); } catch (er) { fail(er); refresh(); } };
+    $('#lCatGo').onclick = async () => { const v = $('#lCat').value.trim();
+      try { const r = await api('/bulk', { method: 'POST', body: { accountIds: ids(), niche: v } }); await done(v ? `${r.updated} set to ${v}` : `Category cleared on ${r.updated}`); } catch (er) { fail(er); } };
+    $('#lArch').onclick = async () => { try { const r = await api('/bulk', { method: 'POST', body: { accountIds: ids(), archived: true } }); await done(`Archived ${r.updated}`); } catch (er) { fail(er); } };
+    await refresh();
+  },
+
   async team() {
     if (ME.role !== 'admin') { location.hash = 'today'; return; }
     const { reps } = await api('/reps'); REPS = reps; fillView();
@@ -382,7 +450,7 @@ async function route() {
 (async () => {
   try { [ME, K] = await Promise.all([api('/me'), api('/content')]); }
   catch (e) { view.innerHTML = `<div class="err">${esc(e.message)}</div>`; return; }
-  $('#who').textContent = ME.name; $('#navTeam').hidden = ME.role !== 'admin';
+  $('#who').textContent = ME.name; $('#navTeam').hidden = ME.role !== 'admin'; $('#navLeads').hidden = ME.role !== 'admin';
   if (ME.role === 'admin') {
     try { VIEW = localStorage.getItem('rep.view') || ''; } catch { VIEW = ''; }
     try { REPS = (await api('/reps')).reps; } catch { REPS = []; }
