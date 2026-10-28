@@ -85,6 +85,17 @@ const shape = (a) => a && ({ ...a, onboarding: obj(a.onboarding), audit: obj(a.a
 const who = (me, col, view = null) => !isAdmin(me) ? { sql: `${col} = ?`, args: [me.email] } : view ? { sql: `${col} = ?`, args: [view] } : { sql: '1 = 1', args: [] };
 const scope = (me, alias = '', view = null) => who(me, `${alias}owner_email`, view);
 
+// A lead can change hands, and its history stays with it. A rep who inherits one sees what happened, never who the earlier
+// rep or the admin was: no rep_email on any row, and an "Assigned to X" note reads "you" for the rep it names and a plain
+// "Reassigned" for anyone else. An admin sees everything as written.
+const redact = (me, r) => {
+  if (isAdmin(me)) return r;
+  const strip = ({ rep_email, ...row }) => row;
+  return { ...r,
+    activities: r.activities.map((x) => ({ ...strip(x), ...(x.kind === 'note' && x.body.startsWith('Assigned to ') ? { body: x.body === 'Assigned to ' + me.name ? 'Assigned to you' : 'Reassigned' } : {}) })),
+    tasks: r.tasks.map(strip), calls: r.calls.map(strip), deals: r.deals.map(strip) };
+};
+
 /* ---------- routes ---------- */
 const ACCOUNT_FIELDS = { business: (v) => str(v, 160, 'Business name', { required: true }), niche: (v) => str(v, 80, 'Niche') ?? '', website, phone, email,
   address: (v) => str(v, 200, 'Address'), city: (v) => str(v, 80, 'City'), state: (v) => str(v, 40, 'State'), zip: (v) => str(v, 20, 'ZIP'),
@@ -189,7 +200,8 @@ async function api(req, env, me, path, m) {
         D.prepare('SELECT * FROM calls WHERE account_id = ? ORDER BY created_at DESC LIMIT 50').bind(a.id),
         D.prepare('SELECT * FROM deals WHERE account_id = ? ORDER BY closed_at DESC').bind(a.id),
       ]);
-      return { account: shape(a), contacts: contacts.results, activities: acts.results, tasks: tasks.results, calls: calls.results, deals: deals.results };
+      const r = redact(me, { activities: acts.results, tasks: tasks.results, calls: calls.results, deals: deals.results });
+      return { account: shape(a), contacts: contacts.results, ...r };
     }
     if (m === 'PATCH' && seg.length === 2) {
       const b = await body(req), set = {}, t = now();
@@ -323,7 +335,7 @@ async function api(req, env, me, path, m) {
       await D.batch([
         D.prepare('INSERT INTO deals (id, account_id, rep_email, level, price_cents, price_is_draft, notes, closed_at, mix) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(id, a.id, a.owner_email, lvl.level, price, C.PRICES.isFinal ? 0 : 1, notes, t, mix && JSON.stringify(mix)),
         D.prepare("UPDATE accounts SET stage = 'onboarding', updated_at = ?, last_touch_at = ? WHERE id = ?").bind(t, t, a.id),
-        D.prepare("INSERT INTO activities (id, account_id, rep_email, kind, body, created_at) VALUES (?, ?, ?, 'deal', ?, ?)").bind(uid(), a.id, me.email, `Closed: ${lvl.label}, ${(price / 100).toFixed(2)}${C.PRICES.isFinal ? '' : ' (draft price)'}${mix ? `, mix ${mix.minutes} min and ${mix.texts} texts` : ''}`, t),
+        D.prepare("INSERT INTO activities (id, account_id, rep_email, kind, body, created_at) VALUES (?, ?, ?, 'deal', ?, ?)").bind(uid(), a.id, me.email, `Closed: ${lvl.label}, $${(price / 100).toFixed(2)}${C.PRICES.isFinal ? '' : ' (draft price)'}${mix ? `, mix ${mix.minutes} min and ${mix.texts} texts` : ''}`, t),
         D.prepare("INSERT INTO tasks (id, account_id, rep_email, kind, title, due_at, status, created_at) VALUES (?, ?, ?, 'onboarding', 'Fill in the onboarding details with the owner', ?, 'open', ?)").bind(uid(), a.id, a.owner_email, addDays(t, 1), t),
         audit(env, me.email, 'create', 'deal', id, null, { level: lvl.level, price_cents: price, ...(mix ? { mix } : {}) }),
       ]);
