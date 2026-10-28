@@ -11,7 +11,7 @@ export const MIX = {
   textsPerThread: 3,        // one conversation per 3 texts, on every plan
   fixedUnits: 68000,        // $6.80 per number a month
   reserveNum: 108, reserveDen: 100, // custom quotes keep an 8% reserve (CREDIT-ALLOWANCE-MODEL section 7)
-  minMinutes: 60, minTexts: 500,    // floors; the slider range stops where either would break
+  minMinutes: 0, minTexts: 0,       // no floors (Christian 2026-10-28): the slider runs from all texts to all calls
   minuteStep: 10, textStep: 100, threadStep: 10,
   overage: { minuteCents: 40, textCents: 3 }, // shown on the quote sheet only; the slider never touches overage (Christian 2026-10-27)
   positions: 100,           // slider runs 0 (all texts) to 100 (all calls): the share of the budget spent on voice, in percent
@@ -47,15 +47,16 @@ export function mixAt(units, p) {
 
 /**
  * Every slider step for an allowance. Matched plans snap to the published quantities at their own position, returned directly
- * rather than recomputed. `lo` and `hi` bound the range where the minute and text floors both hold.
+ * rather than recomputed. `lo` and `hi` bound the range where the floors hold; with none they are 0 and 100.
  */
 export function mixSteps(allowanceCents, numbers = 1) {
   const { plan, units } = budgetFor(allowanceCents, numbers);
+  if (units <= 0) return null; // no allowance, nothing to split
   const def = plan ? Math.round((MIX.positions * plan.minutes * MIX.minuteUnits) / units) : MIX.customDefaultPosition;
   const steps = [];
   for (let p = 0; p <= MIX.positions; p++) steps.push({ p, ...(plan && p === def ? { minutes: plan.minutes, texts: plan.texts, threads: plan.threads } : mixAt(units, p)) });
   const ok = steps.filter((s) => s.minutes >= MIX.minMinutes && s.texts >= MIX.minTexts);
-  if (!ok.length) return null; // an allowance this small has no mix that meets both floors
+  if (!ok.length) return null; // no allowance, so nothing to split
   const lo = ok[0].p, hi = ok[ok.length - 1].p;
   return {
     plan: plan ? plan.key : null, budgetUnits: units, defaultPosition: Math.min(Math.max(def, lo), hi), lo, hi,
