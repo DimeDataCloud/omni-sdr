@@ -24,7 +24,7 @@ export const PAY = {
   note: "You earn 50% of the pay pool every month the client stays: the price minus payment fees and the client's credit allowance (their usage budget at our cost). Sales tax is added to the client's bill, so it never comes out of your pay. All figures are draft until prices are final.",
   table: [
     { plan: 'Pilot or Standard ($499)', allowance: '$175', each: 'about $151' },
-    { plan: 'Bigger pilot (you set it, above $499)', allowance: '35% of the price', each: 'half of what is left after fees and allowance' },
+    { plan: 'Bigger pilot (you set it, above $499)', allowance: '35% of the price, at least $330 from $899', each: 'half of what is left after fees and allowance' },
     { plan: 'Lite ($299)', allowance: '$105', each: 'about $90' },
     { plan: 'Plus ($899)', allowance: '$330', each: 'about $264' },
     { plan: 'Agency ($999 a month and up)', allowance: 'Built per quote', each: '$150 for the first location, $100 for each added one' },
@@ -33,9 +33,11 @@ export const PAY = {
 // Pilot pricing (Christian 2026-10-27): $499 floor, the rep sets any price above it, and the credit allowance is 35% of
 // price rounded to $5 (the confirmed rule; $175 at $499). Fees use the card gross-up from CREDIT-ALLOWANCE-MODEL (about 4.54%).
 // maxCents only catches typos; a bigger job is an agency or custom quote for Christian.
-export const PILOT = { minCents: 49900, maxCents: 500000, allowanceRate: 0.35, feeRate: 0.0454 };
+// Christian 2026-10-27: from $899 (the Plus price) the allowance is at least $330, the Plus allowance; 35% takes over above $943.
+export const PILOT = { minCents: 49900, maxCents: 500000, allowanceRate: 0.35, feeRate: 0.0454, plusFromCents: 89900, plusAllowanceCents: 33000 };
 export function pilotSplit(priceCents) {
-  const allowanceCents = Math.round((priceCents * PILOT.allowanceRate) / 500) * 500;
+  const rate = Math.round((priceCents * PILOT.allowanceRate) / 500) * 500;
+  const allowanceCents = priceCents >= PILOT.plusFromCents ? Math.max(rate, PILOT.plusAllowanceCents) : rate;
   const eachCents = Math.round((priceCents - priceCents * PILOT.feeRate - allowanceCents) / 2);
   return { allowanceCents, eachCents };
 }
