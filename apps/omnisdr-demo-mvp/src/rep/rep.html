@@ -40,6 +40,7 @@ dialog{border:1px solid var(--line);border-radius:16px;background:var(--surface)
 main>.card,main>section.card,main>.grid{margin-bottom:16px}
 .tpl{white-space:pre-wrap;overflow-wrap:anywhere;margin:0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);font:inherit;user-select:text}
 .est{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}.tight{margin:0;padding-left:20px}
+.viewbar{margin:-8px 0 16px}.viewbar select{width:auto;min-width:200px}.sel{width:44px}
 ol.path{margin:0;padding-left:22px;display:grid;gap:10px}ol.path li b{display:block}ol.path li span{display:block;max-width:72ch}
 </style></head>
 <body><div class="wrap">
@@ -47,6 +48,7 @@ ol.path{margin:0;padding-left:22px;display:grid;gap:10px}ol.path li b{display:bl
 <nav class="main" id="nav" aria-label="Rep portal">
   <a href="#today">Today</a><a href="#calls">Call Room</a><a href="#pipeline">Pipeline</a><a href="#accounts">Accounts</a><a href="#calendar">Calendar</a><a href="#deals">My deals</a><a href="#playbook">Playbook</a><a href="#kit">Toolkit</a><a href="#how">How it works</a><a href="#team" hidden id="navTeam">Team</a>
 </nav>
+<div class="row viewbar" id="viewbar" hidden><label for="vw">Viewing</label><select id="vw"></select></div>
 <main id="view" aria-live="polite"><p class="muted">Loading…</p></main>
 </div>
 <div class="toast" id="toast" role="status" hidden></div>
@@ -56,8 +58,13 @@ const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [..
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const view = $('#view');
 let ME = null, K = null; // who is signed in; content (prices, playbook, stages)
+// Admin only: the team list and whose data the screens show ('' = everyone). Reps always see only their own; the server enforces it.
+let REPS = [], VIEW = '';
+const repName = (e) => (REPS.find((r) => r.email === e) || {}).name || e;
+const repOptions = (sel, onlyActive = true) => REPS.filter((r) => !onlyActive || r.active).map((r) => `<option value="${esc(r.email)}"${r.email === sel ? ' selected' : ''}>${esc(r.name)}${r.email === ME.email ? ' (you)' : ''}</option>`).join('');
 
 async function api(path, { method = 'GET', body, raw = false } = {}) {
+  if (method === 'GET' && VIEW) path += (path.includes('?') ? '&' : '?') + 'owner=' + encodeURIComponent(VIEW);
   const r = await fetch('/rep/api' + path, { method, credentials: 'same-origin', headers: { 'x-rep': '1', ...(body ? { 'content-type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
   if (raw && r.ok) return r;
   const j = await r.json().catch(() => ({ message: 'The server sent something unexpected.' }));
@@ -176,8 +183,9 @@ const screens = {
     view.innerHTML = `<h1>Accounts</h1><p class="sub">Every business you are working, prospect to live.</p>
       <div class="card stack"><div class="row"><input class="grow" id="q" type="search" placeholder="Search name, niche, city or phone" aria-label="Search accounts">
         <select id="st" aria-label="Stage" class="grow"><option value="">All stages</option>${K.stages.map((s) => `<option value="${s}">${STAGE_LABEL[s]}</option>`).join('')}</select></div>
-        <div class="row"><button class="btn" id="add">New account</button><label class="btn ghost" for="csv">Import CSV</label><input id="csv" type="file" accept=".csv,text/csv" class="sr"><button class="btn ghost" id="exp">Export CSV</button></div>
-        <div class="tbl"><table><thead><tr><th>Business</th><th>Stage</th><th>Next</th><th>Phone</th></tr></thead><tbody id="rows"></tbody></table></div></div>
+        <div class="row"><button class="btn" id="add">New account</button><label class="btn ghost" for="csv">Import CSV</label><input id="csv" type="file" accept=".csv,text/csv" class="sr"><button class="btn ghost" id="exp">Export CSV</button>${ME.role === 'admin' ? `<label for="impOwner" class="muted">Import for</label><select id="impOwner" class="grow">${repOptions(ME.email)}</select>` : ''}</div>
+        ${ME.role === 'admin' ? `<div class="row" id="bulk" hidden><b id="selN"></b><label for="assignTo" class="muted">Assign to</label><select id="assignTo" class="grow">${repOptions(VIEW && VIEW !== ME.email ? VIEW : '')}</select><button class="btn" id="doAssign">Assign</button><button class="btn ghost" id="selNone">Clear</button></div>` : ''}
+        <div class="tbl"><table><thead><tr>${ME.role === 'admin' ? '<th class="sel"><input type="checkbox" id="selAll" aria-label="Select all"></th>' : ''}<th>Business</th><th>Stage</th><th>Next</th><th>Phone</th>${ME.role === 'admin' ? '<th>Rep</th>' : ''}</tr></thead><tbody id="rows"></tbody></table></div></div>
       <dialog id="dlg"><form id="nf" class="stack"><h2>New account</h2><div class="fields">
         <div class="full"><label for="nb">Business name</label><input id="nb" name="business" required maxlength="160"></div>
         <div><label for="nn">Niche</label><input id="nn" name="niche" maxlength="80" placeholder="Remodeler, HVAC, med spa"></div>
@@ -188,19 +196,28 @@ const screens = {
         <div><label for="ns">State</label><input id="ns" name="state" maxlength="40"></div>
         <div class="full"><label for="ng">Why we are calling (the signal)</label><input id="ng" name="signal" maxlength="300" placeholder="Form went unanswered 6 hours on a Tuesday"></div>
       </div><div class="row"><button class="btn">Save</button><button class="btn ghost" type="button" id="cx">Cancel</button></div></form></dialog>`;
+    const admin = ME.role === 'admin', picked = new Set();
+    const syncSel = () => { if (!admin) return; $$('[data-sel]').forEach((c) => (c.checked = picked.has(c.dataset.sel))); $('#bulk').hidden = !picked.size; $('#selN').textContent = picked.size + ' selected'; };
     const load = async () => {
       const p = new URLSearchParams(); if ($('#q').value.trim()) p.set('q', $('#q').value.trim()); if ($('#st').value) p.set('stage', $('#st').value);
       const { accounts } = await api('/accounts?' + p);
-      $('#rows').innerHTML = accounts.length ? accounts.map((a) => `<tr data-id="${esc(a.id)}"><td><a class="lnk" href="#account/${esc(a.id)}">${esc(a.business)}</a><br><small class="muted">${esc([a.niche, a.city].filter(Boolean).join(' · '))}</small></td><td>${STAGE_LABEL[a.stage]}</td><td>${esc(a.next_step)}<br><small class="muted">${when(a.next_action_at)}</small></td><td>${esc(a.phone)}</td></tr>`).join('') : '<tr><td colspan="4" class="muted">No accounts match.</td></tr>';
+      $('#rows').innerHTML = accounts.length ? accounts.map((a) => `<tr data-id="${esc(a.id)}">${admin ? `<td class="sel"><input type="checkbox" data-sel="${esc(a.id)}" aria-label="Select ${esc(a.business)}"></td>` : ''}<td><a class="lnk" href="#account/${esc(a.id)}">${esc(a.business)}</a><br><small class="muted">${esc([a.niche, a.city].filter(Boolean).join(' · '))}</small></td><td>${STAGE_LABEL[a.stage]}</td><td>${esc(a.next_step)}<br><small class="muted">${when(a.next_action_at)}</small></td><td>${esc(a.phone)}</td>${admin ? `<td>${esc(repName(a.owner_email))}</td>` : ''}</tr>`).join('') : `<tr><td colspan="${admin ? 6 : 4}" class="muted">No accounts match.</td></tr>`; syncSel();
     };
     let tq; $('#q').oninput = () => { clearTimeout(tq); tq = setTimeout(() => load().catch(fail), 250); }; $('#st').onchange = () => load().catch(fail);
-    $('#rows').onclick = (e) => { const tr = e.target.closest('tr[data-id]'); if (tr && !e.target.closest('a')) location.hash = 'account/' + tr.dataset.id; };
+    $('#rows').onclick = (e) => { const c = e.target.closest('[data-sel]'); if (c) { c.checked ? picked.add(c.dataset.sel) : picked.delete(c.dataset.sel); syncSel(); return; }
+      const tr = e.target.closest('tr[data-id]'); if (tr && !e.target.closest('a')) location.hash = 'account/' + tr.dataset.id; };
+    if (admin) {
+      $('#selAll').onchange = (e) => { $$('[data-sel]').forEach((c) => (e.target.checked ? picked.add(c.dataset.sel) : picked.delete(c.dataset.sel))); syncSel(); };
+      $('#selNone').onclick = () => { picked.clear(); $('#selAll').checked = false; syncSel(); };
+      $('#doAssign').onclick = async () => { const to = $('#assignTo').value; if (!to) return toast('Pick a rep');
+        try { const r = await api('/assign', { method: 'POST', body: { accountIds: [...picked], owner: to } }); toast(`Assigned ${r.assigned} to ${repName(to)}`); picked.clear(); $('#selAll').checked = false; await load(); } catch (er) { fail(er); } };
+    }
     $('#add').onclick = () => $('#dlg').showModal(); $('#cx').onclick = () => $('#dlg').close();
     $('#nf').onsubmit = async (e) => { e.preventDefault(); const f = form(e.target);
       try { const r = await api('/accounts', { method: 'POST', body: { ...f, contact: f.contact ? { name: f.contact } : null } }); $('#dlg').close(); location.hash = 'account/' + r.account.id; } catch (er) { fail(er); } };
     $('#csv').onchange = async (e) => { const file = e.target.files[0]; e.target.value = ''; if (!file) return;
       if (file.size > 500000) return toast('That file is over 500 KB. Split it.');
-      try { const r = await api('/import', { method: 'POST', body: { csv: await file.text() } });
+      try { const r = await api('/import', { method: 'POST', body: { csv: await file.text(), ...(admin ? { owner: $('#impOwner').value } : {}) } });
         if (r.errors.length) toast(`Nothing imported. Row ${r.errors[0].row}: ${r.errors[0].message}` + (r.errors.length > 1 ? ` (+${r.errors.length - 1} more)` : '')); else { toast(`Imported ${r.imported}`); load(); }
       } catch (er) { fail(er); } };
     $('#exp').onclick = async () => { try { const r = await api('/export.csv', { raw: true }); const url = URL.createObjectURL(await r.blob()); const a = Object.assign(document.createElement('a'), { href: url, download: 'omnisdr-accounts.csv' }); a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); } catch (er) { fail(er); } };
@@ -218,7 +235,7 @@ const screens = {
         <div class="full"><label for="f_next">Next action</label><input id="f_next" name="next_action_at" type="datetime-local" value="${local(a.next_action_at)}"></div>
         <div class="full"><label for="f_notes">Notes</label><textarea id="f_notes" name="notes" rows="4" maxlength="4000">${esc(a.notes)}</textarea></div>
         </div><div class="row"><button class="btn">Save</button>${a.stage !== 'lost' ? '<button class="btn ghost" type="button" id="lost">Mark lost</button>' : ''}</div></form>
-        <div class="stack"><section class="card"><h2>People</h2><ul class="list" id="ppl">${d.contacts.map((c) => `<li><div class="t">${esc(c.name)}${c.is_primary ? ' <span class="pill">Primary</span>' : ''}<small>${esc([c.role, c.phone, c.email].filter(Boolean).join(' · '))}</small></div><button class="btn ghost sm" data-del="${esc(c.id)}">Remove</button></li>`).join('') || '<li class="muted">No one yet.</li>'}</ul>
+        <div class="stack">${ME.role === 'admin' ? `<section class="card stack"><h2>Rep</h2><div class="row"><select id="own" class="grow" aria-label="Rep for this account">${repOptions(a.owner_email)}</select><button class="btn ghost" type="button" id="ownGo">Assign</button></div></section>` : ''}<section class="card"><h2>People</h2><ul class="list" id="ppl">${d.contacts.map((c) => `<li><div class="t">${esc(c.name)}${c.is_primary ? ' <span class="pill">Primary</span>' : ''}<small>${esc([c.role, c.phone, c.email].filter(Boolean).join(' · '))}</small></div><button class="btn ghost sm" data-del="${esc(c.id)}">Remove</button></li>`).join('') || '<li class="muted">No one yet.</li>'}</ul>
           <form id="cf" class="fields"><div><label for="c_n">Name</label><input id="c_n" name="name" required maxlength="120"></div><div><label for="c_r">Role</label><input id="c_r" name="role" maxlength="80" placeholder="Owner, office manager"></div>
           <div><label for="c_p">Phone</label><input id="c_p" name="phone" type="tel"></div><div><label for="c_e">Email</label><input id="c_e" name="email" type="email"></div>
           <div class="full row"><label class="row"><input type="checkbox" name="isPrimary" class="cb"> Primary contact</label><button class="btn ghost">Add person</button></div></form></section>
@@ -242,6 +259,7 @@ const screens = {
     const save = (body, msg) => api('/accounts/' + a.id, { method: 'PATCH', body }).then(() => { toast(msg); route(); }, fail);
     $('#ef').onsubmit = (e) => { e.preventDefault(); const f = form(e.target); f.next_action_at = fromLocal(f.next_action_at); save(f, 'Saved'); };
     if ($('#lost')) $('#lost').onclick = () => save({ stage: 'lost' }, 'Marked lost');
+    if ($('#ownGo')) $('#ownGo').onclick = () => api('/assign', { method: 'POST', body: { accountIds: [a.id], owner: $('#own').value } }).then(() => { toast('Assigned to ' + repName($('#own').value)); route(); }, fail);
     $('#of').onsubmit = (e) => { e.preventDefault(); save({ onboarding: form(e.target) }, 'Onboarding saved'); };
     const est = () => { $('#est').textContent = lostJobs($('#u_jobValue').value, $('#u_missed').value); };
     $('#af').oninput = est; est();
@@ -336,15 +354,22 @@ const screens = {
 
   async team() {
     if (ME.role !== 'admin') { location.hash = 'today'; return; }
-    const { reps } = await api('/reps');
-    view.innerHTML = `<h1>Team</h1><p class="sub">Who can sign in. They also need to be on the Cloudflare Access list.</p><div class="grid two">
+    const { reps } = await api('/reps'); REPS = reps; fillView();
+    const n = (r, k) => r.stats.stages[k] || 0;
+    view.innerHTML = `<h1>Team</h1><p class="sub">Each rep sees only their own leads. Hand leads out on the Accounts screen, and use Viewing to see one rep's screens.</p>
+      <section class="card"><div class="tbl"><table><thead><tr><th>Rep</th><th>Leads</th><th>New</th><th>Demo booked</th><th>Proposed</th><th>Onboarding or live</th><th>Open tasks</th><th>Calls, 7 days</th><th>Deals</th><th>Sold</th><th></th></tr></thead><tbody>${reps.filter((r) => r.active).map((r) => `<tr><td>${esc(r.name)}</td><td>${r.stats.leads}</td><td>${n(r, 'new')}</td><td>${n(r, 'results_call')}</td><td>${n(r, 'proposed')}</td><td>${n(r, 'onboarding') + n(r, 'live')}</td><td>${r.stats.openTasks}</td><td>${r.stats.calls7d}</td><td>${r.stats.deals}</td><td>${money(r.stats.soldCents)}</td><td><button class="btn ghost sm" data-view="${esc(r.email)}">View as</button></td></tr>`).join('')}</tbody></table></div></section>
+      <p class="note">New reps also need their email on the Cloudflare Access "Reps" policy before they can sign in.</p><div class="grid two">
       <section class="card"><ul class="list" id="reps">${reps.map((r) => `<li><div class="t">${esc(r.name)} <span class="pill${r.active ? '' : ' bad'}">${r.active ? esc(r.role) : 'off'}</span><small>${esc(r.email)}</small></div>${r.email === ME.email ? '' : `<button class="btn ghost sm" data-e="${esc(r.email)}" data-a="${r.active ? 0 : 1}">${r.active ? 'Turn off' : 'Turn on'}</button>`}</li>`).join('')}</ul></section>
       <form class="card" id="rf"><h2>Add a rep</h2><label for="r_n">Name</label><input id="r_n" name="name" required maxlength="80"><label for="r_e">Email they sign in with</label><input id="r_e" name="email" type="email" required>
         <label for="r_r">Role</label><select id="r_r" name="role"><option value="rep">Rep</option><option value="admin">Admin</option></select><p><button class="btn">Add</button></p></form></div>`;
+    view.querySelector('.tbl').onclick = (e) => { const b = e.target.closest('[data-view]'); if (b) { setView(b.dataset.view); location.hash = 'accounts'; } };
     $('#reps').onclick = (e) => { const b = e.target.closest('[data-e]'); if (b) api('/reps/' + encodeURIComponent(b.dataset.e), { method: 'PATCH', body: { active: b.dataset.a === '1' } }).then(() => { toast('Updated'); route(); }, fail); };
     $('#rf').onsubmit = (e) => { e.preventDefault(); api('/reps', { method: 'POST', body: form(e.target) }).then(() => { toast('Added'); route(); }, fail); };
   },
 };
+
+function fillView() { if (ME.role !== 'admin') return; $('#vw').innerHTML = `<option value="">All reps</option>${repOptions(VIEW, false)}`; $('#vw').value = VIEW; }
+function setView(v) { VIEW = v; try { localStorage.setItem('rep.view', v); } catch {} fillView(); }
 
 async function route() {
   const [name, arg] = (location.hash.slice(1) || 'today').split('/');
@@ -358,6 +383,13 @@ async function route() {
   try { [ME, K] = await Promise.all([api('/me'), api('/content')]); }
   catch (e) { view.innerHTML = `<div class="err">${esc(e.message)}</div>`; return; }
   $('#who').textContent = ME.name; $('#navTeam').hidden = ME.role !== 'admin';
+  if (ME.role === 'admin') {
+    try { VIEW = localStorage.getItem('rep.view') || ''; } catch { VIEW = ''; }
+    try { REPS = (await api('/reps')).reps; } catch { REPS = []; }
+    if (VIEW && !REPS.some((r) => r.email === VIEW)) VIEW = '';
+    fillView(); $('#viewbar').hidden = false;
+    $('#vw').onchange = () => { setView($('#vw').value); route(); };
+  }
   addEventListener('hashchange', route); route();
 })();
 </script>
