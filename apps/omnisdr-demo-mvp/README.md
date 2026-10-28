@@ -7,7 +7,7 @@ Cloudflare Worker, no build step, no paid services. Built to the Omni-SDR suite 
   A scripted intake agent (9-step shape from the competitor reels) with typed input, optional browser mic, optional agent voice
   (browser speech synthesis). Shows captured fields, simulated owner text, simulated booking. Second tab simulates speed-to-lead
   texts (first text in seconds, stops on reply, booking or STOP). Nothing is ever really sent.
-- `/dev` dev portal: passcode login, sessions today vs cap, spend estimate, kill switch, recent sessions, system checks, tenant config,
+- `/tryme/dev` dev portal (`/dev` redirects): passcode login, sessions today vs cap, spend estimate, kill switch, recent sessions, system checks, tenant config,
   Engine B spike checklist.
 - `/api/token` mints a constrained Gemini Live ephemeral token. OFF by default (`ENGINE_B=0`); the mint is verified against the live API.
   The browser audio client for Engine B does not exist yet. See `ENGINE-BUILD.md` (the spec) and `HANDOFF.md` (where everything lives).

@@ -1,0 +1,43 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow"><meta name="theme-color" content="#F7F5F0"><title>Omni-SDR</title>
+<style nonce="__NONCE__">__CSS__
+.entry{min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:16px}
+.intro{display:flex;flex-direction:column;gap:12px;width:min(340px,100%);animation:introOut .3s ease 1.2s forwards}
+.b{max-width:80%;padding:12px 16px;border-radius:18px;font-size:18px;line-height:26px;opacity:0;transform:translateY(12px) scale(.96);animation:pop .35s ease forwards}
+.b.in{align-self:flex-start;background:var(--surface);border:1px solid var(--line)}
+.b.out{align-self:flex-end;background:var(--fill);color:#1A1A1A;animation-delay:.6s}
+.b.in{animation-delay:.1s}
+.dots{align-self:flex-end;display:flex;gap:5px;padding:0 8px;opacity:0;animation:dots .5s ease .3s forwards}.dots i{width:7px;height:7px;border-radius:50%;background:var(--control);animation:hop .5s ease infinite alternate}.dots i:nth-child(2){animation-delay:.12s}.dots i:nth-child(3){animation-delay:.24s}
+.panel{width:min(400px,100%);opacity:0;pointer-events:none;position:absolute}
+.panel.on{position:static}
+body.skip .intro,body.skip .panel,.entry.done .intro{display:none}
+.panel{animation:panelIn .35s ease 1.5s forwards}
+body.skip .panel,.entry.done .panel{animation:none;opacity:1;pointer-events:auto;position:static}
+.panel .card{padding:24px}.u-mb12{margin-bottom:12px}.u-mt12{margin-top:12px}.u-full-mt18{width:100%;margin-top:18px}
+.choices{display:grid;gap:12px;margin-top:16px}
+a.choice{display:block;padding:20px;border-radius:16px;border:1px solid var(--line);background:var(--surface);color:var(--text);text-decoration:none;min-height:88px}
+a.choice:hover{border-color:var(--ink)}a.choice b{display:block;font-size:20px;line-height:28px}a.choice span{color:var(--muted)}
+.out-row{margin-top:16px;text-align:center}
+@keyframes pop{to{opacity:1;transform:none}}@keyframes dots{0%{opacity:0}30%{opacity:1}100%{opacity:0}}@keyframes hop{to{transform:translateY(-5px)}}
+@keyframes introOut{to{opacity:0}}@keyframes panelIn{to{opacity:1;pointer-events:auto}}
+@media (prefers-reduced-motion:reduce){.intro{display:none}.panel{animation:none;opacity:1;pointer-events:auto;position:static}}
+</style></head><body data-mode="__MODE__"><div class="entry" id="entry">
+<div class="intro" aria-hidden="true"><div class="b in">Hi, anyone there?</div><div class="dots"><i></i><i></i><i></i></div><div class="b out">Right here. Tell me what you need.</div></div>
+<div class="panel" id="panel">__PANEL__</div>
+</div>
+<script nonce="__NONCE__">
+(function(){'use strict';
+var b=document.body,e=document.getElementById('entry');
+function skip(){e.classList.add('done');var i=document.getElementById('pc');if(i)i.focus()}
+if(b.getAttribute('data-mode')==='portal'){e.classList.add('done')}
+else{document.addEventListener('keydown',skip,{once:true});document.addEventListener('pointerdown',skip,{once:true})}
+var f=document.getElementById('lf');
+if(f){var er=document.getElementById('le'),p=document.getElementById('pc');
+f.addEventListener('submit',function(ev){ev.preventDefault();er.hidden=true;
+fetch('/api/sales/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({passcode:p.value})})
+.then(function(r){return r.json().then(function(j){if(r.ok&&j.ok){p.value='';location.reload()}else{er.textContent=j.message||'Could not sign in.';er.hidden=false}})})
+.catch(function(){er.textContent='Could not reach the server.';er.hidden=false})})}
+var so=document.getElementById('so');
+if(so)so.addEventListener('click',function(){fetch('/api/sales/logout',{method:'POST',headers:{'content-type':'application/json'},body:'{}'}).then(function(){location.reload()})});
+})();
+</script></body></html>

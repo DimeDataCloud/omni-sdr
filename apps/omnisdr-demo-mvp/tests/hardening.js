@@ -65,6 +65,15 @@ const post = (u, b, h = {}) => fetch(BASE + u, { method: 'POST', headers: { ...J
   ok('logout revokes the session server-side', (await fetch(BASE + '/api/dev/stats', { headers: { cookie: ck } })).status === 401);
   ok('healthz does not leak kill state', !/kill/.test(await (await fetch(BASE + '/healthz')).text()));
   ok('unauthenticated /api/dev/me is 200 with authed:false', (await (await fetch(BASE + '/api/dev/me')).json()).authed === false);
+  // route move: demo at /tryme, dev portal at /tryme/dev, old paths redirect (302, query kept), /api/* untouched
+  const nf = (u) => fetch(BASE + u, { redirect: 'manual' });
+  for (const [from, to] of [['/dev', '/tryme/dev'], ['/dev?x=y&z=1', '/tryme/dev?x=y&z=1']]) { const r = await nf(from); ok('redirect ' + from, r.status === 302 && r.headers.get('location') === to, r.status + ' ' + r.headers.get('location')); }
+  const t1 = await nf('/tryme'); ok('/tryme serves the demo', t1.status === 200 && /id="start"/.test(await t1.text()));
+  const t2 = await nf('/tryme/dev'); ok('/tryme/dev serves the dev portal', t2.status === 200 && /id="pc"/.test(await t2.text()));
+  ok('/tryme/ and /tryme/x are not pages', (await nf('/tryme/x')).status === 404);
+  ok('/api/lead still answers on POST', (await post('/api/lead', { tenant: 'riverbend', name: 'Sam' })).status === 200);
+  ok('/api/dev/stats still 401 without cookie', (await nf('/api/dev/stats')).status === 401);
+  ok('/api/dev/login still 401 on a wrong passcode', (await post('/api/dev/login', { passcode: 'wrong' }, { 'cf-connecting-ip': '67.7.7.7' })).status === 401);
   let f = 0; for (const [s, n, d] of R) { if (s === 'FAIL') f++; console.log(s, n, d ? '— ' + d : ''); }
   console.log(`\n${R.length - f}/${R.length} passed`); process.exit(f ? 1 : 0);
 })().catch(e => { console.error('CRASH', e); process.exit(2); });

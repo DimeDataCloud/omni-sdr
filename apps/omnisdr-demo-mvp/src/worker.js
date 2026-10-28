@@ -2,6 +2,9 @@ import demoHtml from './demo.html';
 import devHtml from './dev.html';
 import CSS from './base.css';
 import LOGO from './logo.txt';
+import entryHtml from './entry.html';
+import salesDeckHtml from './sales-deck.html';
+import SLIDES from './sales-slides.js';
 import { TENANTS, DEFAULT_TENANT } from './tenant.js';
 import { buildInstruction, bookSlotTool } from './engine-instruction.js';
 
@@ -61,6 +64,8 @@ export class Gate {
     for (const [k, v] of await this.s.list({ prefix: 'ds:' })) if (v < now) await this.s.delete(k);
     for (const [k, v] of await this.s.list({ prefix: 'tok:' })) if (now - v > 2 * DAY) await this.s.delete(k);
     for (const [k, v] of await this.s.list({ prefix: 'lf:' })) if (v.until < now && now - v.last > 15 * 60000) await this.s.delete(k);
+    for (const [k, v] of await this.s.list({ prefix: 'sl:' })) if (v.until < now && now - v.last > 15 * 60000) await this.s.delete(k);
+    for (const [k, v] of await this.s.list({ prefix: 'ss:' })) if (v < now) await this.s.delete(k);
   }
   async fetch(req) {
     const b = await req.json(); const now = Date.now(); await this.purge(now); const s = this.s; const R = (o, st = 200) => json(o, st);
@@ -111,6 +116,17 @@ export class Gate {
       case 'lok': await s.delete('lf:' + b.ip); return R({ ok: true });
       case 'dscreate': await s.put('ds:' + b.id, now + 8 * 3600000); return R({ ok: true });
       case 'dscheck': { const e = await s.get('ds:' + b.id); return R({ ok: !!e && e > now }); }
+      // Sales deck: own keys (sl: throttle, ss: sessions), never shared with the dev login throttle (lf:/ds:) or the demo caps (day:/ip:).
+      case 'slcheck': {
+        const f = (await s.get('sl:' + b.ip)) || { n: 0, until: 0, last: 0 };
+        if (f.until > now) return R({ blocked: true });
+        f.n += 1; f.last = now; if (f.n >= 5) { f.until = now + 15 * 60000; f.n = 0; }
+        await s.put('sl:' + b.ip, f); return R({ blocked: false });
+      }
+      case 'slok': await s.delete('sl:' + b.ip); return R({ ok: true });
+      case 'sscreate': await s.put('ss:' + b.id, now + 8 * 3600000); return R({ ok: true });
+      case 'sscheck': { const e = await s.get('ss:' + b.id); return R({ ok: !!e && e > now }); }
+      case 'ssdelete': await s.delete('ss:' + b.id); return R({ ok: true });
       case 'dsdelete': await s.delete('ds:' + b.id); return R({ ok: true });
     }
     return R({ ok: false }, 400);
@@ -121,6 +137,29 @@ const gate = (env, op) => env.GATE.get(env.GATE.idFromName('main')).fetch('https
 /* ---------- auth ---------- */
 const cookie = (req, name) => (req.headers.get('cookie') || '').split(/;\s*/).map((c) => c.split('=')).find((p) => p[0] === name)?.[1];
 async function devAuthed(req, env) { const id = cookie(req, 'dev'); if (!id || !/^[a-f0-9]{64}$/.test(id)) return false; return (await gate(env, { op: 'dscheck', id })).ok === true; }
+
+async function salesAuthed(req, env) { const id = cookie(req, 'sales'); if (!id || !/^[a-f0-9]{64}$/.test(id)) return false; return (await gate(env, { op: 'sscheck', id })).ok === true; }
+// The deck copy is injected only here, after a valid session. '<' is escaped so slide text can never close the script tag.
+function deckPage(env) { return page(salesDeckHtml.replace('__SLIDES__', () => JSON.stringify(SLIDES).replace(/</g, '\\u003c')), env); }
+async function salesLogin(req, env, b) {
+  const ih = await ipHash(env, req);
+  if ((await gate(env, { op: 'slcheck', ip: ih })).blocked) return json({ ok: false, message: 'Too many attempts. Wait 15 minutes.' }, 429);
+  // Always run the compare, even with no secret set or a non-string input, so every wrong answer costs the same. An unset secret fails closed.
+  const given = typeof b.passcode === 'string' ? b.passcode : '', want = typeof env.SALES_PASSCODE === 'string' ? env.SALES_PASSCODE : '';
+  const same = await safeEqual(salt(env), given, want);
+  if (!(same && want !== '')) return json({ ok: false, message: 'Wrong passcode.' }, 401);
+  await gate(env, { op: 'slok', ip: ih });
+  const id = hex(crypto.getRandomValues(new Uint8Array(32)).buffer);
+  await gate(env, { op: 'sscreate', id });
+  return json({ ok: true }, 200, { 'set-cookie': 'sales=' + id + '; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=28800' });
+}
+
+const triedGated = (env) => !['off', '0', 'false', 'no'].includes(String(env.TRYME_GATED ?? '').trim().toLowerCase());
+const toEntry = () => new Response(null, { status: 302, headers: { location: '/', 'cache-control': 'no-store', 'x-robots-tag': 'noindex' } });
+const LOGIN_PANEL = '<div class="card"><h1>Hello</h1><p class="sub u-mb12">Enter the passcode to come in.</p><form id="lf"><label for="pc">Passcode</label><input id="pc" type="password" autocomplete="current-password" required><div id="le" class="err u-mt12" role="alert" hidden></div><button class="btn u-full-mt18" type="submit">Open</button></form></div>';
+const PORTAL_PANEL = '<div class="card"><h1>Where to?</h1><div class="choices"><a class="choice" href="/tryme"><b>Try me</b><span>Run the live demo.</span></a><a class="choice" href="/sales"><b>Sales</b><span>Open the sales deck.</span></a></div><div class="out-row"><button class="btn ghost" id="so" type="button">Sign out</button></div></div>';
+// The gate decision is made here, on the server. The animation and skip are cosmetic; the portal links are only sent with a valid session.
+function entryPage(authed, env) { return page(entryHtml.replace('__MODE__', authed ? 'portal' : 'login').replace('__PANEL__', () => (authed ? PORTAL_PANEL : LOGIN_PANEL)), env); }
 
 /* ---------- handlers ---------- */
 const publicTenant = (id) => { const t = TENANTS[id]; return { id: t.id, business: t.business, owner: t.owner, persona: t.persona, niche: t.niche, hours: t.hours, serviceZips: t.serviceZips, services: t.services, outOfScope: t.outOfScope, estimate: t.estimate, slots: t.slots, hot: t.hot, license: t.license }; };
@@ -204,8 +243,11 @@ export default {
   async fetch(req, env) {
     try {
       const u = new URL(req.url), p = u.pathname, m = req.method;
-      if (m === 'GET' && p === '/') return page(demoHtml, env);
-      if (m === 'GET' && p === '/dev') return page(devHtml, env);
+      if (m === 'GET' && p === '/tryme') return (!triedGated(env) || (await salesAuthed(req, env))) ? page(demoHtml, env) : toEntry();
+      if (m === 'GET' && p === '/tryme/dev') return page(devHtml, env);
+      if (m === 'GET' && p === '/dev') return new Response(null, { status: 302, headers: { location: '/tryme/dev' + u.search, 'cache-control': 'no-store', 'x-robots-tag': 'noindex' } });
+      if (m === 'GET' && p === '/') return entryPage(await salesAuthed(req, env), env);
+      if (m === 'GET' && p === '/sales') return (await salesAuthed(req, env)) ? deckPage(env) : toEntry();
       if (m === 'GET' && p === '/healthz') return json({ ok: true });
       if (m === 'GET' && p === '/robots.txt') return new Response('User-agent: *\nDisallow: /\n', { headers: { 'content-type': 'text/plain' } });
       if (m === 'GET' && p === '/api/dev/me') return json({ ok: true, authed: await devAuthed(req, env) });
@@ -219,6 +261,8 @@ export default {
         if (p === '/api/event') return logEvent(env, b);
         if (p === '/api/lead') return json(chasePlan(b));
         if (p === '/api/token') return mintToken(env, b);
+        if (p === '/api/sales/login') return salesLogin(req, env, b);
+        if (p === '/api/sales/logout') { const sid = cookie(req, 'sales'); if (sid && /^[a-f0-9]{64}$/.test(sid)) await gate(env, { op: 'ssdelete', id: sid }); return json({ ok: true }, 200, { 'set-cookie': 'sales=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0' }); }
         if (p === '/api/dev/login') {
           const ih = await ipHash(env, req);
           if ((await gate(env, { op: 'lcheck', ip: ih })).blocked) return json({ ok: false, message: 'Too many attempts. Wait 15 minutes.' }, 429);
