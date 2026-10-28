@@ -8,6 +8,7 @@ import LOGO from '../logo.txt';
 import { accessVerifier, AccessError, ACCESS_HEADER, identityFor } from './access.js';
 import { afterCall, RULES, STAGES, OUTCOMES, addDays } from './rules.js';
 import * as C from './content.js';
+import * as K from './toolkit.js';
 
 const json = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'content-type': 'application/json', 'cache-control': 'no-store', 'x-robots-tag': 'noindex', 'x-content-type-options': 'nosniff' } });
 class Bad extends Error { constructor(status, msg) { super(msg); this.status = status; } }
@@ -77,7 +78,8 @@ async function account(env, me, id) {
   if (!a || (!isAdmin(me) && a.owner_email !== me.email)) throw notFound('account'); // not 403: a rep cannot probe other reps' ids
   return a;
 }
-const shape = (a) => a && ({ ...a, onboarding: (() => { try { return JSON.parse(a.onboarding || '{}'); } catch { return {}; } })(), archived: !!a.archived });
+const obj = (v) => { try { const o = JSON.parse(v || '{}'); return o && typeof o === 'object' && !Array.isArray(o) ? o : {}; } catch { return {}; } };
+const shape = (a) => a && ({ ...a, onboarding: obj(a.onboarding), audit: obj(a.audit), archived: !!a.archived });
 const scope = (me, alias = '') => isAdmin(me) ? { sql: '1 = 1', args: [] } : { sql: `${alias}owner_email = ?`, args: [me.email] };
 
 /* ---------- routes ---------- */
@@ -135,7 +137,9 @@ async function api(req, env, me, path, m) {
   const s = scope(me);
 
   if (m === 'GET' && path === '/me') return { email: me.email, name: me.name, role: me.role };
-  if (m === 'GET' && path === '/content') return { prices: C.PRICES, pay: C.PAY, taxNote: C.TAX_NOTE, pricingGuide: C.PRICING_GUIDE, path: C.PATH, pathGate: C.PATH_GATE, how: C.HOW, objections: C.OBJECTIONS, method: C.OBJECTION_METHOD, never: C.NEVER_SAY, swaps: C.SWAPS, opener: C.OPENER, demoSteps: C.DEMO_STEPS, demoLimits: C.DEMO_LIMITS, onboarding: C.ONBOARDING_FIELDS, stages: STAGES, outcomes: OUTCOMES };
+  if (m === 'GET' && path === '/content') return { prices: C.PRICES, pay: C.PAY, taxNote: C.TAX_NOTE, pricingGuide: C.PRICING_GUIDE, path: C.PATH, pathGate: C.PATH_GATE, how: C.HOW, objections: C.OBJECTIONS, method: C.OBJECTION_METHOD, never: C.NEVER_SAY, swaps: C.SWAPS, opener: C.OPENER, demoSteps: C.DEMO_STEPS, demoLimits: C.DEMO_LIMITS, onboarding: C.ONBOARDING_FIELDS, stages: STAGES, outcomes: OUTCOMES,
+    templates: K.TEMPLATES, qualify: K.QUALIFY, discovery: K.DISCOVERY, auditSteps: K.AUDIT_STEPS, auditFields: K.AUDIT_FIELDS, resultsCall: K.RESULTS_CALL, resultsSay: K.RESULTS_SAY, resultsDont: K.RESULTS_DONT,
+    afterYes: K.AFTER_YES, safety: K.SAFETY, daily: K.DAILY, glossary: K.GLOSSARY, brand: K.BRAND, resources: K.RESOURCES };
 
   if (m === 'GET' && path === '/today') {
     await runRules(env, me);
@@ -188,6 +192,11 @@ async function api(req, env, me, path, m) {
         if (!b.onboarding || typeof b.onboarding !== 'object' || Array.isArray(b.onboarding)) throw bad('Onboarding must be an object');
         const o = {}; for (const f of C.ONBOARDING_FIELDS) { const v = str(b.onboarding[f.key], 1000, f.label); if (v) o[f.key] = v; }
         set.onboarding = JSON.stringify(o);
+      }
+      if ('audit' in b) {
+        if (!b.audit || typeof b.audit !== 'object' || Array.isArray(b.audit)) throw bad('Audit must be an object');
+        const o = {}; for (const f of K.AUDIT_FIELDS) { const v = str(b.audit[f.key], 1000, f.label); if (v) o[f.key] = v; }
+        set.audit = JSON.stringify(o);
       }
       if (!Object.keys(set).length) throw bad('Nothing to change');
       set.updated_at = t;
