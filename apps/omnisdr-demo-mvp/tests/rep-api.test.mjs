@@ -574,3 +574,49 @@ test('engine: add to accounts is deduped by phone, audited, owned by the admin, 
   assert.ok(DB.db.prepare("SELECT COUNT(*) n FROM audit WHERE action IN ('engine_add', 'engine_sweep', 'engine_dismiss')").get().n >= 3);
   assert.equal((await j(await call(DB, BOSS, '/rep/api/engine/jobs/' + job.id + '/add', { method: 'POST', body: {} }))).body.added, 0); // nothing staged is left
 });
+
+/* ---------- Lead Engine: single-link scan ---------- */
+const SITE = '<html><head><title>Hudson Plumbing | Hoboken Plumber</title></head><body>Call (973) 555-0177. 24/7 emergency plumbing, free estimates. 12 Main St, Hoboken, NJ 07030 <a href="/contact">Contact</a></body></html>';
+function fakeFetch(pages, log = []) {
+  return async (url, opts) => {
+    log.push({ url, ua: opts?.headers?.['user-agent'] });
+    const u = new URL(url);
+    if (u.pathname === '/robots.txt') return pages.robots == null ? new Response('', { status: 404 }) : new Response(pages.robots, { status: 200, headers: { 'content-type': 'text/plain' } });
+    const body = pages[u.pathname];
+    return body == null ? new Response('nf', { status: 404 }) : new Response(body, { status: 200, headers: { 'content-type': 'text/html' } });
+  };
+}
+const scanEnv = (pages, log) => ({ ENGINE_FETCH: fakeFetch(pages, log), ENGINE_GAP_MS: 0 });
+const doScan = (DB, who, url, env) => call(DB, who, '/rep/api/engine/scan', { method: 'POST', body: { url }, env });
+
+test('scan: admin only, bad and internal addresses refused, nothing fetched', async () => {
+  const DB = adminDb(), log = [];
+  assert.equal((await doScan(DB, A, 'https://hudson.example.test/', scanEnv({ '/': SITE }, log))).status, 403);
+  for (const u of ['', 'not a url', 'http://localhost/', 'http://127.0.0.1/', 'https://10.0.0.5/', 'https://example.test:8443/', 'https://user:pw@example.test/', 'https://intranet.internal/', 'https://[::1]/', 'ftp://example.test/'])
+    assert.equal((await doScan(DB, BOSS, u, scanEnv({ '/': SITE }, log))).status, 400, u);
+  assert.equal(log.length, 0);
+});
+
+test('scan: reads a site politely, stages the lead, dedupes, and Add works', async () => {
+  const DB = adminDb(), log = [], env = scanEnv({ '/': SITE }, log);
+  const r = await j(await doScan(DB, BOSS, 'https://hudson.example.test/', env));
+  assert.equal(r.status, 200); assert.equal(r.body.result.status, 'read'); assert.equal(r.body.staged, 'staged');
+  assert.ok(log.length >= 2 && log.every((x) => /OmniSDR-research/.test(x.ua)));
+  assert.equal(log[0].url, 'https://hudson.example.test/robots.txt');
+  const res = (await j(await call(DB, BOSS, '/rep/api/engine/jobs/' + r.body.id + '/results'))).body.results;
+  assert.equal(res.length, 1); assert.equal(res[0].lead.phone, '973-555-0177'); assert.equal(res[0].lead.state, 'NJ');
+  assert.equal((await j(await call(DB, BOSS, '/rep/api/engine/results/' + res[0].id + '/add', { method: 'POST', body: {} }))).body.added, 1);
+  const again = await j(await doScan(DB, BOSS, 'https://hudson.example.test/', env)); // phone now an account
+  assert.equal(again.body.staged, 'duplicate');
+  assert.equal(DB.db.prepare("SELECT COUNT(*) n FROM engine_jobs WHERE kind = 'scan'").get().n, 2);
+});
+
+test('scan: robots disallow stops the read; Google Business links are never fetched', async () => {
+  const DB = adminDb(), log = [];
+  const blocked = await j(await doScan(DB, BOSS, 'https://hudson.example.test/', scanEnv({ robots: 'User-agent: *\nDisallow: /', '/': SITE }, log)));
+  assert.equal(blocked.body.result.status, 'not_fetched'); assert.equal(blocked.body.staged, null);
+  assert.ok(log.every((x) => x.url.endsWith('/robots.txt')));
+  const g = [];
+  const gb = await j(await doScan(DB, BOSS, 'https://maps.app.goo.gl/abc123', scanEnv({ '/': SITE }, g)));
+  assert.equal(gb.body.result.status, 'not_fetched'); assert.equal(g.length, 0);
+});
