@@ -10,6 +10,7 @@ import { afterCall, RULES, STAGES, OUTCOMES, addDays } from './rules.js';
 import * as C from './content.js';
 import * as K from './toolkit.js';
 import * as M from './mix.js';
+import { engineApi } from './engine.js';
 
 const json = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'content-type': 'application/json', 'cache-control': 'no-store', 'x-robots-tag': 'noindex', 'x-content-type-options': 'nosniff' } });
 class Bad extends Error { constructor(status, msg) { super(msg); this.status = status; } }
@@ -519,6 +520,7 @@ async function api(req, env, me, path, m) {
       return { ok: true };
     }
   }
+  if (seg[0] === 'engine') return engineApi(env, me, path, m, req, { Bad, bad, forbidden, body, audit, createAccount, uid });
   throw notFound('route');
 }
 

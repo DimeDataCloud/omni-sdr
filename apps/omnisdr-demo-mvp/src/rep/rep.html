@@ -517,6 +517,34 @@ const screens = {
     $('#reps').onclick = (e) => { const b = e.target.closest('[data-e]'); if (b) api('/reps/' + encodeURIComponent(b.dataset.e), { method: 'PATCH', body: { active: b.dataset.a === '1' } }).then(() => { toast('Updated'); route(); }, fail); };
     $('#rf').onsubmit = (e) => { e.preventDefault(); api('/reps', { method: 'POST', body: form(e.target) }).then(() => { toast('Added'); route(); }, fail); };
   },
+
+  // Admin only. Sweeps run on GitHub Actions and land here as staged leads; nothing becomes an account until an admin adds it.
+  async engine(arg) {
+    if (ME.role !== 'admin') { location.hash = 'today'; return; }
+    clearTimeout(screens.engine.t);
+    const [cfg, { jobs }] = await Promise.all([api('/engine/config', { noView: true }), api('/engine/jobs', { noView: true })]);
+    const open = arg ? jobs.find((j) => j.id === arg) : null, results = open ? (await api('/engine/jobs/' + encodeURIComponent(open.id) + '/results', { noView: true })).results : [];
+    const STATUS = { queued: 'Waiting', running: 'Running', done: 'Done', failed: 'Failed' };
+    const row = (j) => `<tr><td>${esc(j.zip)}</td><td>${esc(j.niche)}</td><td><span class="pill${j.status === 'failed' ? ' bad' : ''}">${STATUS[j.status] || esc(j.status)}</span></td><td>${j.staged}</td><td>${j.added}</td><td>${esc(when(j.created_at))}</td><td><a class="btn ghost sm" href="#engine/${esc(j.id)}">Open</a></td></tr>`;
+    const lead = (r) => { const l = r.lead; return `<li><div class="t">${esc(l.business)} <small>${esc([l.niche, l.city, l.state].filter(Boolean).join(', '))}</small><small>${esc(l.phone)}${l.website ? ' · ' + esc(l.website) : ''}</small>${l.signal ? `<small>${esc(l.signal)}</small>` : ''}</div>${r.state === 'staged' ? `<span class="row"><button class="btn sm" data-add="${esc(r.id)}">Add</button><button class="btn ghost sm" data-no="${esc(r.id)}">Dismiss</button></span>` : `<span class="pill">${r.state === 'added' ? 'Added' : 'Dismissed'}</span>`}</li>`; };
+    const staged = results.filter((r) => r.state === 'staged').length;
+    view.innerHTML = `<h1>Lead Engine</h1><p class="sub">Pick a ZIP and a niche. The engine finds local businesses, scores their websites and sends back the ones worth calling. Results wait here until you add them.</p>
+      ${cfg.connected ? '' : '<p class="note">Sweeps are not connected yet. A job you start is saved and waits until the owner finishes setup.</p>'}
+      <form class="card" id="ef"><h2>Start a sweep</h2><div class="grid two"><div><label for="e_z">ZIP code</label><input id="e_z" name="zip" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" required placeholder="07030"><p class="muted">New Jersey and Tennessee ZIPs.</p></div>
+        <div><label for="e_n">Niche</label><select id="e_n" name="niche" required>${cfg.niches.map((n) => `<option>${esc(n)}</option>`).join('')}</select></div></div>
+        <label for="e_c">Most leads to keep</label><input id="e_c" name="cap" type="number" min="1" max="${cfg.maxCap}" value="${cfg.defaultCap}"><p><button class="btn">Start sweep</button></p></form>
+      ${open ? `<section class="card stack"><h2>${esc(open.niche)} in ${esc(open.zip)}</h2><p class="muted">${STATUS[open.status] || esc(open.status)}${open.error ? '. ' + esc(open.error) : ''}${open.status === 'done' ? `. Found ${esc(open.summary.solid ?? 0)} solid, ${esc(open.summary.staged ?? 0)} new, ${esc(open.summary.duplicates ?? 0)} already on file.` : ''}</p>
+        ${results.length ? `<p class="row"><button class="btn" id="addAll"${staged ? '' : ' disabled'}>Add all ${staged} to accounts</button></p><ul class="list" id="rs">${results.map(lead).join('')}</ul>` : '<p class="muted">Nothing here yet.</p>'}</section>` : ''}
+      <section class="card"><h2>Recent sweeps</h2>${jobs.length ? `<div class="tbl"><table><thead><tr><th>ZIP</th><th>Niche</th><th>Status</th><th>Waiting</th><th>Added</th><th>Started</th><th></th></tr></thead><tbody>${jobs.map(row).join('')}</tbody></table></div>` : '<p class="muted">No sweeps yet.</p>'}</section>`;
+    $('#ef').onsubmit = (e) => { e.preventDefault(); const f = form(e.target); api('/engine/jobs', { method: 'POST', body: { zip: f.zip, niche: f.niche, cap: Number(f.cap) || undefined } }).then((r) => { toast(r.message); location.hash = 'engine/' + r.id; route(); }, fail); };
+    if ($('#addAll')) $('#addAll').onclick = () => api('/engine/jobs/' + encodeURIComponent(open.id) + '/add', { method: 'POST', body: {} }).then((r) => { toast(`Added ${r.added}${r.duplicates ? `, ${r.duplicates} already on file` : ''}${r.skipped ? `, ${r.skipped} need a fix` : ''}`); route(); }, fail);
+    if ($('#rs')) $('#rs').onclick = (e) => {
+      const a = e.target.closest('[data-add]'), n = e.target.closest('[data-no]');
+      if (a) api('/engine/results/' + encodeURIComponent(a.dataset.add) + '/add', { method: 'POST', body: {} }).then(() => { toast('Added'); route(); }, fail);
+      if (n) api('/engine/results/' + encodeURIComponent(n.dataset.no) + '/dismiss', { method: 'POST', body: {} }).then(() => { toast('Dismissed'); route(); }, fail);
+    };
+    if (jobs.some((j) => j.status === 'running' || j.status === 'queued') && cfg.connected) screens.engine.t = setTimeout(() => { if (location.hash.startsWith('#engine')) route(); }, 20000);
+  },
 };
 
 function fillView() { if (ME.role !== 'admin') return; $('#vw').innerHTML = `<option value="">All reps</option>${repOptions(VIEW, false)}`; $('#vw').value = VIEW; }
@@ -532,7 +560,7 @@ const GROUPS = [
   { key: 'sales', tabs: [['calls', 'Call Room'], ['pipeline', 'Pipeline'], ['accounts', 'Accounts']] },
   { key: 'learn', tabs: [['playbook', 'Playbook'], ['kit', 'Toolkit'], ['how', 'How it works']] },
   { key: 'deals', tabs: [['deals', 'My deals']] },
-  { key: 'team', tabs: [['team', 'Team']] },
+  { key: 'team', tabs: [['team', 'Team'], ['engine', 'Lead Engine', true]] },
 ];
 async function route() {
   // Leads now lives in Accounts; old #leads links land there.

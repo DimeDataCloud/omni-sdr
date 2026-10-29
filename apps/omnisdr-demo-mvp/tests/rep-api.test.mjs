@@ -10,10 +10,11 @@ import { DatabaseSync } from 'node:sqlite';
 
 register('./text-loader.mjs', import.meta.url);
 const { handleRep } = await import('../src/rep/index.js');
+const { handleIngest } = await import('../src/rep/engine.js');
 
 function d1() {
   const db = new DatabaseSync(':memory:');
-  db.exec('PRAGMA foreign_keys = ON;' + readFileSync(new URL('../migrations/rep/0001_init.sql', import.meta.url), 'utf8') + readFileSync(new URL('../migrations/rep/0002_audit.sql', import.meta.url), 'utf8') + readFileSync(new URL('../migrations/rep/0003_stages.sql', import.meta.url), 'utf8') + readFileSync(new URL('../migrations/rep/0004_mix.sql', import.meta.url), 'utf8') + readFileSync(new URL('../migrations/rep/0005_compliance.sql', import.meta.url), 'utf8'));
+  db.exec('PRAGMA foreign_keys = ON;' + readFileSync(new URL('../migrations/rep/0001_init.sql', import.meta.url), 'utf8') + readFileSync(new URL('../migrations/rep/0002_audit.sql', import.meta.url), 'utf8') + readFileSync(new URL('../migrations/rep/0003_stages.sql', import.meta.url), 'utf8') + readFileSync(new URL('../migrations/rep/0004_mix.sql', import.meta.url), 'utf8') + readFileSync(new URL('../migrations/rep/0005_compliance.sql', import.meta.url), 'utf8') + readFileSync(new URL('../migrations/rep/0006_engine.sql', import.meta.url), 'utf8'));
   const stmt = (sql, args = []) => ({
     bind: (...a) => stmt(sql, a),
     first: async () => db.prepare(sql).get(...args) ?? null,
@@ -480,4 +481,96 @@ test('scrub gate can be switched off; do not call still blocks', async () => {
   assert.equal((await log(off)).status, 200);
   await call(DB, A, '/rep/api/accounts/' + a.id + '/flag', { method: 'POST', body: { kind: 'do_not_call' }, ...off });
   assert.equal((await log(off)).status, 409);
+});
+
+/* ---------- Lead Engine ---------- */
+const SECRET = 'test-engine-secret-0123456789';
+const lead = (n, extra = {}) => ({ business: 'Engine Co ' + n, phone: '(973) 555-01' + String(n).padStart(2, '0'), website: 'https://engine' + n + '.example.test', state: 'NJ', zip: '07030', city: 'Hoboken', niche: 'Plumbing', ...extra });
+const ingest = (DB, b, { secret = SECRET, env = {} } = {}) => handleIngest(new Request('https://demo.omnisdr.com/engine/ingest', { method: 'POST', headers: { 'content-type': 'application/json', ...(secret ? { 'x-engine-secret': secret } : {}) }, body: JSON.stringify(b) }), { REP_DB: DB, ENGINE_POST_SECRET: SECRET, ...env });
+const adminDb = () => { const DB = setup(); DB.db.prepare("INSERT INTO reps (email, name, role, active, created_at) VALUES (?, 'Boss', 'admin', 1, '2026-01-01')").run(BOSS); return DB; };
+const newJob = async (DB, extra = {}) => (await j(await call(DB, BOSS, '/rep/api/engine/jobs', { method: 'POST', body: { zip: '07030', niche: 'Plumbing', cap: 25, ...extra } }))).body;
+
+test('engine: admin only, reps are refused on every route', async () => {
+  const DB = adminDb();
+  for (const [m, p] of [['GET', 'config'], ['GET', 'jobs'], ['POST', 'jobs'], ['GET', 'jobs/x/results'], ['POST', 'jobs/x/add'], ['POST', 'results/x/add'], ['POST', 'results/x/dismiss']])
+    assert.equal((await call(DB, A, '/rep/api/engine/' + p, { method: m, body: m === 'POST' ? { zip: '07030', niche: 'Plumbing' } : undefined })).status, 403, p);
+  assert.equal((await call(DB, BOSS, '/rep/api/engine/config')).status, 200);
+});
+
+test('engine: job input is validated (ZIP shape and state, niche list, cap range)', async () => {
+  const DB = adminDb(), post = (b) => call(DB, BOSS, '/rep/api/engine/jobs', { method: 'POST', body: b });
+  for (const b of [{ zip: '7030', niche: 'Plumbing' }, { zip: 'abcde', niche: 'Plumbing' }, { zip: '90210', niche: 'Plumbing' }, { zip: '07030', niche: 'Astrology' }, { niche: 'Plumbing' }]) assert.equal((await post(b)).status, 400, JSON.stringify(b));
+  assert.equal((await post({ zip: '37203', niche: 'HVAC', cap: 5000 })).status, 200); // Tennessee is in, cap is clamped
+  assert.equal(DB.db.prepare('SELECT cap FROM engine_jobs').get().cap, 100);
+});
+
+test('engine: without a dispatch token the job is saved but stays queued, with a plain message', async () => {
+  const DB = adminDb(), r = await newJob(DB);
+  assert.equal(r.status, 'queued'); assert.match(r.message, /not connected/i);
+  assert.equal((await j(await call(DB, BOSS, '/rep/api/engine/config'))).body.connected, false);
+});
+
+test('engine: with a token the Worker dispatches the workflow and marks the job running; a GitHub error marks it failed', async () => {
+  const DB = adminDb(), env = { ENGINE_DISPATCH_TOKEN: 'ghp_fake', ENGINE_POST_SECRET: SECRET }, real = globalThis.fetch, seen = [];
+  try {
+    globalThis.fetch = async (url, init) => { seen.push({ url: String(url), init }); return new Response(null, { status: 204 }); };
+    const ok = await j(await call(DB, BOSS, '/rep/api/engine/jobs', { method: 'POST', body: { zip: '07030', niche: 'Plumbing', cap: 10 }, env }));
+    assert.equal(ok.body.status, 'running');
+    assert.equal(seen[0].url, 'https://api.github.com/repos/DimeDataCloud/OmniSDR-engine/actions/workflows/sweep.yml/dispatches');
+    const sent = JSON.parse(seen[0].init.body); assert.equal(sent.inputs.zip, '07030'); assert.equal(sent.inputs.cap, '10'); assert.match(sent.inputs.job_id, /^[A-Za-z0-9_-]{3,64}$/);
+    assert.ok(!JSON.stringify(sent).includes(SECRET)); // the post secret lives in the engine repo's own secrets, never in the dispatch
+    globalThis.fetch = async () => new Response('no', { status: 403 });
+    const fail = await j(await call(DB, BOSS, '/rep/api/engine/jobs', { method: 'POST', body: { zip: '07030', niche: 'HVAC' }, env }));
+    assert.equal(fail.body.status, 'failed'); assert.ok(!JSON.stringify(fail.body).includes('ghp_fake'));
+  } finally { globalThis.fetch = real; }
+});
+
+test('engine: at most three sweeps in flight', async () => {
+  const DB = adminDb();
+  for (let i = 0; i < 3; i++) assert.equal((await call(DB, BOSS, '/rep/api/engine/jobs', { method: 'POST', body: { zip: '07030', niche: 'Plumbing' } })).status, 200);
+  assert.equal((await call(DB, BOSS, '/rep/api/engine/jobs', { method: 'POST', body: { zip: '07030', niche: 'Plumbing' } })).status, 429);
+});
+
+test('ingest: no secret configured, no header, or a wrong header all refuse', async () => {
+  const DB = adminDb(), job = await newJob(DB), b = { job_id: job.id, zip: '07030', niche: 'Plumbing', rows: [lead(1)] };
+  assert.equal((await ingest(DB, b, { env: { ENGINE_POST_SECRET: undefined } })).status, 503);
+  assert.equal((await ingest(DB, b, { secret: null })).status, 401);
+  assert.equal((await ingest(DB, b, { secret: SECRET + 'x' })).status, 401);
+  assert.equal((await handleIngest(new Request('https://demo.omnisdr.com/engine/ingest'), { REP_DB: DB, ENGINE_POST_SECRET: SECRET })).status, 404); // GET
+  assert.equal(DB.db.prepare('SELECT COUNT(*) n FROM engine_results').get().n, 0);
+});
+
+test('ingest: stages valid rows once, skips duplicates and bad rows, and refuses a second post or a mismatched job', async () => {
+  const DB = adminDb(); await newAccountRaw(DB, A, { phone: '973-555-0102' }); // already an account
+  const job = await newJob(DB), rows = [lead(1), lead(2), lead(1, { business: 'Same phone again' }), lead(3, { phone: 'nope' }), lead(4, { state: 'NY', zip: '10001' }), { ...lead(5), business: '' }];
+  assert.equal((await ingest(DB, { job_id: job.id, zip: '07031', niche: 'Plumbing', rows })).status, 409); // wrong ZIP
+  const r = await j(await ingest(DB, { job_id: job.id, zip: '07030', niche: 'Plumbing', rows, summary: { solid: 2, funnel: { found: 40 } } }));
+  assert.deepEqual([r.body.staged, r.body.duplicates, r.body.invalid], [1, 2, 3]);
+  const jb = DB.db.prepare('SELECT status, summary FROM engine_jobs').get(); assert.equal(jb.status, 'done'); assert.equal(JSON.parse(jb.summary).staged, 1);
+  assert.equal((await ingest(DB, { job_id: job.id, zip: '07030', niche: 'Plumbing', rows: [lead(9)] })).status, 409); // one shot
+  assert.equal((await ingest(DB, { job_id: 'nope', zip: '07030', niche: 'Plumbing', rows: [] })).status, 409);
+  assert.equal(DB.db.prepare('SELECT COUNT(*) n FROM accounts').get().n, 1); // ingest never creates accounts
+});
+
+test('ingest: more rows than the job cap, or a huge body, are refused', async () => {
+  const DB = adminDb(), job = await newJob(DB, { cap: 2 });
+  assert.equal((await ingest(DB, { job_id: job.id, zip: '07030', niche: 'Plumbing', rows: [lead(1), lead(2), lead(3)] })).status, 400);
+  assert.equal((await ingest(DB, { job_id: job.id, zip: '07030', niche: 'Plumbing', rows: [], pad: 'x'.repeat(1_100_000) })).status, 413);
+});
+
+test('engine: add to accounts is deduped by phone, audited, owned by the admin, and dismiss leaves nothing behind', async () => {
+  const DB = adminDb(), job = await newJob(DB);
+  await ingest(DB, { job_id: job.id, zip: '07030', niche: 'Plumbing', rows: [lead(1), lead(2), lead(3)] });
+  const res = (await j(await call(DB, BOSS, '/rep/api/engine/jobs/' + job.id + '/results'))).body.results;
+  assert.equal(res.length, 3); assert.ok(res.every((x) => x.state === 'staged'));
+  assert.equal((await call(DB, A, '/rep/api/engine/results/' + res[0].id + '/add', { method: 'POST', body: {} })).status, 403);
+  const third = res.find((x) => x.lead.business === 'Engine Co 3');
+  await call(DB, BOSS, '/rep/api/engine/results/' + third.id + '/dismiss', { method: 'POST', body: {} });
+  await newAccountRaw(DB, A, { phone: '973-555-0102' }); // lead 2 turned up as an account after staging
+  const add = await j(await call(DB, BOSS, '/rep/api/engine/jobs/' + job.id + '/add', { method: 'POST', body: {} }));
+  assert.equal(add.body.added, 1); assert.equal(add.body.duplicates, 1);
+  const acc = DB.db.prepare("SELECT business, owner_email, source, stage, state FROM accounts WHERE business LIKE 'Engine Co%'").all();
+  assert.equal(acc.length, 1); assert.deepEqual([acc[0].business, acc[0].owner_email, acc[0].source, acc[0].stage, acc[0].state], ['Engine Co 1', BOSS, 'csv', 'new', 'NJ']);
+  assert.ok(DB.db.prepare("SELECT COUNT(*) n FROM audit WHERE action IN ('engine_add', 'engine_sweep', 'engine_dismiss')").get().n >= 3);
+  assert.equal((await j(await call(DB, BOSS, '/rep/api/engine/jobs/' + job.id + '/add', { method: 'POST', body: {} }))).body.added, 0); // nothing staged is left
 });
