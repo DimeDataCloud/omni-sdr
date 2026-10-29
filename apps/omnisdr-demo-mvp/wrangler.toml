@@ -18,6 +18,8 @@ DAILY_CAP = "10"
 IP_CAP = "2"
 SESSION_SECONDS = "180"
 KILL = "0"
+# Rep portal: "off" lifts the Do Not Call scrub requirement before dialing (Christian scrubs by hand). "on" restores it. Do-not-call marks always block.
+REP_SCRUB_GATE = "off"
 TRYME_GATED = "on"
 # Retell voice tab on /tryme. The agent id is not a secret; the RETELL_API_KEY secret is. No secret = no voice tab. RETELL_TEST_CALLS caps lifetime calls (default 2, "off" lifts it).
 RETELL_AGENT_ID = "agent_59a418569b5369f243dd12d76f"

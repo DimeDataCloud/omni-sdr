@@ -470,3 +470,14 @@ test('import: line type and scrub date are admin-only columns', async () => {
   const r = DB.db.prepare("SELECT line_type, scrubbed_at FROM accounts WHERE business = 'Two Co'").get(); assert.equal(r.line_type, 'landline'); assert.ok(r.scrubbed_at);
   const bad = await j(await call(DB, BOSS, '/rep/api/import', { method: 'POST', body: { csv: 'business,line_type\nX Co,satellite\n' } })); assert.equal(bad.body.imported, 0);
 });
+
+test('scrub gate can be switched off; do not call still blocks', async () => {
+  const DB = setup(), off = { env: { REP_SCRUB_GATE: 'off' } };
+  const a = await newAccount(DB, A, {}, 'unknown');
+  const log = (o) => call(DB, A, '/rep/api/calls', { method: 'POST', body: { accountId: a.id, outcome: 'no_answer' }, ...o });
+  assert.equal((await log({})).status, 409);
+  assert.equal((await j(await call(DB, A, '/rep/api/queue', off))).body.accounts.length, 1);
+  assert.equal((await log(off)).status, 200);
+  await call(DB, A, '/rep/api/accounts/' + a.id + '/flag', { method: 'POST', body: { kind: 'do_not_call' }, ...off });
+  assert.equal((await log(off)).status, 409);
+});

@@ -82,11 +82,15 @@ async function account(env, me, id) {
 const obj = (v) => { try { const o = JSON.parse(v || '{}'); return o && typeof o === 'object' && !Array.isArray(o) ? o : {}; } catch { return {}; } };
 // May this number be dialed today? Fails closed. A do-not-call mark or a missing number blocks. A landline is open. Anything
 // else (wireless, VoIP, or a line type nobody has confirmed) needs a National DNC scrub no older than 31 days.
+// Christian 2026-10-29 (via the Product Manager): he scrubs every number himself before calling, so the portal need not
+// enforce it. REP_SCRUB_GATE = "off" lifts the scrub requirement; "on" (or unset) restores it. The internal do-not-call
+// mark and a missing number always block. Set once per request from env; env is constant for a deployment.
+let scrubGate = true;
 const SCRUB_DAYS = 31, LINE_TYPES = ['landline', 'wireless', 'voip', 'unknown'];
 function dialStatus(a, t = now()) {
   if (a.dnc) return { ok: false, reason: 'do_not_call' };
   if (!a.phone) return { ok: false, reason: 'no_phone' };
-  if (a.line_type === 'landline') return { ok: true, reason: null };
+  if (!scrubGate || a.line_type === 'landline') return { ok: true, reason: null };
   if (!a.scrubbed_at) return { ok: false, reason: 'unscrubbed' };
   if (a.scrubbed_at < addDays(t, -SCRUB_DAYS)) return { ok: false, reason: 'scrub_expired' };
   return { ok: true, reason: null };
@@ -535,6 +539,7 @@ const deniedPage = (msg, status) => new Response(`<!doctype html><meta charset="
 export async function handleRep(req, env) {
   const u = new URL(req.url), p = u.pathname, m = req.method;
   const isApi = p.startsWith('/rep/api/');
+  scrubGate = String(env.REP_SCRUB_GATE || 'on').toLowerCase() !== 'off';
   try {
     if (!env.REP_DB) throw new AccessError(503, 'The rep portal is not set up on this server');
     const me = await repFor(env, await identity(req, env));
