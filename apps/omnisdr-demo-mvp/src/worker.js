@@ -229,6 +229,7 @@ function isFederalHoliday(y, m, d) {
   const fixed = [[0, 1], [5, 19], [6, 4], [10, 11], [11, 25]];
   const floating = [[0, nth(0, 1, 3)], [1, nth(1, 1, 3)], [4, last(4, 1)], [8, nth(8, 1, 1)], [9, nth(9, 1, 2)], [10, nth(10, 4, 4)]];
   const here = Date.UTC(y, m, d);
+  if (m === 11 && d === 31 && new Date(Date.UTC(y + 1, 0, 1)).getUTCDay() === 6) return true; // Jan 1 on a Saturday is observed Dec 31
   for (const [mo, day] of fixed) { const wd = new Date(Date.UTC(y, mo, day)).getUTCDay(); const obs = wd === 6 ? day - 1 : wd === 0 ? day + 1 : day; if (here === Date.UTC(y, mo, day) || here === Date.UTC(y, mo, obs)) return true; }
   for (const [mo, day] of floating) if (here === Date.UTC(y, mo, day)) return true;
   return false;
