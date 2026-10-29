@@ -234,25 +234,30 @@ function isFederalHoliday(y, m, d) {
   return false;
 }
 // Send window (legal ruling, Compliance Addendum B6): 9 AM to 8 PM, Monday to Saturday, no federal holidays.
-function inSendWindow(now) {
+// A first reply to the lead's own request may still go inside 9 AM to 8 PM on a Sunday or holiday.
+function sendState(now) {
   const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', weekday: 'short' }).formatToParts(now).map((x) => [x.type, x.value]));
   const hr = Number(p.hour);
-  if (p.weekday === 'Sun' || hr < 9 || hr >= 20) return false;
-  return !isFederalHoliday(Number(p.year), Number(p.month) - 1, Number(p.day));
+  if (hr < 9 || hr >= 20) return 'closed';
+  return p.weekday === 'Sun' || isFederalHoliday(Number(p.year), Number(p.month) - 1, Number(p.day)) ? 'off_day' : 'open';
 }
 
 // CHASE simulation: returns the planned cadence for the chosen tenant. Nothing is sent anywhere.
 function chasePlan(b) {
   const t = TENANTS[pickTenant(b.tenant)];
   const name = (String(b.name || 'there').replace(/[^\w' -]/g, '').slice(0, 40).split(' ')[0]) || 'there';
-  const quiet = !inSendWindow(new Date());
+  const state = sendState(new Date());
+  const quiet = state !== 'open';
   const steps = [
     { at: 'Text 1 · inside 2 minutes', text: `Hi ${name}, it's ${t.persona} with ${t.business}. Thanks for reaching out about your bathroom. Are you looking at a tub-to-shower swap, or a bigger remodel? (Automated assistant. Reply STOP to opt out.)` },
-    { at: 'Text 2 · 12+ hours later', text: `${name}, ${t.owner} can come by for ${t.estimate}. Does ${t.slots[0]} or ${t.slots[1]} work?` },
-    { at: 'Text 3 · 1 day after text 2', text: `Hi ${name}, still thinking about the bathroom? I can hold ${t.slots[2]} for you. Just reply with a time that works.` },
-    { at: 'Text 4 · 3 days after text 3, last', text: `Last note from ${t.business}, ${name}. If the timing is off, no worries. Reply any time and we'll pick it back up.` }
+    { at: 'Text 2 · 12+ hours later', text: `${name}, ${t.owner} can come by for ${t.estimate}. Does ${t.slots[0]} or ${t.slots[1]} work? ${t.business}. Reply STOP to opt out.` },
+    { at: 'Text 3 · 1 day after text 2', text: `Hi ${name}, still thinking about the bathroom? I can hold ${t.slots[2]} for you. Just reply with a time that works. ${t.business}. Reply STOP to opt out.` },
+    { at: 'Text 4 · 3 days after text 3, last', text: `Last note from ${t.business}, ${name}. If the timing is off, no worries. Reply any time and we'll pick it back up. Reply STOP to opt out.` }
   ];
-  return { ok: true, simulated: true, quietHoursNow: quiet, note: quiet ? 'Outside the send window right now (9 AM to 8 PM, Monday to Saturday, no federal holidays, Central time here): a reply to your own request within 10 minutes may go any day inside those hours, otherwise the first text waits for the next send day.' : 'Inside the send window: the first text goes out within 2 minutes. The thread below plays in fast forward; real follow-ups are spaced over days.', steps, rules: ['Stops on reply, booking, STOP, or wrong number', 'At most 4 texts in 7 days, follow-ups at least 12 hours apart', 'Texts go out 9 AM to 8 PM recipient local time, Monday to Saturday, never on federal holidays', 'Every text identifies the sender as automated and offers STOP'] };
+  const note = state === 'open' ? 'Inside the send window: the first text goes out within 2 minutes. The thread below plays in fast forward; real follow-ups are spaced over days.'
+    : state === 'off_day' ? 'Sunday or holiday: the first text still goes within 2 minutes because it answers your own request. Follow-ups wait for the next sending day.'
+    : 'Outside sending hours (9 AM to 8 PM, Monday to Saturday, no federal holidays; shown here in Central time). The first text waits until 9 AM on the next sending day.';
+  return { ok: true, simulated: true, quietHoursNow: quiet, note, stepsNote: 'Times shown are the earliest. Waits for sending hours can push any step later.', steps, rules: ['Stops on reply, booking, STOP, wrong number, or when a staff member takes over', 'At most 4 texts in 7 days, follow-ups at least 12 hours apart', 'Texts go out 9 AM to 8 PM recipient local time, Monday to Saturday, never on federal holidays', 'Every text names the business and says Reply STOP to opt out'] };
 }
 
 // Token mint verified against the live Gemini API 2026-10-24 (200, setupComplete, audio back); the browser audio client does not exist yet. One token per session, session must exist, cap-free because the session already passed caps.
