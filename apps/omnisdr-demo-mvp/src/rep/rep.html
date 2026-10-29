@@ -100,6 +100,11 @@ const fromLocal = (v) => v ? new Date(v).toISOString() : null;
 const label = (code) => String(code).replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
 const STAGE_LABEL = { new: 'New', results_call: 'Demo booked', proposed: 'Proposed', onboarding: 'Onboarding', live: 'Live', lost: 'Lost' };
 const OUTCOME_LABEL = { interested: 'Demo booked' };
+const DIAL_WHY = { do_not_call: 'Marked do not call.', no_phone: 'No phone on file.', unscrubbed: 'Not cleared to call yet: this number has no Do Not Call scrub on record.', scrub_expired: 'Not cleared to call: the Do Not Call scrub is over 31 days old.' };
+const FLAGS = [['do_not_call', 'Do not call'], ['wrong_number', 'Wrong number'], ['closed', 'Closed'], ['already_covered', 'Already covered'], ['not_fit', 'Not a fit']];
+const flagBtns = (id) => FLAGS.map(([k, l]) => `<button class="btn ghost sm" type="button" data-flag="${k}" data-id="${esc(id)}">${l}</button>`).join('');
+// Do not call and wrong number are permanent and the number leaves the queue at once; the other three close the lead as lost.
+async function setFlag(id, kind) { await api('/accounts/' + encodeURIComponent(id) + '/flag', { method: 'POST', body: { kind } }); toast('Saved'); }
 // One stage picker for Pipeline cards and the account header. Onboarding and Live are admin moves; the server refuses them for reps too.
 const stageOptions = (cur) => K.stages.map((s) => `<option value="${s}"${s === cur ? ' selected' : ''}${['onboarding', 'live'].includes(s) && ME.role !== 'admin' ? ' disabled' : ''}>${STAGE_LABEL[s]}</option>`).join('');
 // Account tabs by name, for #account/<id>/<tab> links and for keeping the open tab across a save.
@@ -164,16 +169,16 @@ const screens = {
   },
 
   async calls() {
-    const { accounts } = await api('/queue');
+    const { accounts, held } = await api('/queue');
     let i = 0, outcome = null;
     const draw = () => {
       const a = accounts[i];
-      if (!a) { view.innerHTML = `<h1>Call Room</h1><div class="card"><p>The queue is empty. Add accounts or import a list on the Accounts screen.</p><a class="btn" href="#accounts">Go to Accounts</a></div>`; return; }
+      if (!a) { view.innerHTML = `<h1>Call Room</h1><div class="card"><p>The queue is empty. Add accounts or import a list on the Accounts screen.${held ? ` ${held} ${held === 1 ? 'lead is' : 'leads are'} held until ${held === 1 ? 'its' : 'their'} Do Not Call scrub is recorded.` : ''}</p><a class="btn" href="#accounts">Go to Accounts</a></div>`; return; }
       outcome = null;
       view.innerHTML = `<h1>Call Room</h1><p class="sub">${i + 1} of ${accounts.length} due. One at a time.</p>
       <div class="grid two"><section class="card stack">
         <div><h2>${esc(a.business)}</h2><p class="muted">${esc([a.niche, a.city, a.state].filter(Boolean).join(' · '))} · <span class="pill">${STAGE_LABEL[a.stage]}</span></p></div>
-        ${a.phone ? `<div class="row"><span class="phone">${esc(a.phone)}</span><a class="btn ghost sm" href="tel:${esc(a.phone.replace(/[^\d+]/g, ''))}">Call</a></div>` : '<p class="note">No phone on file. Add one on the account.</p>'}
+        ${a.phone ? `<div class="row"><span class="phone">${esc(a.phone)}</span><a class="btn ghost sm" href="tel:${esc(a.phone.replace(/[^\d+]/g, ''))}">Call</a></div><p class="note">Dial by hand, 9 AM to 8 PM their local time, Monday to Saturday, not on a federal holiday. No texts to these numbers.</p><div class="row" id="fl">${flagBtns(a.id)}</div>` : '<p class="note">No phone on file. Add one on the account.</p>'}
         ${a.contact_name ? `<p>Ask for <b>${esc(a.contact_name)}</b></p>` : ''}
         ${a.signal ? `<p><span class="muted">Why we are calling:</span> ${esc(a.signal)}</p>` : ''}
         ${a.notes ? `<p class="muted script">${esc(a.notes)}</p>` : ''}
@@ -187,6 +192,7 @@ const screens = {
         <p class="note">${esc(K.method)}</p></section></div>`;
       $('#oc').onclick = (e) => { const b = e.target.closest('[data-o]'); if (!b) return; outcome = b.dataset.o; $$('#oc [data-o]').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); $('#cbBox').hidden = outcome !== 'callback_scheduled'; $('#log').disabled = false; };
       $('#skip').onclick = () => { i++; draw(); };
+      if ($('#fl')) $('#fl').onclick = async (e) => { const b = e.target.closest('[data-flag]'); if (!b) return; try { await setFlag(b.dataset.id, b.dataset.flag); accounts.splice(i, 1); draw(); } catch (er) { fail(er); } };
       $('#log').onclick = async () => {
         $('#log').disabled = true;
         try { const r = await api('/calls', { method: 'POST', body: { accountId: a.id, outcome, note: $('#cn').value, callbackAt: fromLocal($('#cb').value) } });
@@ -234,14 +240,14 @@ const screens = {
         <select id="sa" aria-label="State" class="grow"><option value="">All states</option></select></div>
         <div><p class="muted">Category</p><div class="chips" id="fNiche"></div></div>
         ${admin ? '<div><p class="muted">Rep</p><div class="chips" id="fOwner"></div></div><div><p class="muted">Show</p><div class="chips" id="fArch"><button class="chip" type="button" data-k="0">Active</button><button class="chip" type="button" data-k="1">Archived</button></div></div>' : ''}
-        <div class="row"><button class="btn" id="add" type="button">New account</button><label class="btn ghost" for="csv">Import CSV</label><input id="csv" type="file" accept=".csv,text/csv" class="sr"><button class="btn ghost" id="exp" type="button">Export CSV</button>${admin ? `<label for="impOwner" class="muted">Import for</label><select id="impOwner" class="grow">${repOptions(ME.email)}</select>` : ''}</div></section>
+        <div class="row"><button class="btn" id="add" type="button">New account</button><label class="btn ghost" for="csv">Import CSV</label><input id="csv" type="file" accept=".csv,text/csv" class="sr">${admin ? '<button class="btn ghost" id="exp" type="button">Export CSV</button>' : ''}${admin ? `<label for="impOwner" class="muted">Import for</label><select id="impOwner" class="grow">${repOptions(ME.email)}</select>` : ''}</div></section>
       <section class="card"><p class="muted" id="count" aria-live="polite"></p>
         <div class="tbl"><table><thead><tr><th class="sel"><input type="checkbox" id="selAll" aria-label="Select all shown"></th><th>Business</th><th>Stage</th><th class="hide-sm">Next</th><th class="hide-sm">Phone</th>${admin ? '<th>Rep</th>' : ''}</tr></thead><tbody id="rows"></tbody></table></div></section>
       <section class="card stack bulk" id="bulk" hidden><div class="row"><b id="selN"></b><button class="btn ghost sm" id="selNone" type="button">Clear</button></div>
         ${admin ? `<div class="row live"><label for="assignTo" class="muted">Assign to</label><select id="assignTo" class="grow"><option value="">Pick a rep</option>${repOptions('')}</select><button class="btn" id="doAssign" type="button">Assign</button></div>
         <details class="live"><summary>Split evenly between reps</summary><div class="splitlist" id="split">${REPS.filter((r) => r.active).map((r) => `<label class="row"><input type="checkbox" value="${esc(r.email)}"> ${esc(r.name)}</label>`).join('')}</div><button class="btn ghost" id="splitGo" type="button">Split</button></details>` : ''}
         <div class="row live"><label for="cat" class="muted">Set category</label><input id="cat" class="grow" list="cats" maxlength="80" placeholder="Remodeler, Generator dealer"><datalist id="cats"></datalist><button class="btn ghost" id="catGo" type="button">Set</button>${admin ? '<button class="btn ghost" id="arch" type="button">Archive</button>' : ''}</div>
-        ${admin ? '<div class="row" id="restoreRow" hidden><button class="btn" id="restoreGo" type="button">Restore</button></div><div class="row" id="archAsk" hidden><span id="archQ"></span><button class="btn danger" id="archGo" type="button">Archive</button><button class="btn ghost" id="archNo" type="button">Cancel</button></div>' : ''}</section>
+        ${admin ? '<div class="row"><label for="scrubLt" class="muted">Record scrub</label><select id="scrubLt" aria-label="Line type"><option value="">Keep line type</option><option value="landline">Landline</option><option value="wireless">Wireless</option><option value="voip">VoIP</option><option value="unknown">Unknown</option></select><button class="btn ghost" id="scrubGo" type="button">Scrubbed today</button></div><div class="row" id="restoreRow" hidden><button class="btn" id="restoreGo" type="button">Restore</button></div><div class="row" id="archAsk" hidden><span id="archQ"></span><button class="btn danger" id="archGo" type="button">Archive</button><button class="btn ghost" id="archNo" type="button">Cancel</button></div>' : ''}</section>
       <dialog id="dlg"><form id="nf" class="stack"><h2>New account</h2><div class="fields">
         <div class="full"><label for="nb">Business name</label><input id="nb" name="business" required maxlength="160"></div>
         <div><label for="nn">Category</label><input id="nn" name="niche" maxlength="80" placeholder="Remodeler, HVAC, med spa"></div>
@@ -304,6 +310,7 @@ const screens = {
       try { const r = await api('/bulk', { method: 'POST', body: { accountIds: ids(), niche: v } }); await done(v ? `${r.updated} set to ${v}` : `Category cleared on ${r.updated}`); } catch (er) { fail(er); } };
     if (admin) {
       $('#fArch').onclick = (e) => { const b = e.target.closest('[data-k]'); if (!b) return; F.arch = b.dataset.k === '1'; picked.clear(); keep(); drawFacets(); load().catch(fail); };
+      $('#scrubGo').onclick = async () => { try { const r = await api('/scrub', { method: 'POST', body: { accountIds: ids(), lineType: $('#scrubLt').value } }); await done(`Scrub recorded on ${r.updated}`); } catch (er) { fail(er); } };
       $('#restoreGo').onclick = async () => { try { const r = await api('/bulk', { method: 'POST', body: { accountIds: ids(), archived: false } }); await done(`Restored ${r.updated}`); } catch (er) { fail(er); } };
       $('#fOwner').onclick = (e) => { const b = e.target.closest('[data-k]'); if (!b) return; F.pool = b.dataset.k === 'pool'; setView(F.pool ? '' : b.dataset.k); keep(); drawFacets(); load().catch(fail); };
       $('#doAssign').onclick = async () => { const to = $('#assignTo').value; if (!to) return toast('Pick a rep');
@@ -327,7 +334,7 @@ const screens = {
       try { const r = await api('/import', { method: 'POST', body: { csv: await file.text(), ...(admin ? { owner: $('#impOwner').value } : {}) } });
         if (r.errors.length) toast(`Nothing imported. Row ${r.errors[0].row}: ${r.errors[0].message}` + (r.errors.length > 1 ? ` (+${r.errors.length - 1} more)` : '')); else { toast(`Imported ${r.imported}`); refresh().catch(fail); }
       } catch (er) { fail(er); } };
-    $('#exp').onclick = async () => { try { const r = await api('/export.csv', { raw: true }); const url = URL.createObjectURL(await r.blob()); const a = Object.assign(document.createElement('a'), { href: url, download: 'omnisdr-accounts.csv' }); a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); } catch (er) { fail(er); } };
+    if ($('#exp')) $('#exp').onclick = async () => { try { const r = await api('/export.csv', { raw: true }); const url = URL.createObjectURL(await r.blob()); const a = Object.assign(document.createElement('a'), { href: url, download: 'omnisdr-accounts.csv' }); a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); } catch (er) { fail(er); } };
     if (matchMedia('(pointer: fine)').matches) $('#q').focus(); // no keyboard popping up on a phone
     await refresh();
   },
@@ -350,6 +357,7 @@ const screens = {
           <form id="cf" class="fields"><div><label for="c_n">Name</label><input id="c_n" name="name" required maxlength="120"></div><div><label for="c_r">Role</label><input id="c_r" name="role" maxlength="80" placeholder="Owner, office manager"></div>
           <div><label for="c_p">Phone</label><input id="c_p" name="phone" type="tel"></div><div><label for="c_e">Email</label><input id="c_e" name="email" type="email"></div>
           <div class="full row"><label class="row"><input type="checkbox" name="isPrimary" class="cb"> Primary contact</label><button class="btn ghost">Add person</button></div></form></section>
+        <section class="card stack"><h2>Calling</h2><p>${a.dial.ok ? 'Cleared to call.' : esc(DIAL_WHY[a.dial.reason] || 'Not cleared to call.')}</p><p class="muted">Line type: ${esc(a.line_type)} · Scrubbed: ${a.scrubbed_at ? when(a.scrubbed_at) : 'never'}${a.flag ? ' · ' + esc(label(a.flag)) : ''}</p><div class="row" id="afl">${flagBtns(a.id)}</div></section>
         <section class="card"><h2>Open tasks</h2><ul class="list">${d.tasks.map((k) => `<li><div class="t">${esc(k.title)}<small>${when(k.due_at)}</small></div></li>`).join('') || '<li class="muted">None.</li>'}</ul></section></div></div>
       <div data-p="1" hidden class="card stack"><form id="nt" class="row"><select name="kind" aria-label="Kind" class="grow"><option value="note">Note</option><option value="email">Email sent</option><option value="text">Text sent</option><option value="demo">Demo given</option></select><input name="body" class="grow" required maxlength="2000" placeholder="What happened" aria-label="Note"><button class="btn">Add</button></form>
         <ul class="list timeline">${d.activities.map((v) => `<li><small>${when(v.created_at)} · ${esc(label(v.kind))}</small><div>${esc(v.body)}</div></li>`).join('')}</ul></div>
@@ -382,6 +390,7 @@ const screens = {
       api('/accounts/' + a.id, { method: 'PATCH', body: { stage: v } }).then(() => { toast('Stage: ' + STAGE_LABEL[v]); route(); }, (er) => { e.target.value = a.stage; fail(er); }); };
     const save = (body, msg) => api('/accounts/' + a.id, { method: 'PATCH', body }).then(() => { toast(msg); route(); }, fail);
     $('#ef').onsubmit = (e) => { e.preventDefault(); const f = form(e.target); f.next_action_at = fromLocal(f.next_action_at); save(f, 'Saved'); };
+    $('#afl').onclick = async (e) => { const b = e.target.closest('[data-flag]'); if (!b) return; try { await setFlag(b.dataset.id, b.dataset.flag); route(); } catch (er) { fail(er); } };
     if ($('#lost')) $('#lost').onclick = () => save({ stage: 'lost' }, 'Marked lost');
     if ($('#ownGo')) $('#ownGo').onclick = () => api('/assign', { method: 'POST', body: { accountIds: [a.id], owner: $('#own').value } }).then(() => { toast('Assigned to ' + repName($('#own').value)); route(); }, fail);
     $('#of').onsubmit = (e) => { e.preventDefault(); save({ onboarding: form(e.target) }, 'Onboarding saved'); };

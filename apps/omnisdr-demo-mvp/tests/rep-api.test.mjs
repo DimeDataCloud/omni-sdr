@@ -13,7 +13,7 @@ const { handleRep } = await import('../src/rep/index.js');
 
 function d1() {
   const db = new DatabaseSync(':memory:');
-  db.exec('PRAGMA foreign_keys = ON;' + readFileSync(new URL('../migrations/rep/0001_init.sql', import.meta.url), 'utf8') + readFileSync(new URL('../migrations/rep/0002_audit.sql', import.meta.url), 'utf8') + readFileSync(new URL('../migrations/rep/0003_stages.sql', import.meta.url), 'utf8') + readFileSync(new URL('../migrations/rep/0004_mix.sql', import.meta.url), 'utf8'));
+  db.exec('PRAGMA foreign_keys = ON;' + readFileSync(new URL('../migrations/rep/0001_init.sql', import.meta.url), 'utf8') + readFileSync(new URL('../migrations/rep/0002_audit.sql', import.meta.url), 'utf8') + readFileSync(new URL('../migrations/rep/0003_stages.sql', import.meta.url), 'utf8') + readFileSync(new URL('../migrations/rep/0004_mix.sql', import.meta.url), 'utf8') + readFileSync(new URL('../migrations/rep/0005_compliance.sql', import.meta.url), 'utf8'));
   const stmt = (sql, args = []) => ({
     bind: (...a) => stmt(sql, a),
     first: async () => db.prepare(sql).get(...args) ?? null,
@@ -39,7 +39,8 @@ const call = (DB, email, path, { method = 'GET', body, headers = {}, host = 'htt
   handleRep(new Request(host + path, { method, headers: { ...(body ? { 'content-type': 'application/json' } : {}), ...(method !== 'GET' ? { 'x-rep': '1' } : {}), ...headers }, body: body ? JSON.stringify(body) : undefined }),
     { REP_DB: DB, REP_DEV_EMAIL: email, ...env });
 const j = async (r) => ({ status: r.status, body: await r.json() });
-const newAccount = async (DB, who, extra = {}) => (await j(await call(DB, who, '/rep/api/accounts', { method: 'POST', body: { business: 'Ridge Roofing', niche: 'Roofer', phone: '615-555-0100', ...extra } }))).body.account;
+const newAccount = async (DB, who, extra = {}, lineType = 'landline') => { const acc = await newAccountRaw(DB, who, extra); DB.db.prepare('UPDATE accounts SET line_type = ? WHERE id = ?').run(lineType, acc.id); return acc; };
+const newAccountRaw = async (DB, who, extra = {}) => (await j(await call(DB, who, '/rep/api/accounts', { method: 'POST', body: { business: 'Ridge Roofing', niche: 'Roofer', phone: '615-555-0100', ...extra } }))).body.account;
 
 test('fails closed: no Access config, no dev path off localhost, unknown email, no database', async () => {
   const DB = setup();
@@ -137,7 +138,9 @@ test('deals: the pilot has a $499 floor the rep can price above, never below; Le
 
 test('CSV: export neutralises formulas; import is all or nothing', async () => {
   const DB = setup(); await newAccount(DB, A, { business: '=HYPERLINK("http://x")', notes: 'a, "quoted" note' });
-  const csv = await (await call(DB, A, '/rep/api/export.csv')).text();
+  DB.db.prepare("INSERT INTO reps (email, name, role, active, created_at) VALUES (?, 'Boss', 'admin', 1, '2026-01-01')").run(BOSS);
+  assert.equal((await call(DB, A, '/rep/api/export.csv')).status, 403); // reps never export
+  const csv = await (await call(DB, BOSS, '/rep/api/export.csv')).text();
   assert.match(csv, /"'=HYPERLINK\(""http:\/\/x""\)"/); assert.match(csv, /"a, ""quoted"" note"/);
   const bad = await j(await call(DB, A, '/rep/api/import', { method: 'POST', body: { csv: 'business,phone\nGood Co,615-555-0101\n,615-555-0102\n' } }));
   assert.equal(bad.body.imported, 0); assert.equal(bad.body.errors[0].row, 3);
@@ -413,4 +416,57 @@ test('only an admin can send or swap leads: a rep cannot change ownership throug
   // and the admin still can
   assert.equal((await call(DB, BOSS, '/rep/api/assign', { method: 'POST', body: { accountIds: [mine.id], owner: B } })).status, 200);
   assert.equal(owner(mine.id), B);
+});
+
+test('dial gate: unknown line type needs a fresh scrub; landline is open; do not call blocks', async () => {
+  const DB = setup(); DB.db.prepare("INSERT INTO reps (email, name, role, active, created_at) VALUES (?, 'Boss', 'admin', 1, '2026-01-01')").run(BOSS);
+  const a = await newAccount(DB, A, {}, 'unknown');
+  const get = async () => (await j(await call(DB, A, '/rep/api/accounts/' + a.id))).body.account;
+  const log = (outcome = 'no_answer') => call(DB, A, '/rep/api/calls', { method: 'POST', body: { accountId: a.id, outcome } });
+  assert.equal((await get()).dial.reason, 'unscrubbed');
+  assert.equal((await log()).status, 409);
+  const q0 = (await j(await call(DB, A, '/rep/api/queue'))).body; assert.equal(q0.accounts.length, 0); assert.equal(q0.held, 1);
+  assert.equal((await log('email_sent')).status, 200); // an email is not a dial
+  assert.equal((await call(DB, A, '/rep/api/scrub', { method: 'POST', body: { accountIds: [a.id] } })).status, 403); // reps cannot record a scrub
+  assert.equal((await call(DB, BOSS, '/rep/api/scrub', { method: 'POST', body: { accountIds: [a.id], lineType: 'wireless' } })).status, 200);
+  assert.equal((await get()).dial.ok, true); assert.equal((await log()).status, 200);
+  assert.equal((await j(await call(DB, A, '/rep/api/queue'))).body.held, 0);
+  DB.db.prepare("UPDATE accounts SET scrubbed_at = ? WHERE id = ?").run(new Date(Date.now() - 32 * 86400000).toISOString(), a.id);
+  assert.equal((await get()).dial.reason, 'scrub_expired'); assert.equal((await log()).status, 409);
+  await call(DB, BOSS, '/rep/api/scrub', { method: 'POST', body: { accountIds: [a.id] } });
+  assert.equal((await call(DB, A, '/rep/api/accounts/' + a.id, { method: 'PATCH', body: { phone: '615-555-0199' } })).status, 200); // a new number is unscrubbed
+  assert.equal((await get()).dial.reason, 'unscrubbed');
+  const l = await newAccount(DB, A, { business: 'Landline Co' }, 'landline');
+  assert.equal((await j(await call(DB, A, '/rep/api/accounts/' + l.id))).body.account.dial.ok, true);
+  assert.equal((await call(DB, BOSS, '/rep/api/scrub', { method: 'POST', body: { accountIds: [l.id], scrubbedAt: '2999-01-01' } })).status, 400);
+});
+
+test('flags: do not call and wrong number block dialing and close tasks; not a fit is kept apart', async () => {
+  const DB = setup(); const a = await newAccount(DB, A), b = await newAccount(DB, A, { business: 'Other Co' }), c = await newAccount(DB, A, { business: 'Third Co' });
+  await call(DB, A, '/rep/api/calls', { method: 'POST', body: { accountId: a.id, outcome: 'no_answer' } }); // opens a follow-up
+  const flag = (id, kind) => call(DB, A, '/rep/api/accounts/' + id + '/flag', { method: 'POST', body: { kind } });
+  assert.equal((await flag(a.id, 'do_not_call')).status, 200);
+  const ra = DB.db.prepare('SELECT dnc, dnc_at, flag FROM accounts WHERE id = ?').get(a.id);
+  assert.equal(ra.dnc, 1); assert.ok(ra.dnc_at); assert.equal(ra.flag, '');
+  assert.equal(DB.db.prepare("SELECT COUNT(*) n FROM tasks WHERE account_id = ? AND status = 'open'").get(a.id).n, 0);
+  assert.equal((await call(DB, A, '/rep/api/calls', { method: 'POST', body: { accountId: a.id, outcome: 'no_answer' } })).status, 409);
+  assert.equal((await flag(b.id, 'wrong_number')).status, 200);
+  const rb = DB.db.prepare('SELECT dnc, phone FROM accounts WHERE id = ?').get(b.id); assert.equal(rb.dnc, 1); assert.equal(rb.phone, null);
+  assert.equal((await flag(c.id, 'not_fit')).status, 200);
+  const rc = DB.db.prepare('SELECT dnc, flag, stage FROM accounts WHERE id = ?').get(c.id); assert.equal(rc.dnc, 0); assert.equal(rc.flag, 'not_fit'); assert.equal(rc.stage, 'lost');
+  assert.equal((await flag(c.id, 'bogus')).status, 400);
+  assert.equal((await flag('nope', 'closed')).status, 404);
+  const other = await newAccount(DB, B, { business: 'B Co' });
+  assert.equal((await flag(other.id, 'do_not_call')).status, 404); // not A's lead
+  assert.ok(DB.db.prepare("SELECT COUNT(*) n FROM audit WHERE action = 'flag'").get().n >= 3);
+});
+
+test('import: line type and scrub date are admin-only columns', async () => {
+  const DB = setup(); DB.db.prepare("INSERT INTO reps (email, name, role, active, created_at) VALUES (?, 'Boss', 'admin', 1, '2026-01-01')").run(BOSS);
+  const csv = 'business,phone,line_type,scrubbed_at\nOne Co,615-555-0171,landline,2026-10-01\n';
+  await call(DB, A, '/rep/api/import', { method: 'POST', body: { csv } });
+  assert.equal(DB.db.prepare("SELECT line_type, scrubbed_at FROM accounts WHERE business = 'One Co'").get().line_type, 'unknown'); // ignored for a rep
+  await call(DB, BOSS, '/rep/api/import', { method: 'POST', body: { csv: csv.replace('One Co', 'Two Co') } });
+  const r = DB.db.prepare("SELECT line_type, scrubbed_at FROM accounts WHERE business = 'Two Co'").get(); assert.equal(r.line_type, 'landline'); assert.ok(r.scrubbed_at);
+  const bad = await j(await call(DB, BOSS, '/rep/api/import', { method: 'POST', body: { csv: 'business,line_type\nX Co,satellite\n' } })); assert.equal(bad.body.imported, 0);
 });
