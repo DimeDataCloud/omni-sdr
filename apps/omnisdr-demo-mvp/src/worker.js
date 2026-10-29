@@ -8,6 +8,7 @@ import SLIDES from './sales-slides.js';
 import { TENANTS, DEFAULT_TENANT } from './tenant.js';
 import { buildInstruction, bookSlotTool } from './engine-instruction.js';
 import { handleRep } from './rep/index.js';
+import { handleIngest } from './rep/engine.js';
 import { planNextText, classifyInbound, textingAllowed } from './text-cadence.mjs';
 
 /* ---------- helpers ---------- */
@@ -408,6 +409,7 @@ export default {
     if (req.method === 'HEAD') { const r = await this.fetch(new Request(req, { method: 'GET' }), env); return new Response(null, { status: r.status, headers: r.headers }); }
     try {
       const u = new URL(req.url), p = u.pathname, m = req.method;
+      if (p === '/engine/ingest') return handleIngest(req, env); // Lead Engine sweep results from GitHub Actions; shared-secret header, outside the Access-protected /rep
       if (p === '/rep' || p.startsWith('/rep/')) return handleRep(req, env); // rep portal: own auth (Access JWT + reps row), own CSP; see src/rep/index.js
       if (m === 'GET' && p === '/tryme') return (!triedGated(env) || (await salesAuthed(req, env))) ? page(demoHtml, env) : toEntry();
       if (m === 'GET' && p === '/tryme/dev') return page(devHtml, env);
