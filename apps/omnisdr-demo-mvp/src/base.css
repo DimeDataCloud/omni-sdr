@@ -20,6 +20,7 @@ label{display:block;font-weight:500;font-size:13px;margin:var(--sp-3) 0 6px}
 .btn:hover{background:var(--fill-h)}.btn:active{transform:scale(.97)}.btn[disabled]{opacity:.5;cursor:not-allowed}
 .btn.ghost{background:transparent;border:1px solid var(--control);color:var(--text)}
 .btn.danger{background:var(--danger);color:#fff}
+a.btn{display:inline-flex;align-items:center;justify-content:center;text-decoration:none} /* a link that looks like a button gets a button's height and no underline */
 /* A tab row wider than the screen scrolls inside itself (like the rep nav) instead of pushing the page sideways. */
 .tabs{display:flex;gap:6px;margin:0 0 var(--sp-4);border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity}.tabs::-webkit-scrollbar{display:none}
 .tab{flex:0 0 auto;scroll-snap-align:start;min-height:44px;padding:0 var(--sp-4);background:none;border:0;border-bottom:3px solid transparent;font-weight:600;color:var(--muted);cursor:pointer;transition:color var(--t-hover) ease,border-color var(--t-hover) ease}

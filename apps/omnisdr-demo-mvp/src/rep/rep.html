@@ -35,7 +35,8 @@ input[type=checkbox]{width:22px;height:22px;min-height:0;padding:0;margin:0;acce
 input[type=datetime-local],input[type=date]{-webkit-appearance:none;appearance:none;text-align:left;display:block}
 input::-webkit-date-and-time-value{text-align:left;min-height:22px}
 input[type=search]{-webkit-appearance:none;appearance:none}
-@media (pointer:coarse){.btn.sm{min-height:44px;padding:0 14px}nav.main a{min-height:48px}a.lnk,button.lnk{padding:6px 0}}
+@media (pointer:coarse){.btn.sm{min-height:44px;padding:0 14px}nav.main a{min-height:48px}a.lnk,button.lnk{display:inline-flex;align-items:center;min-height:44px}details summary{min-height:44px}.mini select{min-height:44px}
+.tbl a.lnk{display:inline;min-height:0}} /* in a table the whole row is the tap target */
 nav.main,.board{-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity}nav.main a,.board .col{scroll-snap-align:start}
 dialog{max-height:calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));overflow:auto;overscroll-behavior:contain}
 .day h2{margin:12px 0 4px}.toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--text);color:var(--bg);padding:10px 16px;border-radius:8px;font-weight:600;max-width:calc(100% - 32px);z-index:5}
@@ -172,7 +173,7 @@ const screens = {
       view.innerHTML = `<h1>Call Room</h1><p class="sub">${i + 1} of ${accounts.length} due. One at a time.</p>
       <div class="grid two"><section class="card stack">
         <div><h2>${esc(a.business)}</h2><p class="muted">${esc([a.niche, a.city, a.state].filter(Boolean).join(' · '))} · <span class="pill">${STAGE_LABEL[a.stage]}</span></p></div>
-        ${a.phone ? `<div><span class="phone">${esc(a.phone)}</span> <a class="lnk" href="tel:${esc(a.phone.replace(/[^\d+]/g, ''))}">Call</a></div>` : '<p class="note">No phone on file. Add one on the account.</p>'}
+        ${a.phone ? `<div class="row"><span class="phone">${esc(a.phone)}</span><a class="btn ghost sm" href="tel:${esc(a.phone.replace(/[^\d+]/g, ''))}">Call</a></div>` : '<p class="note">No phone on file. Add one on the account.</p>'}
         ${a.contact_name ? `<p>Ask for <b>${esc(a.contact_name)}</b></p>` : ''}
         ${a.signal ? `<p><span class="muted">Why we are calling:</span> ${esc(a.signal)}</p>` : ''}
         ${a.notes ? `<p class="muted script">${esc(a.notes)}</p>` : ''}
