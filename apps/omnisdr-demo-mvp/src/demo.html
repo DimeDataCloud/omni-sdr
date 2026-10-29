@@ -26,7 +26,7 @@
 <section id="p1" hidden class="grid two">
  <div class="card">
   <div class="u-head">
-   <h2 id="bizName" class="u-m0">Riverbend Bath</h2><span class="timer muted" id="timer" aria-live="off">3:00</span></div>
+   <h2 id="bizName" class="u-m0">Riverbend Bath</h2><span class="muted">(fictional business)</span><span class="timer muted" id="timer" aria-live="off">3:00</span></div>
   <div id="gate"><p class="muted u-m0-0-12">Press start, then type or use the microphone. The agent will answer like the first-touch call a remodeler's phone gets.</p>
    <button class="btn" id="start">Start the call</button> <span id="startErr" class="err" hidden role="alert"></span></div>
   <div id="live" hidden>
@@ -44,15 +44,15 @@
 </section>
 
 <section id="p2" hidden class="grid two">
- <div class="card"><h2>A new lead arrives</h2><p class="muted u-m0-0-8">Pretend a form submission just came in. During sending hours, the agent's first text goes out within 2 minutes. It then follows up, at most 4 texts in 7 days, until the lead replies, books or opts out. The schedule, send window and STOP handling below are the product's real cadence rules running on a simulated clock.</p>
+ <div class="card"><h2>A new lead arrives</h2><p class="muted u-m0-0-8">Pretend a form submission just came in for Riverbend Bath (a fictional business). During sending hours, the agent's first text goes out within 2 minutes. It then follows up, at most 4 texts in 7 days, until the lead replies, books or opts out. The schedule, send window and STOP handling below are the product's real cadence rules running on a simulated clock.</p>
   <form id="lf"><label for="ln">First name</label><input id="ln" value="Dana" maxlength="40"><label for="lp">Mobile (fake)</label><input id="lp" value="615-555-0142" maxlength="20">
    <label for="lw">When the lead arrives</label><select id="lw"><option value="now">Right now</option><option value="wk10">Weekday, 10 AM</option><option value="wk22">Weekday, 10 PM</option><option value="sat14">Saturday, 2 PM</option><option value="sun10">Sunday, 10 AM</option><option value="sun22">Sunday, 10 PM</option><option value="tg10">Thanksgiving, 10 AM</option></select>
    <label for="lz">Lead's time zone</label><select id="lz"><option value="central">Central</option><option value="eastern">Eastern</option><option value="pacific">Pacific</option><option value="unknown">Unknown (strictest window)</option></select>
-   <div class="chk"><input type="checkbox" id="lc" checked><label for="lc">The lead agreed to receive automated texts from Riverbend Bath about this request. Uncheck it to see the agent refuse to text.</label></div>
+   <div class="chk"><input type="checkbox" id="lc" checked><label for="lc">Simulated: this lead opted in to texts from Riverbend Bath. Real forms use an unchecked opt-in box with the full disclosure. Uncheck it to see the agent refuse to text.</label></div>
    <button class="btn u-mt14" type="submit">Submit lead</button></form>
   <div class="note u-mt12" id="lnote" hidden></div>
   <ul class="muted u-pl18" id="rules"></ul></div>
- <div class="card"><h2>Text thread</h2><span class="sim">Simulated, not sent</span>
+ <div class="card"><h2>Text thread</h2><span class="sim">Simulated, not sent</span> <span class="muted">Riverbend Bath is fictional</span>
   <div class="strip" id="strip" hidden><div>Time to first text<b id="sT">-</b></div><div>Texts sent<b id="sN">0 of 4</b></div><div>Status<b id="sS">-</b></div><div>Lead's clock<b id="sC">-</b></div></div>
   <div id="thread" class="muted u-mt10">Submit a lead to see the thread.</div>
   <div class="note why" id="why" hidden></div>
@@ -245,7 +245,7 @@ if(SR){var mic=$('mic');mic.hidden=false;var rec=null;
 
 /* ---- CHASE tab: real cadence rules on a simulated clock ---- */
 var S=null,ZN={central:'America/Chicago',eastern:'America/New_York',pacific:'America/Los_Angeles',unknown:'America/New_York'};
-var WHY={opted_out:'The lead texted STOP',no_consent:'No consent recorded for this number, so no text is sent',replied:'The lead replied; follow-ups stop and the assistant takes the conversation',booked:'The lead booked; follow-ups stop',max_texts:'All 4 texts have been sent',sequence_expired:'7 days passed',human_has_thread:'A staff member took over',no_send_window:'No send window found',suppressed:'Number is suppressed',no_phone:'No phone number',quiet_hours:'Waiting for the send window (9 AM to 8 PM, Monday to Saturday, no federal holidays)',not_due:'Waiting out the minimum gap between texts'};
+var WHY={opted_out:'The lead texted STOP',no_consent:'No consent recorded for this number, so no text is sent',replied:'The lead replied; follow-ups stop and the assistant takes the conversation',booked:'The lead booked; follow-ups stop',max_texts:'All 4 texts have been sent',sequence_expired:'7 days passed',human_has_thread:'A staff member took over',no_send_window:'No send window found',suppressed:'Number is suppressed',no_phone:'No phone number',quiet_hours:'Waiting for the send window (9 AM to 8 PM recipient local time, Monday to Saturday, no federal holidays)',not_due:'Waiting out the minimum gap between texts'};
 function fmt(d){return new Intl.DateTimeFormat('en-US',{timeZone:ZN[S.zone],weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}).format(d)}
 function segs(t){var u=/[^\x20-\x7e\n]/.test(t),one=u?70:160,many=u?67:153,n=t.length,k=n<=one?1:Math.ceil(n/many);return n+' characters, '+k+' segment'+(k>1?'s':'')+(u?' (special characters)':'')}
 function sms(from,text,at){var b=el('div','sms in');b.appendChild(el('small',null,from+' · '+at));b.appendChild(el('div',null,text));$('thread').appendChild(b);return b}

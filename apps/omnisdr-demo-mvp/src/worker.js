@@ -288,9 +288,9 @@ function s2lReply(b) {
   const text = String(b.text || '').slice(0, 300);
   const kind = classifyInbound(text);
   const o = { ok: true, simulated: true, inbound: kind || 'reply' };
-  if (kind === 'stop') { o.flags = { optedOut: true }; o.reply = null; o.note = 'Opt-out recorded by rule, not by a model. Nothing more is sent to this number.'; return o; }
-  if (kind === 'help') { o.reply = `${t.business}: automated texts about your request. Reply STOP to opt out.`; o.note = 'HELP answered by rule.'; return o; }
-  if (kind === 'start') { o.flags = b.wasOptedOut ? { optedOut: false } : {}; o.reply = b.wasOptedOut ? `${t.business}: you are back on. Reply STOP to opt out.` : null; o.note = b.wasOptedOut ? 'START re-subscribes an opted-out number.' : 'START ignored: this number is not opted out.'; return o; }
+  if (kind === 'stop') { o.flags = { optedOut: true }; o.reply = `${t.business}: you're unsubscribed and won't get more texts. Reply START to resubscribe.`; o.note = 'Opt-out recorded by rule, not by a model. After the confirmation above, nothing more is sent to this number.'; return o; }
+  if (kind === 'help') { o.reply = `${t.business}: texts about your request to ${t.business}. Help: (615) 555-0142 or help@riverbend.example. Msg frequency varies. Msg & data rates may apply. Reply STOP to opt out.`; o.note = 'HELP answered by rule.'; return o; }
+  if (kind === 'start') { o.flags = b.wasOptedOut ? { optedOut: false } : {}; o.reply = b.wasOptedOut ? `${t.business}: you're subscribed again to texts about your request. Msg frequency varies. Msg & data rates may apply. Reply HELP for help, STOP to opt out.` : null; o.note = b.wasOptedOut ? 'START re-subscribes an opted-out number.' : 'START ignored: this number is not opted out.'; return o; }
   if (BOOK_RE.test(text)) { const slot = /wed/i.test(text) ? t.slots[1] : /thu/i.test(text) ? t.slots[2] : t.slots[0]; o.flags = { replied: true, booked: true }; o.booking = { slot, calendar: 'demo calendar (fake)' }; o.reply = `Booked: ${slot}. ${t.owner} will see you then. ${t.business}. Reply STOP to opt out.`; o.note = 'Booking written to the demo calendar. Follow-ups stop.'; return o; }
   o.flags = { replied: true };
   o.reply = `Thanks ${name}. ${t.owner} can come by ${t.slots[0]} or ${t.slots[1]}. Which works? ${t.business}. Reply STOP to opt out.`;

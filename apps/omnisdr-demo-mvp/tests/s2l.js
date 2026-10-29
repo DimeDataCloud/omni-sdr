@@ -61,13 +61,13 @@ ok('oversize sent list is capped', r.s === 200);
 
 const reply = (text, extra) => post('/api/lead/reply', { tenant: 'riverbend', name: 'Dana', text, ...extra });
 r = await reply('STOP');
-ok('STOP: opted out by rule, no reply text', r.j.inbound === 'stop' && r.j.flags?.optedOut === true && r.j.reply === null);
+ok('STOP: opted out by rule, with the ruled confirmation text', r.j.inbound === 'stop' && r.j.flags?.optedOut === true && /you're unsubscribed and won't get more texts\. Reply START to resubscribe\./.test(r.j.reply || ''));
 r = await reply('please stop texting me');
 ok('"stop texting me" counts as STOP', r.j.inbound === 'stop');
 r = await reply('HELP');
-ok('HELP answered by rule', r.j.inbound === 'help' && /Reply STOP/.test(r.j.reply || ''));
+ok('HELP answered by rule with contact details and rates line', r.j.inbound === 'help' && /555-0142/.test(r.j.reply || '') && /help@riverbend\.example/.test(r.j.reply || '') && /Msg & data rates may apply/.test(r.j.reply || '') && /Reply STOP/.test(r.j.reply || ''));
 r = await reply('START', { wasOptedOut: true });
-ok('START re-subscribes an opted-out number', r.j.inbound === 'start' && r.j.flags?.optedOut === false);
+ok('START re-subscribes an opted-out number with the ruled wording', r.j.inbound === 'start' && r.j.flags?.optedOut === false && /subscribed again/.test(r.j.reply || '') && /Reply HELP for help, STOP to opt out/.test(r.j.reply || ''));
 r = await reply('START');
 ok('START is ignored when not opted out', r.j.inbound === 'start' && !r.j.flags?.optedOut);
 r = await reply('Tuesday works for me');
