@@ -3,6 +3,7 @@
 // secret, outside /rep because Actions has no Cloudflare Access login. Staged leads are never accounts until an admin adds them.
 // Real lead data lives only in D1 (engine_results) and the runner's memory; nothing here is logged or written to a repo.
 // ZIP prefixes the engine's Census file covers: New Jersey 070-089, Tennessee 370-385.
+import { scan, cleanUrl, makeGet, NICHE_CONFIG, EXCLUDE } from './scan.js';
 const STATES = [{ code: 'NJ', from: '070', to: '089' }, { code: 'TN', from: '370', to: '385' }];
 
 export const NICHES = ['Plumbing', 'HVAC', 'Electrical', 'Garage doors', 'Locksmith', 'Towing', 'Well pumps', 'Roofing', 'Remodeling', 'Painting', 'Landscaping', 'Pool builders', 'Flooring and epoxy', 'Fencing and decks', 'Windows and siding', 'Martial arts', 'Water damage restoration', 'Pest control', 'Auto repair', 'House cleaning', 'Dog grooming', 'Appliance repair', 'Home inspection', 'Movers', 'Septic'];
@@ -48,6 +49,24 @@ export async function engineApi(env, me, path, m, req, h) {
     const out = await dispatch(env, { id, zip, niche, cap });
     await D.prepare('UPDATE engine_jobs SET status = ?, error = ?, updated_at = ? WHERE id = ?').bind(out.ok ? 'running' : out.notConnected ? 'queued' : 'failed', out.ok ? null : out.message, now(), id).run();
     return { id, status: out.ok ? 'running' : out.notConnected ? 'queued' : 'failed', message: out.ok ? 'Sweep started. Results land here in a few minutes.' : out.message };
+  }
+  if (m === 'POST' && path === '/engine/scan') { // one link, read politely, scored; nothing is added until an admin clicks Add
+    const b = await body(req, 4096), url = cleanUrl(b.url || '');
+    if (!url) throw bad('Paste a public web address, like https://example.com');
+    const open = await D.prepare("SELECT COUNT(*) n FROM engine_jobs WHERE kind = 'scan' AND created_at > ?").bind(new Date(Date.now() - 3600e3).toISOString()).first();
+    if (open.n >= 30) throw new Bad(429, 'Thirty scans in the last hour. Try again later.');
+    const result = await scan(url, { get: makeGet(env.ENGINE_FETCH || fetch, env.ENGINE_GAP_MS), niches: NICHE_CONFIG, excl: EXCLUDE });
+    const id = 'j' + uid().replaceAll('-', '').slice(0, 20), t = now(), stmts = [];
+    const p = digits(result.phone), state = zipState(result.zip || ''); let staged = null;
+    if (result.status === 'read' && result.business && p.length === 10 && state) {
+      const dupe = await D.prepare("SELECT 1 x FROM accounts WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone, '(', ''), ')', ''), '-', ''), ' ', ''), '+1', '') = ? LIMIT 1").bind(p).first();
+      if (dupe) staged = 'duplicate';
+      else { staged = 'staged'; stmts.push(D.prepare("INSERT INTO engine_results (id, job_id, phone, lead, state, created_at) VALUES (?, ?, ?, ?, 'staged', ?)").bind(crypto.randomUUID(), id, p, JSON.stringify({ business: FIELD(result.business, 160), niche: result.niche || '', website: FIELD(result.url, 300), phone: `${p.slice(0, 3)}-${p.slice(3, 6)}-${p.slice(6)}`, state, zip: result.zip, email: FIELD((result.emails || [])[0], 200), signal: `site scan score ${result.score}`, notes: FIELD((result.why || []).join('; '), 4000) }), t)); }
+    }
+    stmts.unshift(D.prepare("INSERT INTO engine_jobs (id, kind, url, cap, status, summary, created_by, created_at, updated_at) VALUES (?, 'scan', ?, 1, 'done', ?, ?, ?, ?)").bind(id, url, JSON.stringify({ status: result.status, score: result.score ?? null, solid: result.solid ?? null, staged: staged === 'staged' ? 1 : 0 }), me.email, t, t));
+    stmts.push(audit(env, me.email, 'engine_scan', 'engine_job', id, null, { url, status: result.status }));
+    await D.batch(stmts);
+    return { id, staged, result };
   }
   if (seg[1] === 'jobs' && seg[2] && m === 'GET' && seg[3] === 'results') {
     const j = await D.prepare('SELECT id FROM engine_jobs WHERE id = ?').bind(seg[2]).first(); if (!j) throw new Bad(404, 'No such job');
