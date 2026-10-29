@@ -80,7 +80,18 @@ async function account(env, me, id) {
   return a;
 }
 const obj = (v) => { try { const o = JSON.parse(v || '{}'); return o && typeof o === 'object' && !Array.isArray(o) ? o : {}; } catch { return {}; } };
-const shape = (a) => a && ({ ...a, onboarding: obj(a.onboarding), audit: obj(a.audit), archived: !!a.archived });
+// May this number be dialed today? Fails closed. A do-not-call mark or a missing number blocks. A landline is open. Anything
+// else (wireless, VoIP, or a line type nobody has confirmed) needs a National DNC scrub no older than 31 days.
+const SCRUB_DAYS = 31, LINE_TYPES = ['landline', 'wireless', 'voip', 'unknown'];
+function dialStatus(a, t = now()) {
+  if (a.dnc) return { ok: false, reason: 'do_not_call' };
+  if (!a.phone) return { ok: false, reason: 'no_phone' };
+  if (a.line_type === 'landline') return { ok: true, reason: null };
+  if (!a.scrubbed_at) return { ok: false, reason: 'unscrubbed' };
+  if (a.scrubbed_at < addDays(t, -SCRUB_DAYS)) return { ok: false, reason: 'scrub_expired' };
+  return { ok: true, reason: null };
+}
+const shape = (a) => a && ({ ...a, onboarding: obj(a.onboarding), audit: obj(a.audit), archived: !!a.archived, dnc: !!a.dnc, dial: dialStatus(a) });
 // A rep always sees only their own rows. An admin sees everyone, or one rep when the page passes ?owner= (the Viewing switch).
 const who = (me, col, view = null) => !isAdmin(me) ? { sql: `${col} = ?`, args: [me.email] } : view ? { sql: `${col} = ?`, args: [view] } : { sql: '1 = 1', args: [] };
 const scope = (me, alias = '', view = null) => who(me, `${alias}owner_email`, view);
@@ -107,6 +118,11 @@ async function createAccount(env, me, b, source = 'manual') {
   if (isAdmin(me) && b.owner_email) {
     const o = await env.REP_DB.prepare('SELECT email FROM reps WHERE email = ? AND active = 1').bind(email(b.owner_email)).first();
     if (!o) throw bad('That owner is not an active rep'); row.owner_email = o.email;
+  }
+  // Line type and scrub date come from the scrub vendor's file, so only an admin can set them (on import).
+  if (isAdmin(me) && source === 'csv') {
+    const lt = String(b.line_type || '').trim().toLowerCase(); if (lt) { if (!LINE_TYPES.includes(lt)) throw bad('Line type must be landline, wireless, voip or unknown'); row.line_type = lt; }
+    if (String(b.scrubbed_at || '').trim()) row.scrubbed_at = iso(b.scrubbed_at, 'Scrubbed date');
   }
   const cols = Object.keys(row);
   const stmts = [env.REP_DB.prepare(`INSERT INTO accounts (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`).bind(...cols.map((c) => row[c])),
@@ -175,7 +191,8 @@ async function api(req, env, me, path, m) {
     const r = await D.prepare(`SELECT a.*, (SELECT name FROM contacts c WHERE c.account_id = a.id ORDER BY is_primary DESC LIMIT 1) contact_name
       FROM accounts a WHERE a.archived = 0 AND a.stage IN ('new','results_call','proposed') AND (a.next_action_at IS NULL OR a.next_action_at <= ?) AND ${scope(me, 'a.', view).sql}
       ORDER BY COALESCE(a.next_action_at, a.created_at) LIMIT 100`).bind(addDays(now(), 0.5), ...s.args).all();
-    return { accounts: r.results.map(shape) };
+    const all = r.results.map(shape), accounts = all.filter((a) => a.dial.ok);
+    return { accounts, held: all.length - accounts.length };
   }
 
   if (seg[0] === 'accounts') {
@@ -218,11 +235,28 @@ async function api(req, env, me, path, m) {
         const o = {}; for (const f of K.AUDIT_FIELDS) { const v = str(b.audit[f.key], 1000, f.label); if (v) o[f.key] = v; }
         set.audit = JSON.stringify(o);
       }
+      if ('phone' in set && set.phone !== a.phone) { set.scrubbed_at = null; set.line_type = 'unknown'; } // a new number has not been scrubbed
       if (!Object.keys(set).length) throw bad('Nothing to change');
       set.updated_at = t;
       const stmts = [D.prepare(`UPDATE accounts SET ${Object.keys(set).map((k) => k + ' = ?').join(', ')} WHERE id = ?`).bind(...Object.values(set), a.id), audit(env, me.email, 'update', 'account', a.id, a, set)];
       if (set.stage && set.stage !== a.stage) stmts.push(D.prepare("INSERT INTO activities (id, account_id, rep_email, kind, body, created_at) VALUES (?, ?, ?, 'stage', ?, ?)").bind(uid(), a.id, me.email, `Stage: ${a.stage} to ${set.stage}`, t));
       await D.batch(stmts);
+      return { account: shape(await account(env, me, a.id)) };
+    }
+    // Do not call never expires and stays apart from "not a fit", which a later pass may revisit. Wrong number is a do-not-call
+    // and the number is dropped. Every kind closes the open follow-ups so nothing keeps nudging a rep to dial.
+    if (m === 'POST' && seg[2] === 'flag') {
+      const b = await body(req), kind = b.kind, t = now();
+      const KINDS = { do_not_call: 'Marked do not call', wrong_number: 'Wrong number: marked do not call and the number removed', closed: 'Marked closed', already_covered: 'Marked already covered', not_fit: 'Marked not a fit' };
+      if (!KINDS[kind]) throw bad('Unknown flag');
+      const set = { updated_at: t };
+      if (kind === 'do_not_call' || kind === 'wrong_number') { set.dnc = 1; set.dnc_at = t; } else { set.flag = kind; set.flag_at = t; set.stage = 'lost'; }
+      if (kind === 'wrong_number') { set.phone = null; set.scrubbed_at = null; set.line_type = 'unknown'; }
+      set.next_action_at = null;
+      await D.batch([D.prepare(`UPDATE accounts SET ${Object.keys(set).map((k) => k + ' = ?').join(', ')} WHERE id = ?`).bind(...Object.values(set), a.id),
+        D.prepare("UPDATE tasks SET status = 'done', done_at = ? WHERE account_id = ? AND status = 'open'").bind(t, a.id),
+        D.prepare("INSERT INTO activities (id, account_id, rep_email, kind, body, created_at) VALUES (?, ?, ?, 'note', ?, ?)").bind(uid(), a.id, me.email, KINDS[kind], t),
+        audit(env, me.email, 'flag', 'account', a.id, { dnc: a.dnc, flag: a.flag, phone: kind === 'wrong_number' ? '(removed)' : undefined }, { kind })]);
       return { account: shape(await account(env, me, a.id)) };
     }
     if (m === 'POST' && seg[2] === 'contacts') {
@@ -253,6 +287,8 @@ async function api(req, env, me, path, m) {
   if (m === 'POST' && path === '/calls') {
     const b = await body(req), a = await account(env, me, str(b.accountId, 64, 'Account', { required: true }));
     if (!OUTCOMES.includes(b.outcome)) throw bad('Pick how the call went');
+    // Nothing but an email may be logged against a number the portal would not let a rep dial.
+    const dial = dialStatus(a); if (!dial.ok && b.outcome !== 'email_sent') return json({ error: 'This number cannot be called right now', reason: dial.reason }, 409);
     const t = now(), callbackAt = iso(b.callbackAt, 'Callback time');
     if (b.outcome === 'callback_scheduled' && (!callbackAt || callbackAt < t)) throw bad('Pick a callback time in the future');
     const note = str(b.note, 1000, 'Note') ?? '', next = afterCall({ outcome: b.outcome, stage: a.stage, callbackAt, now: t });
@@ -344,6 +380,7 @@ async function api(req, env, me, path, m) {
   }
 
   if (m === 'GET' && path === '/export.csv') {
+    if (!isAdmin(me)) throw forbidden(); // contractor reps never get a file of leads
     const r = await D.prepare(`SELECT * FROM accounts WHERE archived = 0 AND ${s.sql} ORDER BY business`).bind(...s.args).all();
     await D.batch([audit(env, me.email, 'export', 'accounts', '*', null, { rows: r.results.length })]);
     const csv = [EXPORT_COLS.join(','), ...r.results.map((a) => EXPORT_COLS.map((c) => csvCell(a[c])).join(','))].join('\r\n');
@@ -396,6 +433,24 @@ async function api(req, env, me, path, m) {
       stmts.push(D.prepare(`UPDATE accounts SET ${Object.keys(set).map((k) => k + ' = ?').join(', ')}, updated_at = ? WHERE id = ?`).bind(...Object.values(set), t, a.id),
         audit(env, me.email, 'bulk', 'account', a.id, { niche: a.niche, archived: a.archived }, set));
     }
+    for (let i = 0; i < stmts.length; i += 90) await D.batch(stmts.slice(i, i + 90));
+    return { updated: found.length };
+  }
+
+  // Record a National DNC scrub (admin only): the date it ran and, optionally, the line type the vendor returned. The
+  // portal opens a number to dialing only while its scrub is under 31 days old.
+  if (m === 'POST' && path === '/scrub') {
+    if (!isAdmin(me)) throw forbidden();
+    const b = await body(req), ids = Array.isArray(b.accountIds) ? [...new Set(b.accountIds)] : [];
+    if (!ids.length || ids.length > 500 || !ids.every((x) => typeof x === 'string' && x.length <= 64)) throw bad('Pick between 1 and 500 accounts');
+    const t = now(), at = b.scrubbedAt ? iso(b.scrubbedAt, 'Scrubbed date') : t;
+    if (at > t) throw bad('A scrub cannot be dated in the future');
+    const set = { scrubbed_at: at };
+    if (b.lineType != null && b.lineType !== '') { if (!LINE_TYPES.includes(b.lineType)) throw bad('Line type must be landline, wireless, voip or unknown'); set.line_type = b.lineType; }
+    const found = (await D.prepare(`SELECT id, line_type, scrubbed_at FROM accounts WHERE id IN (${ids.map(() => '?').join(',')})`).bind(...ids).all()).results;
+    if (found.length !== ids.length) throw notFound('account');
+    const stmts = found.flatMap((a) => [D.prepare(`UPDATE accounts SET ${Object.keys(set).map((k) => k + ' = ?').join(', ')}, updated_at = ? WHERE id = ?`).bind(...Object.values(set), t, a.id),
+      audit(env, me.email, 'scrub', 'account', a.id, { line_type: a.line_type, scrubbed_at: a.scrubbed_at }, set)]);
     for (let i = 0; i < stmts.length; i += 90) await D.batch(stmts.slice(i, i + 90));
     return { updated: found.length };
   }
