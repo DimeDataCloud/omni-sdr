@@ -8,6 +8,7 @@ import SLIDES from './sales-slides.js';
 import { TENANTS, DEFAULT_TENANT } from './tenant.js';
 import { buildInstruction, bookSlotTool } from './engine-instruction.js';
 import { handleRep } from './rep/index.js';
+import { planNextText, classifyInbound, textingAllowed } from './text-cadence.mjs';
 
 /* ---------- helpers ---------- */
 const enc = new TextEncoder();
@@ -221,19 +222,80 @@ async function logEvent(env, b) {
   return json({ ok: r.ok === true }, r._s);
 }
 
+
+// Send state in Central time for the banner: 'open' (full window), 'off_day' (9 AM to 8 PM on a Sunday or holiday), 'closed' (outside 9 AM to 8 PM).
+function sendState(now) {
+  if (textingAllowed(now, ['America/Chicago'])) return 'open';
+  const hr = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hourCycle: 'h23', hour: 'numeric' }).format(now));
+  return hr >= 9 && hr < 20 ? 'off_day' : 'closed';
+}
+
+// The four sample texts, each naming the business and carrying the STOP line (legal wording 2026-10-28).
+function stepText(t, name, i) {
+  return [
+    `Hi ${name}, it's ${t.persona} with ${t.business}. Thanks for reaching out about your bathroom. Are you looking at a tub-to-shower swap, or a bigger remodel? (Automated assistant. Reply STOP to opt out.)`,
+    `${name}, ${t.owner} can come by for ${t.estimate}. Does ${t.slots[0]} or ${t.slots[1]} work? ${t.business}. Reply STOP to opt out.`,
+    `Hi ${name}, still thinking about the bathroom? I can hold ${t.slots[2]} for you. Just reply with a time that works. ${t.business}. Reply STOP to opt out.`,
+    `Last note from ${t.business}, ${name}. If the timing is off, no worries. Reply any time and we'll pick it back up. Reply STOP to opt out.`
+  ][i];
+}
+
 // CHASE simulation: returns the planned cadence for the chosen tenant. Nothing is sent anywhere.
 function chasePlan(b) {
   const t = TENANTS[pickTenant(b.tenant)];
   const name = (String(b.name || 'there').replace(/[^\w' -]/g, '').slice(0, 40).split(' ')[0]) || 'there';
-  const hr = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' })).getHours();
-  const quiet = hr >= t.quietHours[0] || hr < t.quietHours[1];
+  const state = sendState(new Date());
+  const quiet = state !== 'open';
   const steps = [
-    { at: 'T+8 s', text: `Hi ${name}, it's ${t.persona} with ${t.business}. Thanks for reaching out about your bathroom. Are you looking at a tub-to-shower swap, or a bigger remodel? (Automated assistant. Reply STOP to opt out.)` },
-    { at: 'T+4 min', text: `${name}, ${t.owner} can come by for ${t.estimate}. Does ${t.slots[0]} or ${t.slots[1]} work?` },
-    { at: 'T+1 day', text: `Hi ${name}, still thinking about the bathroom? I can hold ${t.slots[2]} for you. Just reply with a time that works.` },
-    { at: 'T+3 days', text: `Last note from ${t.business}, ${name}. If the timing is off, no worries. Reply any time and we'll pick it back up.` }
+    { at: 'Text 1 · inside 2 minutes', text: stepText(t, name, 0) },
+    { at: 'Text 2 · 12+ hours later', text: stepText(t, name, 1) },
+    { at: 'Text 3 · 1 day after text 2', text: stepText(t, name, 2) },
+    { at: 'Text 4 · 3 days after text 3, last', text: stepText(t, name, 3) }
   ];
-  return { ok: true, simulated: true, quietHoursNow: quiet, note: quiet ? 'It is quiet hours now: the first text is queued until 8 AM instead of sending in 8 seconds.' : 'Within hours: first text goes out in under 60 seconds.', steps, rules: ['Stops on reply, booking, STOP, or wrong number', 'Max 3 contacts per 24 hours', 'Quiet hours 9 PM to 8 AM local', 'Every text identifies the sender as automated and offers STOP'] };
+  const note = state === 'open' ? 'Inside the send window: the first text goes out within 2 minutes. The thread below plays in fast forward; real follow-ups are spaced over days.'
+    : state === 'off_day' ? 'Sunday or holiday: the first text still goes within 2 minutes because it answers your own request. Follow-ups wait for the next sending day.'
+    : 'Outside sending hours (9 AM to 8 PM, Monday to Saturday, no federal holidays; shown here in Central time). The first text waits until 9 AM on the next sending day.';
+  return { ok: true, simulated: true, quietHoursNow: quiet, note, stepsNote: 'Times shown are the earliest. Waits for sending hours can push any step later.', steps, rules: ['Stops on reply, booking, STOP, wrong number, or when a staff member takes over', 'At most 4 texts in 7 days, follow-ups at least 12 hours apart', 'Texts go out 9 AM to 8 PM recipient local time, Monday to Saturday, never on federal holidays', 'Every text names the business and says Reply STOP to opt out'] };
+}
+
+
+// --- Speed-to-lead simulation: the real cadence module on a simulated clock. Stateless, free (no model, no network), nothing is sent. ---
+const S2L_ZONES = { central: 'America/Chicago', eastern: 'America/New_York', pacific: 'America/Los_Angeles', unknown: undefined };
+const cleanName = (n) => (String(n || 'there').replace(/[^w' -]/g, '').slice(0, 40).split(' ')[0]) || 'there';
+const simDate = (v, now) => { const d = new Date(v); return Number.isFinite(d.getTime()) && Math.abs(d.getTime() - now) < 400 * 86400000 ? d : null; };
+function s2lLead(b, now) {
+  const zone = Object.hasOwn(S2L_ZONES, b.zone) ? b.zone : 'central';
+  const receivedAt = simDate(b.requestedAt, now);
+  const sent = Array.isArray(b.sent) ? b.sent.slice(0, 4).map((x) => simDate(x, now)) : [];
+  const at = simDate(b.now, now);
+  if (!receivedAt || !at || sent.some((x) => !x)) return null;
+  const f = b.flags && typeof b.flags === 'object' ? b.flags : {};
+  return { zone, at, sent, lead: { receivedAt, consent: b.consent === true ? 'express_form' : 'none', hasPhone: true, timeZone: S2L_ZONES[zone], optedOut: f.optedOut === true, replied: f.replied === true, booked: f.booked === true, humanHasThread: false } };
+}
+function s2lPlan(b) {
+  const t = TENANTS[pickTenant(b.tenant)];
+  const r = s2lLead(b, Date.now());
+  if (!r) return { ok: false, message: 'Bad plan request.' };
+  const d = planNextText(r.lead, r.sent, r.at);
+  const out = { ok: true, simulated: true, zone: r.zone, decision: { action: d.action, reason: d.reason || null, step: d.step ?? null, at: d.at ? d.at.toISOString() : null, until: d.until ? d.until.toISOString() : null, deferredBy: d.deferredBy || null } };
+  if (d.action === 'send') out.text = stepText(t, cleanName(b.name), d.step);
+  return out;
+}
+const BOOK_RE = /\b(book|tuesday|wednesday|thursday|works?|yes|yep|sure|sounds good|ok(ay)?|10|2 ?pm|9 ?am)\b/i;
+function s2lReply(b) {
+  const t = TENANTS[pickTenant(b.tenant)];
+  const name = cleanName(b.name);
+  const text = String(b.text || '').slice(0, 300);
+  const kind = classifyInbound(text);
+  const o = { ok: true, simulated: true, inbound: kind || 'reply' };
+  if (kind === 'stop') { o.flags = { optedOut: true }; o.reply = `${t.business}: you're unsubscribed and won't get more texts. Reply START to resubscribe.`; o.note = 'Opt-out recorded by rule, not by a model. After the confirmation above, nothing more is sent to this number.'; return o; }
+  if (kind === 'help') { o.reply = `${t.business}: texts about your request to ${t.business}. Help: (615) 555-0142 or help@riverbend.example. Msg frequency varies. Msg & data rates may apply. Reply STOP to opt out.`; o.note = 'HELP answered by rule.'; return o; }
+  if (kind === 'start') { o.flags = b.wasOptedOut ? { optedOut: false } : {}; o.reply = b.wasOptedOut ? `${t.business}: you're subscribed again to texts about your request. Msg frequency varies. Msg & data rates may apply. Reply HELP for help, STOP to opt out.` : null; o.note = b.wasOptedOut ? 'START re-subscribes an opted-out number.' : 'START ignored: this number is not opted out.'; return o; }
+  if (BOOK_RE.test(text)) { const slot = /wed/i.test(text) ? t.slots[1] : /thu/i.test(text) ? t.slots[2] : t.slots[0]; o.flags = { replied: true, booked: true }; o.booking = { slot, calendar: 'demo calendar (fake)' }; o.reply = `Booked: ${slot}. ${t.owner} will see you then. ${t.business}. Reply STOP to opt out.`; o.note = 'Booking written to the demo calendar. Follow-ups stop.'; return o; }
+  o.flags = { replied: true };
+  o.reply = `Thanks ${name}. ${t.owner} can come by ${t.slots[0]} or ${t.slots[1]}. Which works? ${t.business}. Reply STOP to opt out.`;
+  o.note = 'Reply detected. Follow-ups stop and the assistant takes the conversation.';
+  return o;
 }
 
 // Token mint verified against the live Gemini API 2026-10-24 (200, setupComplete, audio back); the browser audio client does not exist yet. One token per session, session must exist, cap-free because the session already passed caps.
@@ -365,6 +427,8 @@ export default {
         if (p === '/api/session') return newSession(req, env, b);
         if (p === '/api/event') return logEvent(env, b);
         if (p === '/api/lead') return json(chasePlan(b));
+        if (p === '/api/lead/plan') return json(s2lPlan(b));
+        if (p === '/api/lead/reply') return json(s2lReply(b));
         if (p === '/api/token') return mintToken(env, b);
         if (p === '/api/voice') return mintVoice(env, b);
         if (p === '/api/sales/login') return salesLogin(req, env, b);

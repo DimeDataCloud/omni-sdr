@@ -26,4 +26,7 @@ bash tests/stop.sh
 export RETELL_MOCK_PORT="${RETELL_MOCK_PORT:-8803}"; export RETELL_TEST_CALLS=3; export FAKE_RETELL_KEY=retell-test-key-NOT-REAL
 bash tests/start.sh --var RETELL_API_KEY:$FAKE_RETELL_KEY --var RETELL_BASE:http://127.0.0.1:$RETELL_MOCK_PORT --var RETELL_TEST_CALLS:$RETELL_TEST_CALLS --var IP_CAP:5000 --var DAILY_CAP:5000 --var TRYME_GATED:off --var TURNSTILE_SITEKEY: && node tests/voice.js || rc=1
 bash tests/stop.sh
+# Speed-to-lead simulation: real cadence module on a simulated clock (free, no model).
+bash tests/start.sh --var IP_CAP:5000 --var DAILY_CAP:5000 --var TRYME_GATED:off --var TURNSTILE_SITEKEY: && node tests/s2l.js || rc=1
+bash tests/stop.sh
 exit $rc
