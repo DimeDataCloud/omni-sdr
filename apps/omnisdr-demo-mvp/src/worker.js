@@ -221,19 +221,44 @@ async function logEvent(env, b) {
   return json({ ok: r.ok === true }, r._s);
 }
 
+
+// Federal holidays, on the date and on the day observed (Saturday holiday: Friday before; Sunday: Monday after).
+function isFederalHoliday(y, m, d) {
+  const nth = (mo, wd, n) => { let c = 0; for (let day = 1; day <= 31; day++) { const dt = new Date(Date.UTC(y, mo, day)); if (dt.getUTCMonth() !== mo) break; if (dt.getUTCDay() === wd && ++c === n) return day; } };
+  const last = (mo, wd) => { for (let day = 31; day >= 1; day--) { const dt = new Date(Date.UTC(y, mo, day)); if (dt.getUTCMonth() === mo && dt.getUTCDay() === wd) return day; } };
+  const fixed = [[0, 1], [5, 19], [6, 4], [10, 11], [11, 25]];
+  const floating = [[0, nth(0, 1, 3)], [1, nth(1, 1, 3)], [4, last(4, 1)], [8, nth(8, 1, 1)], [9, nth(9, 1, 2)], [10, nth(10, 4, 4)]];
+  const here = Date.UTC(y, m, d);
+  if (m === 11 && d === 31 && new Date(Date.UTC(y + 1, 0, 1)).getUTCDay() === 6) return true; // Jan 1 on a Saturday is observed Dec 31
+  for (const [mo, day] of fixed) { const wd = new Date(Date.UTC(y, mo, day)).getUTCDay(); const obs = wd === 6 ? day - 1 : wd === 0 ? day + 1 : day; if (here === Date.UTC(y, mo, day) || here === Date.UTC(y, mo, obs)) return true; }
+  for (const [mo, day] of floating) if (here === Date.UTC(y, mo, day)) return true;
+  return false;
+}
+// Send window (legal ruling, Compliance Addendum B6): 9 AM to 8 PM, Monday to Saturday, no federal holidays.
+// A first reply to the lead's own request may still go inside 9 AM to 8 PM on a Sunday or holiday.
+function sendState(now) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', weekday: 'short' }).formatToParts(now).map((x) => [x.type, x.value]));
+  const hr = Number(p.hour);
+  if (hr < 9 || hr >= 20) return 'closed';
+  return p.weekday === 'Sun' || isFederalHoliday(Number(p.year), Number(p.month) - 1, Number(p.day)) ? 'off_day' : 'open';
+}
+
 // CHASE simulation: returns the planned cadence for the chosen tenant. Nothing is sent anywhere.
 function chasePlan(b) {
   const t = TENANTS[pickTenant(b.tenant)];
   const name = (String(b.name || 'there').replace(/[^\w' -]/g, '').slice(0, 40).split(' ')[0]) || 'there';
-  const hr = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' })).getHours();
-  const quiet = hr >= t.quietHours[0] || hr < t.quietHours[1];
+  const state = sendState(new Date());
+  const quiet = state !== 'open';
   const steps = [
-    { at: 'T+8 s', text: `Hi ${name}, it's ${t.persona} with ${t.business}. Thanks for reaching out about your bathroom. Are you looking at a tub-to-shower swap, or a bigger remodel? (Automated assistant. Reply STOP to opt out.)` },
-    { at: 'T+4 min', text: `${name}, ${t.owner} can come by for ${t.estimate}. Does ${t.slots[0]} or ${t.slots[1]} work?` },
-    { at: 'T+1 day', text: `Hi ${name}, still thinking about the bathroom? I can hold ${t.slots[2]} for you. Just reply with a time that works.` },
-    { at: 'T+3 days', text: `Last note from ${t.business}, ${name}. If the timing is off, no worries. Reply any time and we'll pick it back up.` }
+    { at: 'Text 1 · inside 2 minutes', text: `Hi ${name}, it's ${t.persona} with ${t.business}. Thanks for reaching out about your bathroom. Are you looking at a tub-to-shower swap, or a bigger remodel? (Automated assistant. Reply STOP to opt out.)` },
+    { at: 'Text 2 · 12+ hours later', text: `${name}, ${t.owner} can come by for ${t.estimate}. Does ${t.slots[0]} or ${t.slots[1]} work? ${t.business}. Reply STOP to opt out.` },
+    { at: 'Text 3 · 1 day after text 2', text: `Hi ${name}, still thinking about the bathroom? I can hold ${t.slots[2]} for you. Just reply with a time that works. ${t.business}. Reply STOP to opt out.` },
+    { at: 'Text 4 · 3 days after text 3, last', text: `Last note from ${t.business}, ${name}. If the timing is off, no worries. Reply any time and we'll pick it back up. Reply STOP to opt out.` }
   ];
-  return { ok: true, simulated: true, quietHoursNow: quiet, note: quiet ? 'It is quiet hours now: the first text is queued until 8 AM instead of sending in 8 seconds.' : 'Within hours: first text goes out in under 60 seconds.', steps, rules: ['Stops on reply, booking, STOP, or wrong number', 'Max 3 contacts per 24 hours', 'Quiet hours 9 PM to 8 AM local', 'Every text identifies the sender as automated and offers STOP'] };
+  const note = state === 'open' ? 'Inside the send window: the first text goes out within 2 minutes. The thread below plays in fast forward; real follow-ups are spaced over days.'
+    : state === 'off_day' ? 'Sunday or holiday: the first text still goes within 2 minutes because it answers your own request. Follow-ups wait for the next sending day.'
+    : 'Outside sending hours (9 AM to 8 PM, Monday to Saturday, no federal holidays; shown here in Central time). The first text waits until 9 AM on the next sending day.';
+  return { ok: true, simulated: true, quietHoursNow: quiet, note, stepsNote: 'Times shown are the earliest. Waits for sending hours can push any step later.', steps, rules: ['Stops on reply, booking, STOP, wrong number, or when a staff member takes over', 'At most 4 texts in 7 days, follow-ups at least 12 hours apart', 'Texts go out 9 AM to 8 PM recipient local time, Monday to Saturday, never on federal holidays', 'Every text names the business and says Reply STOP to opt out'] };
 }
 
 // Token mint verified against the live Gemini API 2026-10-24 (200, setupComplete, audio back); the browser audio client does not exist yet. One token per session, session must exist, cap-free because the session already passed caps.
