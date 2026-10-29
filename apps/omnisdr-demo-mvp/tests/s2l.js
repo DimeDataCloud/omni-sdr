@@ -54,6 +54,9 @@ ok('opted out: sequence stops', r.j.decision?.reason === 'opted_out');
 
 r = await plan({ requestedAt: '2001-01-01T00:00:00Z', now: iso(wk10) });
 ok('a simulated clock far from today is refused', r.j.ok === false);
+const far = new Date(Date.now() + 200 * 86400000);
+r = await plan({ requestedAt: iso(far), now: iso(far) });
+ok('a holiday scenario months away is accepted', r.j.ok === true, JSON.stringify(r.j));
 r = await plan({ requestedAt: 'nope', now: iso(wk10) });
 ok('garbage dates are refused, not a 500', r.s === 200 && r.j.ok === false);
 r = await plan({ requestedAt: iso(wk10), now: iso(wk10), sent: Array(40).fill(iso(wk10)) });

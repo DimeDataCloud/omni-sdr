@@ -262,7 +262,7 @@ function chasePlan(b) {
 // --- Speed-to-lead simulation: the real cadence module on a simulated clock. Stateless, free (no model, no network), nothing is sent. ---
 const S2L_ZONES = { central: 'America/Chicago', eastern: 'America/New_York', pacific: 'America/Los_Angeles', unknown: undefined };
 const cleanName = (n) => (String(n || 'there').replace(/[^w' -]/g, '').slice(0, 40).split(' ')[0]) || 'there';
-const simDate = (v, now) => { const d = new Date(v); return Number.isFinite(d.getTime()) && Math.abs(d.getTime() - now) < 30 * 86400000 ? d : null; };
+const simDate = (v, now) => { const d = new Date(v); return Number.isFinite(d.getTime()) && Math.abs(d.getTime() - now) < 400 * 86400000 ? d : null; };
 function s2lLead(b, now) {
   const zone = Object.hasOwn(S2L_ZONES, b.zone) ? b.zone : 'central';
   const receivedAt = simDate(b.requestedAt, now);
