@@ -11,7 +11,7 @@
 .sms.in,#vsms:not([hidden]){animation:pop var(--t-enter) ease both}
 #p1:not([hidden]),#p2:not([hidden]),#p3:not([hidden]){animation:enter var(--t-enter) ease}
 @media (max-width:600px){.tabs{gap:0}.tabs .tab{flex:1 1 0;min-width:0;padding:0 6px;line-height:18px}}
-.ctl{flex-wrap:wrap}.ctl .btn{flex:1 1 auto;white-space:nowrap}
+.chk{display:flex;gap:10px;align-items:flex-start;margin-top:12px}.chk input{width:20px;min-height:20px;flex:none;margin-top:2px}.chk label{margin:0}.strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin:12px 0}.strip div{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px}.strip b{display:block;font-size:18px}.why{margin-top:10px}.ctl{flex-wrap:wrap}.ctl .btn{flex:1 1 auto;white-space:nowrap}
 
 .u-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}.u-mb12{margin-bottom:12px}.u-mt10{margin-top:10px}.u-mt12{margin-top:12px}.u-mt14{margin-top:14px}.u-mt8{margin-top:8px}
 .u-m0-0-12{margin:0 0 12px}.u-m0-0-8{margin:0 0 8px}.u-m0{margin:0}.u-m12-0-16{margin:12px 0 16px}.u-m8-0-0{margin:8px 0 0}.u-pl18{padding-left:18px}.u-full-mt18{width:100%;margin-top:18px}.u-w0{width:0}
@@ -44,12 +44,21 @@
 </section>
 
 <section id="p2" hidden class="grid two">
- <div class="card"><h2>A new lead arrives</h2><p class="muted u-m0-0-8">Pretend a form submission just came in. During sending hours, the agent's first text goes out within 2 minutes. It then follows up, at most 4 texts in 7 days, until the lead replies, books or opts out.</p>
-  <form id="lf"><label for="ln">First name</label><input id="ln" value="Dana" maxlength="40"><label for="lp">Mobile (fake)</label><input id="lp" value="615-555-0142" maxlength="20"><button class="btn u-mt14" type="submit">Submit lead</button></form>
-  <div class="note u-mt12" id="lnote" hidden></div></div>
- <div class="card"><h2>Text thread</h2><span class="sim">Simulated, not sent</span><div id="thread" class="muted u-mt10">Submit a lead to see the thread.</div>
-  <div class="row ctl" id="lact" hidden><button class="btn ghost" data-a="reply">Lead replies</button><button class="btn ghost" data-a="book">Lead books</button><button class="btn ghost" data-a="stop">Lead texts STOP</button></div>
+ <div class="card"><h2>A new lead arrives</h2><p class="muted u-m0-0-8">Pretend a form submission just came in. During sending hours, the agent's first text goes out within 2 minutes. It then follows up, at most 4 texts in 7 days, until the lead replies, books or opts out. The schedule, send window and STOP handling below are the product's real cadence rules running on a simulated clock.</p>
+  <form id="lf"><label for="ln">First name</label><input id="ln" value="Dana" maxlength="40"><label for="lp">Mobile (fake)</label><input id="lp" value="615-555-0142" maxlength="20">
+   <label for="lw">When the lead arrives</label><select id="lw"><option value="now">Right now</option><option value="wk10">Weekday, 10 AM</option><option value="wk22">Weekday, 10 PM</option><option value="sat14">Saturday, 2 PM</option><option value="sun10">Sunday, 10 AM</option><option value="sun22">Sunday, 10 PM</option><option value="tg10">Thanksgiving, 10 AM</option></select>
+   <label for="lz">Lead's time zone</label><select id="lz"><option value="central">Central</option><option value="eastern">Eastern</option><option value="pacific">Pacific</option><option value="unknown">Unknown (strictest window)</option></select>
+   <div class="chk"><input type="checkbox" id="lc" checked><label for="lc">The lead agreed to receive automated texts from Riverbend Bath about this request. Uncheck it to see the agent refuse to text.</label></div>
+   <button class="btn u-mt14" type="submit">Submit lead</button></form>
+  <div class="note u-mt12" id="lnote" hidden></div>
   <ul class="muted u-pl18" id="rules"></ul></div>
+ <div class="card"><h2>Text thread</h2><span class="sim">Simulated, not sent</span>
+  <div class="strip" id="strip" hidden><div>Time to first text<b id="sT">-</b></div><div>Texts sent<b id="sN">0 of 4</b></div><div>Status<b id="sS">-</b></div><div>Lead's clock<b id="sC">-</b></div></div>
+  <div id="thread" class="muted u-mt10">Submit a lead to see the thread.</div>
+  <div class="note why" id="why" hidden></div>
+  <div class="row ctl" id="lact" hidden><button class="btn ghost" type="button" data-a="h4">Skip 4 hours</button><button class="btn ghost" type="button" data-a="next">Skip to next text</button></div>
+  <form class="row" id="rf" hidden><input id="rt" aria-label="Type the lead's reply" placeholder="Type the lead's reply, or STOP" maxlength="300"><button class="btn" type="submit">Send reply</button></form>
+  <p class="muted u-mt10" id="rnote" hidden>Cadence, send window, opt-out handling and booking rules are the real product code. The assistant's wording in this simulation is scripted; the product's assistant is a model, and nothing here is sent to anyone.</p></div>
 </section>
 <section id="p3" class="grid two">
  <div class="card"><h2>Talk to the OmniSDR assistant</h2><p class="muted u-m0-0-12">A live voice call with the same assistant that answers our line. Ask it what OmniSDR does, what happens after the waitlist form, or how speed to lead helps a small business. Calls end after 3 minutes. Your microphone is only used during the call. Audio is sent to our voice provider and the call may be recorded and transcribed to improve the demo. Please use made-up details.</p>
@@ -234,26 +243,54 @@ if(SR){var mic=$('mic');mic.hidden=false;var rec=null;
  mic.addEventListener('mousedown',go);mic.addEventListener('touchstart',function(e){e.preventDefault();go()},{passive:false});
  var stop=function(){if(rec)try{rec.stop()}catch(x){}};mic.addEventListener('mouseup',stop);mic.addEventListener('touchend',stop);mic.addEventListener('mouseleave',stop)}
 
-/* ---- CHASE tab ---- */
-var plan=null,stopped=false,timers=[];
-function sms(from,text,at){var b=el('div','sms in');b.appendChild(el('small',null,from+' · '+at));b.appendChild(el('div',null,text));$('thread').appendChild(b)}
-function clearT(){timers.forEach(clearTimeout);timers=[]}
-$('lf').addEventListener('submit',function(e){e.preventDefault();clearT();stopped=false;
+/* ---- CHASE tab: real cadence rules on a simulated clock ---- */
+var S=null,ZN={central:'America/Chicago',eastern:'America/New_York',pacific:'America/Los_Angeles',unknown:'America/New_York'};
+var WHY={opted_out:'The lead texted STOP',no_consent:'No consent recorded for this number, so no text is sent',replied:'The lead replied; follow-ups stop and the assistant takes the conversation',booked:'The lead booked; follow-ups stop',max_texts:'All 4 texts have been sent',sequence_expired:'7 days passed',human_has_thread:'A staff member took over',no_send_window:'No send window found',suppressed:'Number is suppressed',no_phone:'No phone number',quiet_hours:'Waiting for the send window (9 AM to 8 PM, Monday to Saturday, no federal holidays)',not_due:'Waiting out the minimum gap between texts'};
+function fmt(d){return new Intl.DateTimeFormat('en-US',{timeZone:ZN[S.zone],weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}).format(d)}
+function segs(t){var u=/[^\x20-\x7e\n]/.test(t),one=u?70:160,many=u?67:153,n=t.length,k=n<=one?1:Math.ceil(n/many);return n+' characters, '+k+' segment'+(k>1?'s':'')+(u?' (special characters)':'')}
+function sms(from,text,at){var b=el('div','sms in');b.appendChild(el('small',null,from+' · '+at));b.appendChild(el('div',null,text));$('thread').appendChild(b);return b}
+function fnd(zone,wd,hr){var t=new Date(),f=new Intl.DateTimeFormat('en-US',{timeZone:ZN[zone],weekday:'short',hour:'numeric',hourCycle:'h23',minute:'numeric'}),W=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];t=new Date(Math.ceil((t.getTime()+3600000)/900000)*900000);
+ for(var i=0;i<768;i++,t=new Date(t.getTime()+900000)){var p={};f.formatToParts(t).forEach(function(x){p[x.type]=x.value});var w=W.indexOf(p.weekday);if(Number(p.hour)===hr&&Number(p.minute)===0&&(wd===null?(w>=1&&w<=5):w===wd))return t}return new Date()}
+function thanks(){var y=new Date().getFullYear(),pick=function(yy){var d=new Date(Date.UTC(yy,10,1));return new Date(Date.UTC(yy,10,1+((4-d.getUTCDay()+7)%7)+21,16))},d=pick(y);return d.getTime()<Date.now()+86400000?pick(y+1):d}
+function start(w,zone){if(w==='wk10')return fnd(zone,null,10);if(w==='wk22')return fnd(zone,null,22);if(w==='sat14')return fnd(zone,6,14);if(w==='sun10')return fnd(zone,0,10);if(w==='sun22')return fnd(zone,0,22);if(w==='tg10')return thanks();return new Date()}
+function body(){return {tenant:'riverbend',name:$('ln').value,zone:S.zone,consent:S.consent,requestedAt:S.req.toISOString(),now:S.now.toISOString(),sent:S.sent.map(function(d){return d.toISOString()}),flags:S.flags}}
+function strip(){var st=S.stopped?'Stopped':(S.nextAt?'Waiting':'Active');$('strip').hidden=false;$('sN').textContent=S.sent.length+' of 4';$('sS').textContent=st;$('sC').textContent=fmt(S.now);
+ $('sT').textContent=S.sent.length?(function(){var s=Math.round((S.sent[0]-S.req)/1000);return s<120?s+' s':(s<3600?Math.round(s/60)+' min':(s/3600).toFixed(1)+' h')})():'-'}
+function why(t){var w=$('why');w.hidden=false;w.textContent=t}
+function step(){return post('/api/lead/plan',body()).then(function(r){
+ if(!r.decision){why(r.message||'Could not plan the next text.');return}
+ var d=r.decision;S.nextAt=null;
+ if(d.action==='send'){var at=new Date(d.at);S.sent.push(at);S.now=at;var b=sms('Agent',r.text,fmt(at)+' · text '+(d.step+1)+(d.deferredBy?' · held for the send window':''));b.appendChild(el('small',null,segs(r.text)));strip();return step()}
+ $('lact').hidden=false;$('rf').hidden=false;$('rnote').hidden=false;
+ var nb=$('lact').querySelector('[data-a=next]'),hb=$('lact').querySelector('[data-a=h4]');
+ if(d.action==='wait'&&d.reason==='not_due'&&!S.sent.length){S.now=new Date(d.until);return step()}
+ if(d.action==='wait'){S.stopped=false;S.nextAt=new Date(d.until);why('Next text not before '+fmt(S.nextAt)+'. '+(WHY[d.reason]||d.reason));strip();nb.disabled=false;hb.disabled=false}
+ else{S.stopped=true;why('Sequence stopped: '+(WHY[d.reason]||d.reason)+'.');strip();nb.disabled=true;hb.disabled=true}
+ })}
+$('lf').addEventListener('submit',function(e){e.preventDefault();
  var sb=$('lf').querySelector('[type=submit]'),n=$('lnote'),done=function(){sb.disabled=false;sb.textContent='Submit lead'};
- sb.disabled=true;sb.textContent='Sending...';
+ sb.disabled=true;sb.textContent='Starting...';
+ var zone=$('lz').value,req=start($('lw').value,zone);
+ S={zone:zone,consent:$('lc').checked,req:req,now:req,sent:[],flags:{},stopped:false,nextAt:null};
+ $('thread').textContent='';$('thread').className='';
  post('/api/lead',{tenant:'riverbend',name:$('ln').value}).then(function(r){done();
   if(!r.steps){n.hidden=false;n.textContent=r.message||'Could not start the texts. Try again.';return}
-  plan=r;$('thread').textContent='';$('thread').className='';$('lact').hidden=false;
-  n.hidden=false;n.textContent=r.note+' '+r.stepsNote;
+  n.hidden=false;n.textContent='Lead arrives '+fmt(req)+' (lead time). '+r.note+' '+r.stepsNote;
   var ul=$('rules');ul.textContent='';r.rules.forEach(function(x){ul.appendChild(el('li',null,x))});
-  r.steps.forEach(function(s,i){var delay=i===0?800:(i===1?3500:(i===2?6500:9500));
-   timers.push(setTimeout(function(){if(!stopped)sms('Agent',s.text,s.at)},delay))})})
+  strip();return step()})
  .catch(function(){done();n.hidden=false;n.textContent='Could not reach the server. Check your connection.'})});
-$('lact').addEventListener('click',function(e){var a=e.target.dataset&&e.target.dataset.a;if(!a)return;
- stopped=true;clearT();
- if(a==='reply')sms('Lead','Yes, can someone come Tuesday?','just now');
- if(a==='book')sms('Lead','Tuesday at 10 works. Thanks!','just now');
- if(a==='stop')sms('Lead','STOP','just now');
- sms('System',a==='stop'?'Opt-out recorded. All texting to this number is stopped.':a==='book'?'Booked. Follow-ups stopped; confirmation queued.':'Reply detected. Automated follow-ups stopped and a human is alerted.','now')});
+$('lact').addEventListener('click',function(e){var a=e.target.dataset&&e.target.dataset.a;if(!a||!S||S.stopped)return;
+ if(a==='h4')S.now=new Date(S.now.getTime()+4*3600000);
+ if(a==='next'&&S.nextAt)S.now=S.nextAt;
+ strip();step()});
+$('rf').addEventListener('submit',function(e){e.preventDefault();if(!S)return;var t=$('rt').value.trim();if(!t)return;$('rt').value='';
+ S.now=new Date(S.now.getTime()+60000);sms('Lead',t,fmt(S.now));
+ post('/api/lead/reply',{tenant:'riverbend',name:$('ln').value,text:t,wasOptedOut:S.flags.optedOut===true}).then(function(r){
+  if(!r.ok){why(r.message||'Could not process the reply.');return}
+  if(r.flags)Object.keys(r.flags).forEach(function(k){S.flags[k]=r.flags[k]});
+  if(r.reply)sms('Agent',r.reply,fmt(S.now)+' · answers the lead');
+  if(r.booking)sms('Calendar',r.booking.slot+' booked on the '+r.booking.calendar,fmt(S.now));
+  sms('System',r.note,'rule: '+r.inbound);
+  return step()})});
 })();
 </script></body></html>

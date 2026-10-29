@@ -8,6 +8,7 @@ import SLIDES from './sales-slides.js';
 import { TENANTS, DEFAULT_TENANT } from './tenant.js';
 import { buildInstruction, bookSlotTool } from './engine-instruction.js';
 import { handleRep } from './rep/index.js';
+import { planNextText, classifyInbound, textingAllowed } from './text-cadence.mjs';
 
 /* ---------- helpers ---------- */
 const enc = new TextEncoder();
@@ -222,25 +223,21 @@ async function logEvent(env, b) {
 }
 
 
-// Federal holidays, on the date and on the day observed (Saturday holiday: Friday before; Sunday: Monday after).
-function isFederalHoliday(y, m, d) {
-  const nth = (mo, wd, n) => { let c = 0; for (let day = 1; day <= 31; day++) { const dt = new Date(Date.UTC(y, mo, day)); if (dt.getUTCMonth() !== mo) break; if (dt.getUTCDay() === wd && ++c === n) return day; } };
-  const last = (mo, wd) => { for (let day = 31; day >= 1; day--) { const dt = new Date(Date.UTC(y, mo, day)); if (dt.getUTCMonth() === mo && dt.getUTCDay() === wd) return day; } };
-  const fixed = [[0, 1], [5, 19], [6, 4], [10, 11], [11, 25]];
-  const floating = [[0, nth(0, 1, 3)], [1, nth(1, 1, 3)], [4, last(4, 1)], [8, nth(8, 1, 1)], [9, nth(9, 1, 2)], [10, nth(10, 4, 4)]];
-  const here = Date.UTC(y, m, d);
-  if (m === 11 && d === 31 && new Date(Date.UTC(y + 1, 0, 1)).getUTCDay() === 6) return true; // Jan 1 on a Saturday is observed Dec 31
-  for (const [mo, day] of fixed) { const wd = new Date(Date.UTC(y, mo, day)).getUTCDay(); const obs = wd === 6 ? day - 1 : wd === 0 ? day + 1 : day; if (here === Date.UTC(y, mo, day) || here === Date.UTC(y, mo, obs)) return true; }
-  for (const [mo, day] of floating) if (here === Date.UTC(y, mo, day)) return true;
-  return false;
-}
-// Send window (legal ruling, Compliance Addendum B6): 9 AM to 8 PM, Monday to Saturday, no federal holidays.
-// A first reply to the lead's own request may still go inside 9 AM to 8 PM on a Sunday or holiday.
+// Send state in Central time for the banner: 'open' (full window), 'off_day' (9 AM to 8 PM on a Sunday or holiday), 'closed' (outside 9 AM to 8 PM).
 function sendState(now) {
-  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', weekday: 'short' }).formatToParts(now).map((x) => [x.type, x.value]));
-  const hr = Number(p.hour);
-  if (hr < 9 || hr >= 20) return 'closed';
-  return p.weekday === 'Sun' || isFederalHoliday(Number(p.year), Number(p.month) - 1, Number(p.day)) ? 'off_day' : 'open';
+  if (textingAllowed(now, ['America/Chicago'])) return 'open';
+  const hr = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hourCycle: 'h23', hour: 'numeric' }).format(now));
+  return hr >= 9 && hr < 20 ? 'off_day' : 'closed';
+}
+
+// The four sample texts, each naming the business and carrying the STOP line (legal wording 2026-10-28).
+function stepText(t, name, i) {
+  return [
+    `Hi ${name}, it's ${t.persona} with ${t.business}. Thanks for reaching out about your bathroom. Are you looking at a tub-to-shower swap, or a bigger remodel? (Automated assistant. Reply STOP to opt out.)`,
+    `${name}, ${t.owner} can come by for ${t.estimate}. Does ${t.slots[0]} or ${t.slots[1]} work? ${t.business}. Reply STOP to opt out.`,
+    `Hi ${name}, still thinking about the bathroom? I can hold ${t.slots[2]} for you. Just reply with a time that works. ${t.business}. Reply STOP to opt out.`,
+    `Last note from ${t.business}, ${name}. If the timing is off, no worries. Reply any time and we'll pick it back up. Reply STOP to opt out.`
+  ][i];
 }
 
 // CHASE simulation: returns the planned cadence for the chosen tenant. Nothing is sent anywhere.
@@ -250,15 +247,55 @@ function chasePlan(b) {
   const state = sendState(new Date());
   const quiet = state !== 'open';
   const steps = [
-    { at: 'Text 1 · inside 2 minutes', text: `Hi ${name}, it's ${t.persona} with ${t.business}. Thanks for reaching out about your bathroom. Are you looking at a tub-to-shower swap, or a bigger remodel? (Automated assistant. Reply STOP to opt out.)` },
-    { at: 'Text 2 · 12+ hours later', text: `${name}, ${t.owner} can come by for ${t.estimate}. Does ${t.slots[0]} or ${t.slots[1]} work? ${t.business}. Reply STOP to opt out.` },
-    { at: 'Text 3 · 1 day after text 2', text: `Hi ${name}, still thinking about the bathroom? I can hold ${t.slots[2]} for you. Just reply with a time that works. ${t.business}. Reply STOP to opt out.` },
-    { at: 'Text 4 · 3 days after text 3, last', text: `Last note from ${t.business}, ${name}. If the timing is off, no worries. Reply any time and we'll pick it back up. Reply STOP to opt out.` }
+    { at: 'Text 1 · inside 2 minutes', text: stepText(t, name, 0) },
+    { at: 'Text 2 · 12+ hours later', text: stepText(t, name, 1) },
+    { at: 'Text 3 · 1 day after text 2', text: stepText(t, name, 2) },
+    { at: 'Text 4 · 3 days after text 3, last', text: stepText(t, name, 3) }
   ];
   const note = state === 'open' ? 'Inside the send window: the first text goes out within 2 minutes. The thread below plays in fast forward; real follow-ups are spaced over days.'
     : state === 'off_day' ? 'Sunday or holiday: the first text still goes within 2 minutes because it answers your own request. Follow-ups wait for the next sending day.'
     : 'Outside sending hours (9 AM to 8 PM, Monday to Saturday, no federal holidays; shown here in Central time). The first text waits until 9 AM on the next sending day.';
   return { ok: true, simulated: true, quietHoursNow: quiet, note, stepsNote: 'Times shown are the earliest. Waits for sending hours can push any step later.', steps, rules: ['Stops on reply, booking, STOP, wrong number, or when a staff member takes over', 'At most 4 texts in 7 days, follow-ups at least 12 hours apart', 'Texts go out 9 AM to 8 PM recipient local time, Monday to Saturday, never on federal holidays', 'Every text names the business and says Reply STOP to opt out'] };
+}
+
+
+// --- Speed-to-lead simulation: the real cadence module on a simulated clock. Stateless, free (no model, no network), nothing is sent. ---
+const S2L_ZONES = { central: 'America/Chicago', eastern: 'America/New_York', pacific: 'America/Los_Angeles', unknown: undefined };
+const cleanName = (n) => (String(n || 'there').replace(/[^w' -]/g, '').slice(0, 40).split(' ')[0]) || 'there';
+const simDate = (v, now) => { const d = new Date(v); return Number.isFinite(d.getTime()) && Math.abs(d.getTime() - now) < 30 * 86400000 ? d : null; };
+function s2lLead(b, now) {
+  const zone = Object.hasOwn(S2L_ZONES, b.zone) ? b.zone : 'central';
+  const receivedAt = simDate(b.requestedAt, now);
+  const sent = Array.isArray(b.sent) ? b.sent.slice(0, 4).map((x) => simDate(x, now)) : [];
+  const at = simDate(b.now, now);
+  if (!receivedAt || !at || sent.some((x) => !x)) return null;
+  const f = b.flags && typeof b.flags === 'object' ? b.flags : {};
+  return { zone, at, sent, lead: { receivedAt, consent: b.consent === true ? 'express_form' : 'none', hasPhone: true, timeZone: S2L_ZONES[zone], optedOut: f.optedOut === true, replied: f.replied === true, booked: f.booked === true, humanHasThread: false } };
+}
+function s2lPlan(b) {
+  const t = TENANTS[pickTenant(b.tenant)];
+  const r = s2lLead(b, Date.now());
+  if (!r) return { ok: false, message: 'Bad plan request.' };
+  const d = planNextText(r.lead, r.sent, r.at);
+  const out = { ok: true, simulated: true, zone: r.zone, decision: { action: d.action, reason: d.reason || null, step: d.step ?? null, at: d.at ? d.at.toISOString() : null, until: d.until ? d.until.toISOString() : null, deferredBy: d.deferredBy || null } };
+  if (d.action === 'send') out.text = stepText(t, cleanName(b.name), d.step);
+  return out;
+}
+const BOOK_RE = /\b(book|tuesday|wednesday|thursday|works?|yes|yep|sure|sounds good|ok(ay)?|10|2 ?pm|9 ?am)\b/i;
+function s2lReply(b) {
+  const t = TENANTS[pickTenant(b.tenant)];
+  const name = cleanName(b.name);
+  const text = String(b.text || '').slice(0, 300);
+  const kind = classifyInbound(text);
+  const o = { ok: true, simulated: true, inbound: kind || 'reply' };
+  if (kind === 'stop') { o.flags = { optedOut: true }; o.reply = null; o.note = 'Opt-out recorded by rule, not by a model. Nothing more is sent to this number.'; return o; }
+  if (kind === 'help') { o.reply = `${t.business}: automated texts about your request. Reply STOP to opt out.`; o.note = 'HELP answered by rule.'; return o; }
+  if (kind === 'start') { o.flags = b.wasOptedOut ? { optedOut: false } : {}; o.reply = b.wasOptedOut ? `${t.business}: you are back on. Reply STOP to opt out.` : null; o.note = b.wasOptedOut ? 'START re-subscribes an opted-out number.' : 'START ignored: this number is not opted out.'; return o; }
+  if (BOOK_RE.test(text)) { const slot = /wed/i.test(text) ? t.slots[1] : /thu/i.test(text) ? t.slots[2] : t.slots[0]; o.flags = { replied: true, booked: true }; o.booking = { slot, calendar: 'demo calendar (fake)' }; o.reply = `Booked: ${slot}. ${t.owner} will see you then. ${t.business}. Reply STOP to opt out.`; o.note = 'Booking written to the demo calendar. Follow-ups stop.'; return o; }
+  o.flags = { replied: true };
+  o.reply = `Thanks ${name}. ${t.owner} can come by ${t.slots[0]} or ${t.slots[1]}. Which works? ${t.business}. Reply STOP to opt out.`;
+  o.note = 'Reply detected. Follow-ups stop and the assistant takes the conversation.';
+  return o;
 }
 
 // Token mint verified against the live Gemini API 2026-10-24 (200, setupComplete, audio back); the browser audio client does not exist yet. One token per session, session must exist, cap-free because the session already passed caps.
@@ -390,6 +427,8 @@ export default {
         if (p === '/api/session') return newSession(req, env, b);
         if (p === '/api/event') return logEvent(env, b);
         if (p === '/api/lead') return json(chasePlan(b));
+        if (p === '/api/lead/plan') return json(s2lPlan(b));
+        if (p === '/api/lead/reply') return json(s2lReply(b));
         if (p === '/api/token') return mintToken(env, b);
         if (p === '/api/voice') return mintVoice(env, b);
         if (p === '/api/sales/login') return salesLogin(req, env, b);
