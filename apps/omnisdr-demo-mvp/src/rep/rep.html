@@ -222,9 +222,10 @@ const screens = {
   async accounts() {
     const admin = ME.role === 'admin', picked = new Set();
     let rows = [], facets = { niche: [], state: [], owner: [], pool: 0, total: 0 };
-    const KEEP = 'rep.accounts', F = { q: '', st: '', ni: '', sa: '', pool: false };
+    const KEEP = 'rep.accounts', F = { q: '', st: '', ni: '', sa: '', pool: false, arch: false };
     try { Object.assign(F, JSON.parse(sessionStorage.getItem(KEEP) || '{}')); } catch {}
     if (!admin || VIEW) F.pool = false;
+    if (!admin) F.arch = false;
     const keep = () => { try { sessionStorage.setItem(KEEP, JSON.stringify(F)); } catch {} }; // this tab only, never sent anywhere
     view.innerHTML = `<h1>Accounts</h1><p class="sub">${admin ? 'Every lead and account in the book. Filter, sort into categories and hand them out.' : 'Every business you are working, prospect to live.'}</p>
       ${admin ? '<div class="stats" id="tiles"></div>' : ''}
@@ -232,15 +233,15 @@ const screens = {
         <select id="st" aria-label="Stage" class="grow"><option value="">All stages</option>${K.stages.map((s) => `<option value="${s}">${STAGE_LABEL[s]}</option>`).join('')}</select>
         <select id="sa" aria-label="State" class="grow"><option value="">All states</option></select></div>
         <div><p class="muted">Category</p><div class="chips" id="fNiche"></div></div>
-        ${admin ? '<div><p class="muted">Rep</p><div class="chips" id="fOwner"></div></div>' : ''}
+        ${admin ? '<div><p class="muted">Rep</p><div class="chips" id="fOwner"></div></div><div><p class="muted">Show</p><div class="chips" id="fArch"><button class="chip" type="button" data-k="0">Active</button><button class="chip" type="button" data-k="1">Archived</button></div></div>' : ''}
         <div class="row"><button class="btn" id="add" type="button">New account</button><label class="btn ghost" for="csv">Import CSV</label><input id="csv" type="file" accept=".csv,text/csv" class="sr"><button class="btn ghost" id="exp" type="button">Export CSV</button>${admin ? `<label for="impOwner" class="muted">Import for</label><select id="impOwner" class="grow">${repOptions(ME.email)}</select>` : ''}</div></section>
       <section class="card"><p class="muted" id="count" aria-live="polite"></p>
         <div class="tbl"><table><thead><tr><th class="sel"><input type="checkbox" id="selAll" aria-label="Select all shown"></th><th>Business</th><th>Stage</th><th class="hide-sm">Next</th><th class="hide-sm">Phone</th>${admin ? '<th>Rep</th>' : ''}</tr></thead><tbody id="rows"></tbody></table></div></section>
       <section class="card stack bulk" id="bulk" hidden><div class="row"><b id="selN"></b><button class="btn ghost sm" id="selNone" type="button">Clear</button></div>
-        ${admin ? `<div class="row"><label for="assignTo" class="muted">Assign to</label><select id="assignTo" class="grow"><option value="">Pick a rep</option>${repOptions('')}</select><button class="btn" id="doAssign" type="button">Assign</button></div>
-        <details><summary>Split evenly between reps</summary><div class="splitlist" id="split">${REPS.filter((r) => r.active).map((r) => `<label class="row"><input type="checkbox" value="${esc(r.email)}"> ${esc(r.name)}</label>`).join('')}</div><button class="btn ghost" id="splitGo" type="button">Split</button></details>` : ''}
-        <div class="row"><label for="cat" class="muted">Set category</label><input id="cat" class="grow" list="cats" maxlength="80" placeholder="Remodeler, Generator dealer"><datalist id="cats"></datalist><button class="btn ghost" id="catGo" type="button">Set</button>${admin ? '<button class="btn ghost" id="arch" type="button">Archive</button>' : ''}</div>
-        ${admin ? '<div class="row" id="archAsk" hidden><span id="archQ"></span><button class="btn danger" id="archGo" type="button">Archive</button><button class="btn ghost" id="archNo" type="button">Cancel</button></div>' : ''}</section>
+        ${admin ? `<div class="row live"><label for="assignTo" class="muted">Assign to</label><select id="assignTo" class="grow"><option value="">Pick a rep</option>${repOptions('')}</select><button class="btn" id="doAssign" type="button">Assign</button></div>
+        <details class="live"><summary>Split evenly between reps</summary><div class="splitlist" id="split">${REPS.filter((r) => r.active).map((r) => `<label class="row"><input type="checkbox" value="${esc(r.email)}"> ${esc(r.name)}</label>`).join('')}</div><button class="btn ghost" id="splitGo" type="button">Split</button></details>` : ''}
+        <div class="row live"><label for="cat" class="muted">Set category</label><input id="cat" class="grow" list="cats" maxlength="80" placeholder="Remodeler, Generator dealer"><datalist id="cats"></datalist><button class="btn ghost" id="catGo" type="button">Set</button>${admin ? '<button class="btn ghost" id="arch" type="button">Archive</button>' : ''}</div>
+        ${admin ? '<div class="row" id="restoreRow" hidden><button class="btn" id="restoreGo" type="button">Restore</button></div><div class="row" id="archAsk" hidden><span id="archQ"></span><button class="btn danger" id="archGo" type="button">Archive</button><button class="btn ghost" id="archNo" type="button">Cancel</button></div>' : ''}</section>
       <dialog id="dlg"><form id="nf" class="stack"><h2>New account</h2><div class="fields">
         <div class="full"><label for="nb">Business name</label><input id="nb" name="business" required maxlength="160"></div>
         <div><label for="nn">Category</label><input id="nn" name="niche" maxlength="80" placeholder="Remodeler, HVAC, med spa"></div>
@@ -251,7 +252,8 @@ const screens = {
         <div><label for="ns">State</label><input id="ns" name="state" maxlength="40"></div>
         <div class="full"><label for="ng">Why we are calling (the signal)</label><input id="ng" name="signal" maxlength="300" placeholder="Form went unanswered 6 hours on a Tuesday"></div>
       </div><div class="row"><button class="btn">Save</button><button class="btn ghost" type="button" id="cx">Cancel</button></div></form></dialog>`;
-    const chip = (key, text, n, on) => `<button class="chip" type="button" data-k="${esc(key)}" aria-pressed="${on}">${esc(text)} <b>${n}</b></button>`;
+    // Counts describe active rows, so the Archived view shows the chips without numbers.
+    const chip = (key, text, n, on) => `<button class="chip" type="button" data-k="${esc(key)}" aria-pressed="${on}">${esc(text)}${F.arch ? '' : ` <b>${n}</b>`}</button>`;
     // The server counts: every lead for an admin, the rep's own rows for a rep.
     const loadFacets = async () => { facets = await api('/leads/facets', { noView: true }); };
     // A filter restored from the session but missing from the counts still shows as pressed, so it is never invisible.
@@ -267,21 +269,23 @@ const screens = {
         .map(([k, v]) => `<div class="card stat"><b>${v}</b><span>${k}</span></div>`).join('');
       const own = x.owner.map((r) => ({ k: r.key, n: r.n })); if (VIEW && !own.some((r) => r.k === VIEW)) own.push({ k: VIEW, n: 0 });
       $('#fOwner').innerHTML = chip('', 'All', x.total, !VIEW && !F.pool) + chip('pool', 'Waiting to hand out', x.pool, F.pool) + own.map((r) => chip(r.k, repName(r.k), r.n, VIEW === r.k)).join('');
+      $$('#fArch .chip').forEach((c) => c.setAttribute('aria-pressed', String((c.dataset.k === '1') === F.arch)));
     };
     const sync = () => {
       $$('[data-sel]').forEach((c) => (c.checked = picked.has(c.dataset.sel)));
       $('#selAll').checked = rows.length > 0 && rows.every((a) => picked.has(a.id));
-      $('#bulk').hidden = !picked.size; if (admin) $('#archAsk').hidden = true; $('#selN').textContent = picked.size + ' selected';
+      $('#bulk').hidden = !picked.size; $('#selN').textContent = picked.size + ' selected';
+      if (admin) { $('#archAsk').hidden = true; $('#restoreRow').hidden = !F.arch; $$('#bulk .live').forEach((el) => (el.hidden = F.arch)); }
     };
     // Category and place under the name; on a phone the Phone column folds in here instead of wrapping over three lines.
     const line = (a) => { const t = esc([a.niche, [a.city, a.state].filter(Boolean).join(', ')].filter(Boolean).join(' · ')); return t + (a.phone ? `<span class="show-sm">${t ? ' · ' : ''}${esc(a.phone)}</span>` : ''); };
     const load = async () => {
       const p = new URLSearchParams();
-      if (F.q) p.set('q', F.q); if (F.st) p.set('stage', F.st); if (F.ni) p.set('niche', F.ni); if (F.sa) p.set('state', F.sa); if (admin && F.pool) p.set('pool', '1');
+      if (F.q) p.set('q', F.q); if (F.st) p.set('stage', F.st); if (F.ni) p.set('niche', F.ni); if (F.sa) p.set('state', F.sa); if (admin && F.pool) p.set('pool', '1'); if (admin && F.arch) p.set('archived', '1');
       rows = (await api('/accounts?' + p)).accounts;
       for (const id of [...picked]) if (!rows.some((a) => a.id === id)) picked.delete(id); // bulk actions only ever touch rows on screen
-      $('#count').textContent = rows.length === 500 ? '500 shown. Narrow the filter to see the rest.' : rows.length + ' shown';
-      $('#rows').innerHTML = rows.length ? rows.map((a) => `<tr data-id="${esc(a.id)}"><td class="sel"><input type="checkbox" data-sel="${esc(a.id)}" aria-label="Select ${esc(a.business)}"></td><td><a class="lnk" href="#account/${esc(a.id)}">${esc(a.business)}</a><br><small class="muted">${line(a)}</small></td><td>${STAGE_LABEL[a.stage] || ''}</td><td class="hide-sm">${esc(a.next_step)}<br><small class="muted">${when(a.next_action_at)}</small></td><td class="hide-sm">${esc(a.phone)}</td>${admin ? `<td>${esc(repName(a.owner_email))}</td>` : ''}</tr>`).join('') : `<tr><td colspan="${admin ? 6 : 5}" class="muted">No accounts match.</td></tr>`;
+      $('#count').textContent = rows.length === 500 ? '500 shown. Narrow the filter to see the rest.' : rows.length + (F.arch ? ' archived shown' : ' shown');
+      $('#rows').innerHTML = rows.length ? rows.map((a) => `<tr data-id="${esc(a.id)}"><td class="sel"><input type="checkbox" data-sel="${esc(a.id)}" aria-label="Select ${esc(a.business)}"></td><td><a class="lnk" href="#account/${esc(a.id)}">${esc(a.business)}</a><br><small class="muted">${line(a)}</small></td><td>${STAGE_LABEL[a.stage] || ''}</td><td class="hide-sm">${esc(a.next_step)}<br><small class="muted">${when(a.next_action_at)}</small></td><td class="hide-sm">${esc(a.phone)}</td>${admin ? `<td>${esc(repName(a.owner_email))}</td>` : ''}</tr>`).join('') : `<tr><td colspan="${admin ? 6 : 5}" class="muted">${F.arch ? 'No archived accounts match.' : 'No accounts match.'}</td></tr>`;
       sync();
     };
     const refresh = () => Promise.all([loadFacets().then(drawFacets), load()]);
@@ -299,6 +303,8 @@ const screens = {
     $('#catGo').onclick = async () => { const v = $('#cat').value.trim();
       try { const r = await api('/bulk', { method: 'POST', body: { accountIds: ids(), niche: v } }); await done(v ? `${r.updated} set to ${v}` : `Category cleared on ${r.updated}`); } catch (er) { fail(er); } };
     if (admin) {
+      $('#fArch').onclick = (e) => { const b = e.target.closest('[data-k]'); if (!b) return; F.arch = b.dataset.k === '1'; picked.clear(); keep(); drawFacets(); load().catch(fail); };
+      $('#restoreGo').onclick = async () => { try { const r = await api('/bulk', { method: 'POST', body: { accountIds: ids(), archived: false } }); await done(`Restored ${r.updated}`); } catch (er) { fail(er); } };
       $('#fOwner').onclick = (e) => { const b = e.target.closest('[data-k]'); if (!b) return; F.pool = b.dataset.k === 'pool'; setView(F.pool ? '' : b.dataset.k); keep(); drawFacets(); load().catch(fail); };
       $('#doAssign').onclick = async () => { const to = $('#assignTo').value; if (!to) return toast('Pick a rep');
         try { const r = await api('/assign', { method: 'POST', body: { accountIds: ids(), owner: to } }); await done(`Assigned ${r.assigned} to ${repName(to)}`); } catch (er) { fail(er); } };
