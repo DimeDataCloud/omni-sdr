@@ -176,7 +176,7 @@ const countUp = (el, to, fmt) => {
 const money = (c) => '$' + (c / 100).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const form = (f) => Object.fromEntries(new FormData(f).entries());
 const ul = (items, cls = 'tight') => `<ul class="${cls}">${items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>`;
-const ol = (items) => `<ol class="tight">${items.map((i) => `<li>${esc(i)}</li>`).join('')}</ol>`;
+const ol = (items) => `<ol class="tight">${((items)||[]).map((i) => `<li>${esc(i)}</li>`).join('')}</ol>`;
 // Fill {business}, {name} and {rep}; anything in [brackets] is left for the rep to fill in.
 const fill = (body, v) => body.replace(/\{(business|name|rep)\}/g, (m, k) => v[k] || m);
 const tpls = (v) => K.templates.map((t) => `<section class="card stack"><h2>${esc(t.label)}</h2><pre class="tpl" id="tp_${t.id}">${esc(fill(t.body, v))}</pre>
