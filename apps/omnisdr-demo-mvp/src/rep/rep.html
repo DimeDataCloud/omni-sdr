@@ -706,7 +706,7 @@ const screens = {
         </div>`;
     };
 
-    const qGroup = (name) => (K.auditFields || []).filter((x) => x.group === name);
+    const qGroup = (name) => (((K||{}).auditFields) || []).filter((x) => x.group === name);
     const qField = (x) => {
       const val = (a.audit && a.audit[x.key]) || '';
       const input = x.num
