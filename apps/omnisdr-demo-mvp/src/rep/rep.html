@@ -682,7 +682,22 @@ const screens = {
               <p class="note" id="mxTrade"></p><div class="row"><button class="btn ghost sm" type="button" id="mxReset">Reset to plan default</button><button class="btn ghost sm" type="button" data-copy="qsheet">Copy quote sheet</button></div>
               <pre class="qsheet card" id="qsheet"></pre></div></div>
           <label for="dn">Notes</label><input id="dn" name="notes" maxlength="1000"><p class="note">${K.prices.isFinal ? '' : 'Prices are DRAFT until Christian sets them. '}${esc(K.taxNote)} No discounts.</p><button class="btn">Close the sale</button></form></section>`}</div></div>`;
-    const tabs = $$('.tab'), show = (k) => { tabs.forEach((x) => x.setAttribute('aria-selected', String(x.dataset.t === k))); $$('[data-p]').forEach((p) => (p.hidden = p.dataset.p !== k)); const on = tabs.find((x) => x.dataset.t === k); if (on) on.scrollIntoView({ block: 'nearest', inline: 'nearest' }); };
+    const tabs = $$('.tab'), show = (k) => {
+      const ks = String(k);
+      tabs.forEach((x) => x.setAttribute('aria-selected', String(String(x.dataset.t) === ks)));
+      $$('[data-p]').forEach((p) => {
+        const isTarget = String(p.dataset.p) === ks;
+        if (isTarget) {
+          p.removeAttribute('hidden');
+          p.style.display = '';
+        } else {
+          p.setAttribute('hidden', '');
+          p.style.display = 'none';
+        }
+      });
+      const on = tabs.find((x) => String(x.dataset.t) === ks);
+      if (on && on.scrollIntoView) { try { on.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) {} }
+    };
     // === Qualify tab (redesigned) ===
     const qGroup = (name) => (K.auditFields || []).filter((x) => x.group === name);
     const qField = (x) => {
