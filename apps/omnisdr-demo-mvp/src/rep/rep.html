@@ -672,8 +672,8 @@ const screens = {
       if ($('#ofPrint')) $('#ofPrint').onclick = () => print();
       if ($('#ofVoid')) $('#ofVoid').onclick = () => { if (confirm(`Void Order Form ${F.label}? The number stays used and is never given out again.`)) act(() => api(`/order-forms/${F.id}/void`, { method: 'POST', body: {} }), 'Voided'); };
       if ($('#ofFile')) $('#ofFile').onclick = async () => {
-        await flush(); if (lastError) return toast('Fix this first: ' + lastError.message);
-        if (MISSING.length) return toast('Still missing: ' + MISSING.join(', '));
+        await flush(); if (lastError) { shakeEl($('#ofFile')); return toast('Fix this first: ' + lastError.message); }
+        if (MISSING.length) { const missEl = document.querySelector('.miss'); if (missEl) shakeEl(missEl.closest('.card')); return toast('Still missing: ' + MISSING.join(', ')); }
         if (!confirm(`File Order Form ${F.label}? It locks, and any client link closes.`)) return;
         try { await api(`/order-forms/${F.id}/file`, { method: 'POST', body: {} }); await reload(); step = 'handoff'; history.replaceState(null, '', '#deal/' + F.id + '/handoff'); paint(); toast('Filed'); } catch (er) { fail(er); }
       };
@@ -723,7 +723,9 @@ const screens = {
         $('#ofMix').hidden = !MXS; if (!MXS) return;
         const r = $('#ofMx'), n = MXS.steps.length, s = MXS.steps.find((x) => x.p === POS) || MXS.steps[0];
         r.max = String(n - 1); r.value = String(n - 1 - MXS.steps.indexOf(s)); r.setAttribute('aria-valuetext', `${s.minutes.toLocaleString()} minutes, ${s.texts.toLocaleString()} texts`);
-        $('#ofMin').textContent = s.minutes.toLocaleString(); $('#ofTxt').textContent = s.texts.toLocaleString(); $('#ofThr').textContent = s.threads.toLocaleString();
+        countUp($('#ofMin'), s.minutes, (v) => Math.round(v).toLocaleString());
+        countUp($('#ofTxt'), s.texts, (v) => Math.round(v).toLocaleString());
+        countUp($('#ofThr'), s.threads, (v) => Math.round(v).toLocaleString());
         $('#ofTrade').textContent = `10 minutes is about ${MXS.tradeTexts} texts.` + (s.p === MXS.defaultPosition ? ' This is the plan default.' : '');
       }
       const body = () => {
