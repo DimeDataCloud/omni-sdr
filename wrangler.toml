@@ -6,5 +6,5 @@ compatibility_date = "2026-10-01"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "omnisdr-waitlist"
-database_id = "d1b2da13-b20a-4f22-8a53-e4055734209d"
+database_name = "omnisdr-rep"
+database_id = "5e05220e-0710-41d0-ab84-6fcb5952570f"
