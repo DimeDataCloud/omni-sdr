@@ -659,10 +659,8 @@ const screens = {
           </div>
         </div>
       </div>
-        <p class="est" id="est"></p><p class="note">${esc(K.resultsDont || '')}</p>
-        </div>
-
-      </div><form data-p="2" hidden class="card" id="of"><p class="sub">Fill this in with the owner on the call after the yes. The developer starts from it. Info from Overview is already filled in.</p><div class="fields">${K.onboarding.map((f) => {
+      
+      <form data-p="2" hidden class="card" id="of"><p class="sub">Fill this in with the owner on the call after the yes. The developer starts from it. Info from Overview is already filled in.</p><div class="fields">${K.onboarding.map((f) => {
           let val = a.onboarding[f.key];
           if (!val && f.key === 'alertPhone' && a.phone) val = a.phone;
           if (!val && f.key === 'backupContact') { const pc = (d.contacts.find((c) => c.is_primary) || d.contacts[0] || {}); if (pc.name) val = pc.name + (pc.phone ? ' ' + pc.phone : ''); }
