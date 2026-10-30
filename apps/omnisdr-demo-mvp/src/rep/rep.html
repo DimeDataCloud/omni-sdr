@@ -628,7 +628,7 @@ const screens = {
         <ul class="list timeline">${d.activities.map((v) => `<li><small>${when(v.created_at)} · ${esc(label(v.kind))}</small><div>${esc(v.body)}</div></li>`).join('')}</ul></div>
       <form data-p="4" hidden class="card stack" id="af"><p class="sub">Step 2 of the path: research the business and run the free check before the demo. Their numbers, not ours.</p>
         <details><summary>How to run the free check</summary>${ol(K.auditSteps)}</details>
-        ${[...new Set(K.auditFields.map((x) => x.group))].map((g) => `<h2>${esc(g)}</h2><div class="fields">${K.auditFields.filter((x) => x.group === g).map((x) => x.num
+        ${[...new Set((K.auditFields || []).map((x) => x.group))].map((g) => `<h2>${esc(g)}</h2><div class="fields">${(K.auditFields || []).filter((x) => x.group === g).map((x) => x.num
           ? `<div><label for="u_${x.key}">${esc(x.label)}</label><input id="u_${x.key}" name="${x.key}" inputmode="decimal" maxlength="40" value="${esc(a.audit[x.key])}"></div>`
           : `<div class="full"><label for="u_${x.key}">${esc(x.label)}</label><textarea id="u_${x.key}" name="${x.key}" rows="2" maxlength="1000">${esc(a.audit[x.key])}</textarea></div>`).join('')}</div>`).join('')}
         <p class="est" id="est"></p><p class="note">${esc(K.resultsDont)}</p>
@@ -654,7 +654,7 @@ const screens = {
               <p class="note" id="mxTrade"></p><div class="row"><button class="btn ghost sm" type="button" id="mxReset">Reset to plan default</button><button class="btn ghost sm" type="button" data-copy="qsheet">Copy quote sheet</button></div>
               <pre class="qsheet card" id="qsheet"></pre></div></div>
           <label for="dn">Notes</label><input id="dn" name="notes" maxlength="1000"><p class="note">${K.prices.isFinal ? '' : 'Prices are DRAFT until Christian sets them. '}${esc(K.taxNote)} No discounts.</p><button class="btn">Close the sale</button></form></section>`}</div></div>`;
-    const tabs = $$('.tab'), show = (k) => { tabs.forEach((x) => x.setAttribute('aria-selected', String(x.dataset.t === k))); $$('[data-p]').forEach((p) => (p.hidden = p.dataset.p !== k)); const on = tabs.find((x) => x.dataset.t === k); if (on) on.scrollIntoView({ block: 'nearest', inline: 'nearest' }); };
+    const tabs = $$('.tab'), show = (k) => { try { tabs.forEach((x) => x.setAttribute('aria-selected', String(x.dataset.t === k))); const panels = $$('[data-p]'); let found = false; panels.forEach((p) => { const isTarget = String(p.dataset.p) === String(k); p.hidden = !isTarget; if (isTarget) found = true; }); if (!found && panels.length) { console.warn('Tab panel not found for key:', k); } const on = tabs.find((x) => x.dataset.t === k); if (on && on.scrollIntoView) { try { on.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) {} } } catch (e) { console.error('Tab switch failed:', e); } };
     // The open tab lives in the hash via replaceState (no hashchange, no reload), so a save that re-renders lands back on it.
     tabs.forEach((t) => (t.onclick = () => { show(t.dataset.t); const n = Object.keys(ACCOUNT_TAB).find((k) => ACCOUNT_TAB[k] === t.dataset.t); history.replaceState(null, '', '#account/' + a.id + (n === 'details' ? '' : '/' + n)); }));
     const want = location.hash.split('/')[2]; if (Object.hasOwn(ACCOUNT_TAB, want)) show(ACCOUNT_TAB[want]);
@@ -672,7 +672,7 @@ const screens = {
     if ($('#lost')) $('#lost').onclick = () => save({ stage: 'lost' }, 'Marked lost');
     if ($('#ownGo')) $('#ownGo').onclick = () => api('/assign', { method: 'POST', body: { accountIds: [a.id], owner: $('#own').value } }).then(() => { toast('Assigned to ' + repName($('#own').value)); route(); }, fail);
     $('#of').onsubmit = (e) => { e.preventDefault(); save({ onboarding: form(e.target) }, 'Onboarding saved'); };
-    const est = () => { $('#est').textContent = lostJobs($('#u_jobValue').value, $('#u_missed').value); };
+    const est = () => { try { const jv = $('#u_jobValue'), ms = $('#u_missed'), e = $('#est'); if (jv && ms && e && typeof lostJobs === 'function') e.textContent = lostJobs(jv.value, ms.value); } catch (err) {} };
     $('#af').oninput = est; est();
     $('#af').onsubmit = (e) => { e.preventDefault(); save({ audit: form(e.target) }, 'Audit saved'); };
     if ($('#aRun')) $('#aRun').onclick = () => save({ audit: form($('#af')), stage: 'results_call' }, 'Audit saved. Stage: demo booked');
