@@ -858,7 +858,7 @@ const screens = {
         setTimeout(applyMix, 300);
       }
       df.onsubmit = (e) => { e.preventDefault(); const f = form(df), l = levels.find((x) => x.level === Number(f.level)), cents = l.label === 'Agency' ? Math.round(parseFloat(f.price) * 100) : l.amountCents;
-        api('/deals', { method: 'POST', body: { accountId: a.id, level: Number(f.level), notes: f.notes, priceCents: cents, ...(MX && pos != null ? { mixPosition: pos } : {}) } }).then(() => { toast('Sale closed. Fill in onboarding next.'); route(); }, fail); };
+        api('/deals', { method: 'POST', body: { accountId: a.id, level: Number(f.level), notes: f.notes, priceCents: cents, ...(MX && pos != null ? { mixPosition: pos } : {}) } }).then(() => api('/accounts/' + a.id, { method: 'PATCH', body: { stage: 'onboarding' } })).then(() => { toast('Sale closed. Onboarding is next.'); route(); }, fail); };
     }
   },
 
@@ -1020,6 +1020,7 @@ const screens = {
         act(async () => {
           try {
             await api('/deals', { method: 'POST', body: { accountId: D.account.id, level: PLAN_LEVEL[p.plan], priceCents: p.priceCents, notes: `Order Form ${F.label}`, ...(p.mixPosition != null ? { mixPosition: p.mixPosition } : {}) } });
+            await api('/accounts/' + D.account.id, { method: 'PATCH', body: { stage: 'onboarding' } });
             done();
           } catch (e) { failed(); throw e; }
         }, 'Sale recorded. The account is in onboarding.');
