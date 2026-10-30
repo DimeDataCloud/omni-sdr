@@ -109,4 +109,11 @@ a.info{color:var(--info);text-decoration:underline}
 /* Live mode toggle */
 .live-toggle{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;white-space:nowrap}
 .live-toggle input{width:auto;min-height:auto;margin:0;accent-color:var(--fill)}
+
+/* Full cyan application */
+.timeline{border-left:2px solid var(--info-soft)}
+.timeline .entry{border-left:3px solid var(--info)}
+.note.info{background:var(--info-soft);color:var(--info);border:1px solid var(--info)}
+.muted a{color:var(--info)}
+.sub a{color:var(--info)}
 }

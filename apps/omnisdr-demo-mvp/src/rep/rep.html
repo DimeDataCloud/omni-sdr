@@ -314,6 +314,7 @@ const screens = {
   },
 
   async pipeline() {
+    view.innerHTML = `<h1>Pipeline</h1><p class="sub">Drag cards between stages to move them.</p><div class="board"><section class="col"><h2>Loading<span></span></h2><div class="coldrop"><div class="mini"><div class="skeleton" style="height:60px"></div></div><div class="mini"><div class="skeleton" style="height:60px"></div></div></div></section><section class="col"><h2><span></span></h2><div class="coldrop"><div class="mini"><div class="skeleton" style="height:60px"></div></div></div></section></div>`;
     const { accounts } = await api('/accounts');
     const stages = K.stages.filter((s) => s !== 'lost');
     view.innerHTML = `<h1>Pipeline</h1><p class="sub">Drag cards between stages to move them. Onboarding and Live are set by Christian.</p><div class="board" id="board">${stages.map((st) => {
@@ -466,7 +467,7 @@ const screens = {
     const NEXT = { new: ['audit', 'Next: run the free check'], results_call: ['close', 'Next: the Order Form'], proposed: ['close', 'Next: the Order Form'], onboarding: ['onboarding', 'Next: onboarding'] }, next = NEXT[a.stage];
     view.innerHTML = `<p><a class="lnk" href="#accounts">All accounts</a></p><h1>${esc(a.business)}</h1><p class="sub">${esc([a.niche, a.city, a.state].filter(Boolean).join(' · '))}</p>
       <div class="row acts"><label for="stg" class="muted">Stage</label><select id="stg">${stageOptions(a.stage)}</select>${next ? `<button class="btn" type="button" id="nextGo" data-tab="${next[0]}">${next[1]}</button>` : ''}</div>
-      <div class="tabs" role="tablist">${[['Details', 0], ['Audit', 4], ['Messages', 5], ['Timeline', 1], ['Onboarding', 2], ['Close', 3]].map(([t, k]) => `<button class="tab" role="tab" data-t="${k}" aria-selected="${k === 0}">${t}</button>`).join('')}</div>
+      <div class="tabs" role="tablist">${[['Overview', 0], ['Qualify', 4], ['Message', 5], ['Activity', 1], ['Close', 3], ['Onboard', 2]].map(([t, k]) => `<button class="tab" role="tab" data-t="${k}" aria-selected="${k === 0}">${t}</button>`).join('')}</div>
       <div data-p="0" class="grid two"><form class="card" id="ef"><div class="fields">
         ${[['business', 'Business name', 'full'], ['niche', 'Category'], ['phone', 'Phone'], ['email', 'Email'], ['website', 'Website', 'full'], ['address', 'Address', 'full'], ['city', 'City'], ['state', 'State'], ['signal', 'Why we are calling', 'full'], ['next_step', 'Next step', 'full']]
           .map(([k, l, c]) => `<div class="${c || ''}"><label for="f_${k}">${l}</label><input id="f_${k}" name="${k}" value="${esc(a[k])}"></div>`).join('')}
@@ -732,6 +733,11 @@ const screens = {
     // The package: the plan, the price and the mix. Slider steps come from the server (one copy of the math).
     function wirePkg(el) {
       const plan = $('#ofPlan'), price = $('#ofPrice');
+      // Animate plan card prices on first render
+      el.querySelectorAll('.pcard .pprice').forEach((pEl) => {
+        const txt = pEl.textContent, m = txt.match(/\$([\d,]+)/);
+        if (m && !pEl.dataset.done) { pEl.dataset.done = '1'; const target = parseInt(m[1].replace(/,/g, '')); pEl.textContent = '$0'; countUp(pEl, target, (v) => '$' + Math.round(v).toLocaleString() + ' /mo'); }
+      });
       async function loadMix() {
         const pl = plan.value, c = dollars(price.value), me = ++mixReq;
         $('#ofPriceL').textContent = pl === 'Agency' ? 'Agreed price in dollars (over $1,000)' : 'Agreed price in dollars'; $('#ofPilotFee').hidden = false;
@@ -798,7 +804,10 @@ const screens = {
         <div><label for="t_d">Due</label><input id="t_d" name="dueAt" type="datetime-local" required></div><div><label for="t_k">Kind</label><select id="t_k" name="kind"><option value="follow_up">Follow-up</option><option value="callback">Callback</option><option value="demo">Demo</option><option value="onboarding">Onboarding</option></select></div>
         <div class="full"><button class="btn">Add task</button></div></form>
       <div id="days">${Object.keys(byDay).length ? Object.entries(byDay).map(([k, list]) => `<section class="day"><h2>${day(list[0].due_at)}</h2><div class="card"><ul class="list">${list.map((t) => `<li><div class="t">${esc(t.title)}<small>${new Date(t.due_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}${t.business ? ' · ' + esc(t.business) : ''}</small></div><span class="row">${t.account_id ? `<a class="btn ghost sm" href="#account/${esc(t.account_id)}">Open</a>` : ''}<button class="btn sm" data-done="${esc(t.id)}">Done</button></span></li>`).join('')}</ul></div></section>`).join('') : '<p class="muted">Nothing scheduled.</p>'}</div>`;
-    $('#tf').onsubmit = (e) => { e.preventDefault(); const f = form(e.target); api('/tasks', { method: 'POST', body: { ...f, dueAt: fromLocal(f.dueAt) } }).then(() => { toast('Added'); route(); }, fail); };
+    $('#tf').onsubmit = (e) => { e.preventDefault(); const f = form(e.target); 
+        if (!f.title || !f.title.trim()) { shakeEl($('#t_t')); return toast('Enter a task title'); }
+        if (!f.dueAt) { shakeEl($('#t_d')); return toast('Pick a due date'); }
+        api('/tasks', { method: 'POST', body: { ...f, dueAt: fromLocal(f.dueAt) } }).then(() => { toast('Added'); route(); }, fail); };
     $('#days').onclick = (e) => { const b = e.target.closest('[data-done]'); if (b) api('/tasks/' + b.dataset.done, { method: 'PATCH', body: { status: 'done' } }).then(() => { toast('Done'); route(); }, fail); };
   },
 
