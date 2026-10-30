@@ -77,7 +77,8 @@ export default function PrivacyPage() {
               <li><strong>Call and message handling:</strong> AI voice assistants answer calls, transcribe conversations, and draft follow-up messages. A human reviews AI-drafted outreach before it is sent unless you have agreed to fully automated follow-up.</li>
               <li><strong>Data review:</strong> AI tools help our team review contact records, call summaries, and message threads to identify opportunities and ensure nothing is missed.</li>
               <li><strong>What AI does not do:</strong> AI does not make hiring, credit, housing, or other consequential decisions about individuals. AI outputs are reviewed by humans before any significant action is taken.</li>
-              <li><strong>AI providers:</strong> we use third-party AI services (including language models) to process data. These providers are bound by contract not to train their models on your data. See §8 for the full list.</li>
+              <li><strong>AI providers:</strong> we use third-party AI services (including language models) to process data. These providers are bound by contract not to train their models on your data. See §9 for the full list.</li>
+              <li><strong>Client agreements:</strong> businesses using our services receive our Master Services Agreement, AI Calling/Texting/Recording Compliance Addendum, and Data Processing Exhibit, which set the specific duties for AI disclosure, consent, recording, and data handling.</li>
             </ul>
           </section>
 
@@ -106,7 +107,7 @@ export default function PrivacyPage() {
           <section className="space-y-3">
             <h2 className="text-xl font-bold text-[#111111]">7. Calls and recordings</h2>
             <ul className="list-disc pl-5 space-y-2">
-              <li><strong>AI disclosure:</strong> calls may be answered by an AI voice assistant. The caller is told at the start of the call that they are speaking with an AI system, including the AI-generated nature of the voice where required by law (e.g., California).</li>
+              <li><strong>AI disclosure:</strong> every call and text conversation starts by identifying the business and stating that the caller is speaking with an AI assistant. Our default opening is: &quot;Thanks for calling [Business]. I&apos;m [Name], [Business]&apos;s AI assistant, and this call is recorded.&quot; Our AI will never deny being an AI when asked, claim to be a specific real person, or imitate the voice of a real person.</li>
               <li>Calls may be recorded and transcribed. The caller is told this at the start of the call, and for Clients in states that require everyone&apos;s consent, before recording begins.</li>
               <li><strong>Outbound AI calls:</strong> we place AI-voice calls only to people who have given prior express consent. Each call identifies OmniSDR (or the Client on whose behalf we are calling) and provides a way to opt out or reach a human.</li>
             </ul>

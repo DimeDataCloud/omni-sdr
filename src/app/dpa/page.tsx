@@ -2,8 +2,8 @@ import React from 'react';
 import Link from 'next/link';
 
 export const metadata = {
-  title: 'Data Processing Agreement | OmniSDR',
-  description: 'How OmniSDR processes personal data on behalf of business clients.',
+  title: 'Data Processing | OmniSDR',
+  description: 'How OmniSDR handles data processing for business clients.',
 };
 
 export default function DPAPage() {
@@ -21,7 +21,7 @@ export default function DPAPage() {
       <main className="w-full max-w-4xl px-6 pb-20 z-10 relative">
         <header className="mb-10 text-center md:text-left">
           <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-[#111111] mb-3">
-            Data Processing Agreement
+            Data Processing for Clients
           </h1>
           <p className="text-sm font-medium text-gray-500">Effective date: October 31, 2026</p>
         </header>
@@ -34,56 +34,22 @@ export default function DPAPage() {
             boxShadow: '0 20px 40px rgba(0, 0, 0, 0.04)'
           }}
         >
-          <p>This Data Processing Agreement (&quot;DPA&quot;) forms part of the agreement between OmniSDR, a Tennessee general partnership (&quot;Processor&quot;), and the business client (&quot;Controller&quot;) receiving OmniSDR&apos;s AI receptionist and lead-response services.</p>
+          <p>Businesses using OmniSDR&apos;s services receive a full Data Processing Exhibit (Exhibit A) as part of our Master Services Agreement. That signed agreement — not this page — is the controlling legal document.</p>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">1. Roles</h2>
-            <p>Controller decides what personal data is collected and why. Processor processes it only on Controller&apos;s documented instructions and only to provide the services. For CCPA/CPRA purposes, Processor acts as a Service Provider and will not sell, share, or use personal data for its own purposes.</p>
-          </section>
-
-          <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">2. What we process</h2>
+            <h2 className="text-xl font-bold text-[#111111]">Summary</h2>
             <ul className="list-disc pl-5 space-y-2">
-              <li>Contact details of Controller&apos;s customers and prospects (name, phone, email, address).</li>
-              <li>Call recordings, transcripts, and metadata.</li>
-              <li>Text message content, delivery records, and opt-out requests.</li>
-              <li>Appointment and follow-up records.</li>
+              <li><strong>Roles:</strong> you (the client) are the controller; OmniSDR is your service provider and processor.</li>
+              <li><strong>AI disclosure:</strong> every call and text starts by identifying your business and stating the caller is speaking with an AI assistant.</li>
+              <li><strong>No training:</strong> we do not use your data to train AI models.</li>
+              <li><strong>Sub-processors:</strong> a current list is provided with your agreement.</li>
+              <li><strong>Your duties:</strong> you are the caller of record and are responsible for consent, do-not-call compliance, and the accuracy of your approved scripts. See our AI Calling, Texting and Recording Compliance Addendum.</li>
             </ul>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">3. AI processing</h2>
-            <p>Processor uses AI systems (voice agents, language models) to answer calls, draft messages, transcribe conversations, route leads, and summarize interactions. AI providers are bound by contract not to train models on Controller data. A current list of AI sub-processors is available on request from support{"@"}omnisdr.com.</p>
-          </section>
-
-          <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">4. Sub-processors</h2>
-            <p>Processor uses sub-processors for telephony, texting, AI processing, hosting, and payment. Controller authorizes these sub-processors. Processor will notify Controller of material changes and remains liable for sub-processor acts as if performed directly.</p>
-          </section>
-
-          <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">5. Security</h2>
-            <p>Processor uses encryption in transit and at rest, access controls, audit logging, and network security. Processor will notify Controller of a personal data breach without undue delay and cooperate in meeting Controller&apos;s notification obligations.</p>
-          </section>
-
-          <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">6. Data subject rights</h2>
-            <p>Processor will forward data subject requests (access, deletion, correction, opt-out) to Controller promptly and assist Controller in responding as required by law.</p>
-          </section>
-
-          <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">7. Retention and deletion</h2>
-            <p>Call recordings: 90 days by default (Controller may set 30–365 days). Other data: duration of the agreement plus 90 days, then deleted or returned to Controller. Consent and opt-out records: 5 years.</p>
-          </section>
-
-          <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">8. International transfers</h2>
-            <p>Data is processed in the United States. If data is transferred internationally, Processor will use appropriate safeguards (e.g., Standard Contractual Clauses).</p>
-          </section>
-
-          <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">9. Contact</h2>
-            <p>OmniSDR, 713 Harpeth Knoll Court, Nashville, TN 37221 · support{"@"}omnisdr.com</p>
+            <h2 className="text-xl font-bold text-[#111111]">Get the full agreement</h2>
+            <p>Contact support{"@"}omnisdr.com to receive our Master Services Agreement, Compliance Addendum, and Data Processing Exhibit.</p>
           </section>
 
         </div>
