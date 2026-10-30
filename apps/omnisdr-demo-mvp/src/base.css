@@ -7,32 +7,36 @@ background-image:radial-gradient(600px 600px at -10% -20%,color-mix(in srgb,var(
 [hidden]{display:none!important}
 .wrap{max-width:1040px;margin:0 auto;padding:var(--sp-4) var(--sp-4) calc(40px + env(safe-area-inset-bottom))}
 .brand{display:flex;align-items:center;gap:10px}.brand svg{width:32px;height:32px}.brand b{font-size:18px}
-header.top{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-3);padding:var(--sp-2) 0 var(--sp-4)}
-h1{font-size:22px;line-height:30px;margin:0 0 var(--sp-1);font-weight:600;letter-spacing:-.012em}h2{font-size:15px;line-height:22px;margin:0 0 var(--sp-2);font-weight:600}
+header.top{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-3);padding:var(--sp-3) 0 var(--sp-5);position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--bg) 85%,transparent);backdrop-filter:blur(12px);margin:0 calc(var(--sp-4) * -1);padding-left:var(--sp-4);padding-right:var(--sp-4);border-bottom:1px solid color-mix(in srgb,var(--line) 50%,transparent)}
+h1{font-size:26px;line-height:32px;margin:0 0 var(--sp-2);font-weight:700;letter-spacing:-.02em}h2{font-size:16px;line-height:24px;margin:0 0 var(--sp-3);font-weight:700;letter-spacing:-.01em}
 p.sub{margin:0 0 var(--sp-4);color:var(--muted)}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:var(--sp-5);box-shadow:0 16px 48px rgba(0,0,0,.06)}
-.grid{display:grid;gap:var(--sp-4)}@media(min-width:860px){.grid.two{grid-template-columns:1.25fr 1fr}.grid.three{grid-template-columns:repeat(3,1fr)}}
+.card{background:var(--surface);border:1px solid color-mix(in srgb,var(--line) 60%,transparent);border-radius:20px;padding:var(--sp-5);box-shadow:0 2px 8px rgba(0,0,0,.04),0 12px 32px rgba(0,0,0,.06);transition:box-shadow var(--t-hover),transform var(--t-hover)}
+@media (hover:hover){.card:hover{box-shadow:0 4px 12px rgba(0,0,0,.05),0 16px 40px rgba(0,0,0,.08)}}
+.grid{display:grid;gap:var(--sp-4)}
+.card .card{background:color-mix(in srgb,var(--bg) 50%,var(--surface));border-color:transparent;box-shadow:none;padding:var(--sp-4)}
+.card .card:hover{box-shadow:none}@media(min-width:860px){.grid.two{grid-template-columns:1.25fr 1fr}.grid.three{grid-template-columns:repeat(3,1fr)}}
 button,input,textarea,select{font:inherit;color:inherit}
-input,textarea,select{width:100%;min-height:44px;border:1px solid var(--control);border-radius:8px;padding:10px 12px;font-size:16px;background:var(--surface)}
+input,textarea,select{width:100%;min-height:44px;border:1px solid color-mix(in srgb,var(--line) 80%,var(--control) 20%);border-radius:12px;padding:10px 14px;font-size:16px;background:var(--surface);transition:border-color var(--t-hover),box-shadow var(--t-hover)}
 label{display:block;font-weight:500;font-size:13px;margin:var(--sp-3) 0 6px}
 :focus-visible{outline:2px solid var(--ink);outline-offset:2px}
-.btn{min-height:44px;padding:0 18px;border:0;border-radius:8px;background:var(--fill);color:#1A1A1A;font-weight:600;cursor:pointer;transition:background-color var(--t-hover),transform var(--t-press)}
-.btn:hover{background:var(--fill-h)}.btn:active{transform:scale(.97)}.btn[disabled]{opacity:.5;cursor:not-allowed}
-.btn.ghost{background:transparent;border:1px solid var(--control);color:var(--text)}
+input:focus,textarea:focus,select:focus{border-color:var(--fill);box-shadow:0 0 0 3px color-mix(in srgb,var(--fill) 25%,transparent);outline:none}
+.btn{min-height:44px;padding:0 20px;border:0;border-radius:12px;background:var(--fill);color:#1A1A1A;font-weight:600;letter-spacing:-.01em;cursor:pointer;transition:background-color var(--t-hover),transform var(--t-press),box-shadow var(--t-hover);box-shadow:0 2px 8px color-mix(in srgb,var(--fill) 40%,transparent)}
+.btn:hover{background:var(--fill-h);box-shadow:0 4px 16px color-mix(in srgb,var(--fill) 50%,transparent);transform:translateY(-1px)}.btn:active{transform:scale(.97)}.btn[disabled]{opacity:.5;cursor:not-allowed}
+.btn.ghost{background:color-mix(in srgb,var(--surface) 80%,transparent);border:1px solid color-mix(in srgb,var(--line) 80%,transparent);color:var(--text);box-shadow:none;backdrop-filter:blur(8px)}
 .btn.danger{background:var(--danger);color:#fff}
 a.btn{display:inline-flex;align-items:center;justify-content:center;text-decoration:none} /* a link that looks like a button gets a button's height and no underline */
 /* A tab row wider than the screen scrolls inside itself (like the rep nav) instead of pushing the page sideways. */
 .tabs{display:flex;gap:6px;margin:0 0 var(--sp-4);border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity}.tabs::-webkit-scrollbar{display:none}
 .tab{flex:0 0 auto;scroll-snap-align:start;min-height:44px;padding:0 var(--sp-4);background:none;border:0;border-bottom:3px solid transparent;font-weight:600;color:var(--muted);cursor:pointer;transition:color var(--t-hover),border-color var(--t-hover)}
 .tab:focus-visible{outline-offset:-2px} /* the scrolling row would clip an outside ring */
-.tab[aria-selected=true]{color:var(--text);border-color:var(--ink)}
-.pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600;background:var(--ok-soft);color:var(--ink)}
+.tab[aria-selected=true]{color:var(--text);border-color:var(--fill)}
+.pill{display:inline-flex;align-items:center;padding:4px 12px;border-radius:999px;font-size:12px;font-weight:600;letter-spacing:.02em;background:var(--ok-soft);color:var(--ink)}
 .pill.warn{background:var(--warn-soft);color:var(--warn)}.pill.bad{background:var(--danger-soft);color:var(--danger)}
 .note{padding:10px 12px;border-radius:8px;background:var(--warn-soft);color:var(--warn);font-size:13px;line-height:18px}
 .err{padding:10px 12px;border-radius:8px;background:var(--danger-soft);color:var(--danger);font-weight:500}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:var(--sp-1) 14px;margin:0;font-size:14px}.kv dt{color:var(--muted)}.kv dd{margin:0;word-break:break-word}
 .muted{color:var(--muted)}.sr{position:absolute;left:-9999px}
-table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:var(--sp-2) 6px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-weight:600}
+table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}th,td{text-align:left;padding:12px 12px;vertical-align:top}th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.05em}tbody tr{transition:background-color var(--t-hover)}tbody tr:hover{background:color-mix(in srgb,var(--fill) 6%,transparent)}td{border-bottom:1px solid color-mix(in srgb,var(--line) 50%,transparent)}
 /* Chat (entry and try me). Scoped to role=log: the rep Call Room has a button with id="log". */
 #log[role=log]{height:min(52vh,420px);overflow:auto;padding:var(--sp-1) 2px;display:flex;flex-direction:column}
 #log[role=log]>:first-child{margin-top:auto} /* messages sit just above the input; unlike justify-content:flex-end this still scrolls */
@@ -88,8 +92,12 @@ tr.skel td{padding:12px 6px}
 /* Phase 4: Cyan info application */
 .pill.help{border-left:3px solid var(--info);padding-left:12px}
 a
+/* Refined lists — breathing room instead of boxes */
+.list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.list>li{padding:12px 16px;border-radius:12px;background:color-mix(in srgb,var(--surface) 70%,var(--bg));transition:background-color var(--t-hover),transform var(--t-hover)}
+@media (hover:hover){.list>li:hover{background:var(--surface);transform:translateX(2px)}}
 /* Pipeline drag-and-drop */
-.mini{cursor:grab;transition:transform var(--t-hover),box-shadow var(--t-hover),opacity var(--t-hover)}
+.mini{cursor:grab;border-radius:14px;transition:transform var(--t-hover),box-shadow var(--t-hover),opacity var(--t-hover)}
 .mini:active{cursor:grabbing}
 .mini.dragging{opacity:.5;transform:scale(.98);box-shadow:0 8px 24px rgba(0,0,0,.15)}
 .col.dragover .coldrop{outline:2px dashed var(--info);outline-offset:4px;border-radius:8px;min-height:60px}
