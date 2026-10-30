@@ -5,6 +5,7 @@
 body{min-height:100dvh;background:var(--bg);color:var(--text);font:14px/22px ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;
 background-image:radial-gradient(600px 600px at -10% -20%,color-mix(in srgb,var(--fill) 45%,transparent),transparent 70%),radial-gradient(700px 700px at 110% 120%,color-mix(in srgb,var(--fill-h) 30%,transparent),transparent 70%);background-attachment:fixed}
 [hidden]{display:none!important}
+.tab-hidden{display:none!important}
 .wrap{max-width:1040px;margin:0 auto;padding:var(--sp-4) var(--sp-4) calc(40px + env(safe-area-inset-bottom))}
 .brand{display:flex;align-items:center;gap:10px}.brand svg{width:32px;height:32px}.brand b{font-size:18px}
 header.top{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-3);padding:var(--sp-3) 0 var(--sp-5);position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--bg) 85%,transparent);backdrop-filter:blur(12px);margin:0 calc(var(--sp-4) * -1);padding-left:var(--sp-4);padding-right:var(--sp-4);border-bottom:1px solid color-mix(in srgb,var(--line) 50%,transparent)}
