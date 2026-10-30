@@ -145,7 +145,15 @@ const local = (iso) => { if (!iso) return ''; const d = new Date(iso); d.setMinu
 const fromLocal = (v) => v ? new Date(v).toISOString() : null;
 const label = (code) => String(code).replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
 const STAGE_LABEL = { new: 'New', results_call: 'Demo booked', proposed: 'Proposed', onboarding: 'Onboarding', live: 'Live', lost: 'Lost' };
-const OUTCOME_LABEL = { interested: 'Demo booked' };
+const OUTCOME_LABEL = {
+  no_answer: 'No answer',
+  voicemail: 'Voicemail left',
+  callback_scheduled: 'Callback set',
+  interested: 'Demo booked',
+  not_interested: 'Not interested',
+  text_sent: 'Text sent',
+  email_sent: 'Email sent',
+};
 const DIAL_WHY = { do_not_call: 'Marked do not call.', no_phone: 'No phone on file.', unscrubbed: 'Not cleared to call yet: this number has no Do Not Call scrub on record.', scrub_expired: 'Not cleared to call: the Do Not Call scrub is over 31 days old.' };
 const FLAGS = [['do_not_call', 'Do not call'], ['wrong_number', 'Wrong number'], ['closed', 'Closed'], ['already_covered', 'Already covered'], ['not_fit', 'Not a fit']];
 const flagBtns = (id) => FLAGS.map(([k, l]) => `<button class="btn ghost sm" type="button" data-flag="${k}" data-id="${esc(id)}">${l}</button>`).join('');
@@ -281,8 +289,17 @@ const screens = {
         ${a.contact_name ? `<p>Ask for <b>${esc(a.contact_name)}</b></p>` : ''}
         ${a.signal ? `<p><span class="muted">Why we are calling:</span> ${esc(a.signal)}</p>` : ''}
         ${a.notes ? `<p class="muted script">${esc(a.notes)}</p>` : ''}
-        <div><h2>How did it go?</h2><div class="outcomes" id="oc">${K.outcomes.map((o) => `<button class="btn ghost" data-o="${o}" aria-pressed="false">${OUTCOME_LABEL[o] || label(o)}</button>`).join('')}</div><p class="muted">Press 1 to ${K.outcomes.length} to pick, Enter to log.</p></div>
-        <div><h2>Quick quote</h2><p class="muted">If they're ready, quote on the call.</p><div class="plancards sm" id="callPlans">${(K.prices.levels || []).filter((l) => l.level >= 1 && l.level <= 4).map((l) => `<button type="button" class="pcard" data-quote="${esc(l.label)}"><b>${esc(l.label)}</b><span class="pprice">${l.amountCents ? money(l.amountCents) + ' /mo' : 'Over $1,000'}</span></button>`).join('')}</div><p class="muted" id="quoteHint">Tap a plan to start the Order Form with it pre-selected.</p></div>
+        <div><h2>How did it go?</h2><div class="outcomes" id="oc" role="radiogroup" aria-label="Call outcome">${K.outcomes.map((o, i) => `<button type="button" role="radio" aria-checked="false" class="btn ghost outcome-btn" data-o="${o}"><span class="okey">${i + 1}</span>${OUTCOME_LABEL[o] || label(o)}</button>`).join('')}</div><p class="muted">Press 1 to ${K.outcomes.length} to pick, Enter to log.</p></div>
+        <div><h2>Quick quote</h2><p class="muted">Pick a plan, slide to adjust the talk/text mix, then start the Order Form.</p>
+          <div class="qq-plans" id="callPlans" role="radiogroup" aria-label="Quote plan">${(K.prices.levels || []).filter((l) => l.level >= 1 && l.level <= 4).map((l) => `<button type="button" role="radio" aria-checked="false" class="qq-plan" data-quote="${esc(l.label)}"><b>${esc(l.label)}</b><span class="qq-price">${l.amountCents ? money(l.amountCents) + ' /mo' : 'Over $1,000'}</span><span class="qq-detail">${esc(l.what ? l.what.split('.')[0] : '')}</span></button>`).join('')}</div>
+          <div id="qqAgencyBox" hidden class="stack" style="margin-top:12px"><label for="qqPrice"><b>Agreed price</b> <span class="muted">Over $1,000 a month</span></label><div class="row"><input id="qqPrice" type="number" inputmode="decimal" min="1001" placeholder="1500" style="max-width:160px"><span class="muted">a month</span></div></div>
+          <div id="qqMixBox" hidden class="mix" style="margin-top:12px"><h3>Usage mix</h3><p class="note">Slide to trade talk minutes for texts inside the same allowance.</p>
+            <div class="mixends"><span>More talk</span><span>More text</span></div>
+            <input type="range" id="qqMix" min="0" max="100" step="1" value="50" aria-label="Talk versus text mix">
+            <div class="mixread"><div><b id="qqMin">–</b><span>talk minutes</span></div><div><b id="qqTxt">–</b><span>texts</span></div><div><b id="qqThr">–</b><span>AI chats</span></div></div>
+            <p class="note" id="qqTrade"></p></div>
+          <div class="row" style="margin-top:12px"><button class="btn" type="button" id="qqStart" disabled>Start Order Form</button><button class="btn ghost" type="button" id="qqReset" hidden>Reset</button></div>
+          <p class="muted" id="quoteHint">Select a plan above to see the mix.</p></div>
         <div id="cbBox" hidden><label for="cb">Callback time</label><input type="datetime-local" id="cb"></div>
         <div><label for="cn">Note</label><textarea id="cn" rows="3" maxlength="1000" placeholder="What they said, who to ask for, best time"></textarea></div>
         <div class="row"><button class="btn" id="log" disabled>Log call and next</button><button class="btn ghost" id="skip">Skip</button><a class="lnk" href="#account/${esc(a.id)}">Open account</a></div>
@@ -290,11 +307,97 @@ const screens = {
       <section class="card stack"><h2>Opener</h2><p class="script">${esc(K.opener)}</p>
         <div>${K.objections.map((o) => `<details><summary>${esc(o.heard)}</summary><p>${esc(o.answer)}</p></details>`).join('')}</div>
         <p class="note">${esc(K.method)}</p></section></div>`;
-      $('#oc').onclick = (e) => { const b = e.target.closest('[data-o]'); if (!b) return; outcome = b.dataset.o; $$('#oc [data-o]').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); $('#cbBox').hidden = outcome !== 'callback_scheduled'; $('#log').disabled = false; };
+      $('#oc').onclick = (e) => { const b = e.target.closest('[data-o]'); if (!b) return; outcome = b.dataset.o; $$('#oc [data-o]').forEach((x) => { const on = x === b; x.setAttribute('aria-pressed', String(on)); x.setAttribute('aria-checked', String(on)); x.classList.toggle('sel', on); }); $('#cbBox').hidden = outcome !== 'callback_scheduled'; $('#log').disabled = false; };
       $('#skip').onclick = () => { i++; draw(); };
       if ($('#fl')) $('#fl').onclick = async (e) => { const b = e.target.closest('[data-flag]'); if (!b) return; try { await setFlag(b.dataset.id, b.dataset.flag); accounts.splice(i, 1); draw(); } catch (er) { fail(er); } };
-      const qp = $('#callPlans');
-      if (qp) qp.onclick = (e) => { const b = e.target.closest('[data-quote]'); if (!b) return; location.hash = '#account/' + a.id + '/close?plan=' + encodeURIComponent(b.dataset.quote); };
+      // Quick quote: plan picker + mix slider + Agency price. All interactive, no page jump until they hit Start.
+      const qp = $('#callPlans'), qqMixBox = $('#qqMixBox'), qqAgencyBox = $('#qqAgencyBox'),
+        qqStart = $('#qqStart'), qqReset = $('#qqReset'), qqHint = $('#quoteHint');
+      let qqPlan = null, qqMix = null, qqPos = null, qqPriceCents = null;
+      const num = (v) => v == null ? '–' : v.toLocaleString();
+      const paintQQ = () => {
+        if (!qqMix || qqPos == null) return;
+        const s = qqMix.steps.find((x) => x.p === qqPos) || qqMix.steps[0];
+        $('#qqMin').textContent = num(s.minutes);
+        $('#qqTxt').textContent = num(s.texts);
+        $('#qqThr').textContent = num(s.threads);
+        $('#qqTrade').textContent = `10 minutes is about ${qqMix.tradeTexts} texts.` + (s.p === qqMix.defaultPosition ? ' This is the plan default.' : '');
+        const r = $('#qqMix'); r.max = String(qqMix.steps.length - 1);
+        r.value = String(qqMix.steps.length - 1 - qqMix.steps.indexOf(s));
+        r.setAttribute('aria-valuetext', `${num(s.minutes)} minutes, ${num(s.texts)} texts`);
+      };
+      const loadQQMix = async (planLabel, priceCents) => {
+        qqMixBox.hidden = true; qqStart.disabled = true;
+        try {
+          const url = planLabel === 'Agency'
+            ? '/mix?priceCents=' + priceCents
+            : '/mix?plan=' + encodeURIComponent(planLabel);
+          const m = await api(url);
+          qqMix = m; qqPos = m.defaultPosition;
+          qqMixBox.hidden = false; qqStart.disabled = false;
+          qqHint.textContent = `${planLabel} selected. Adjust the mix, then start the Order Form.`;
+          paintQQ();
+        } catch (e) { qqHint.textContent = 'Could not load the mix for this plan.'; }
+      };
+      const selectQQPlan = (label) => {
+        qqPlan = label; qqMix = null; qqPos = null; qqPriceCents = null;
+        $$('#callPlans .qq-plan').forEach((x) => {
+          const on = x.dataset.quote === label;
+          x.classList.toggle('sel', on); x.setAttribute('aria-checked', String(on));
+        });
+        const isAgency = label === 'Agency';
+        qqAgencyBox.hidden = !isAgency;
+        qqMixBox.hidden = true; qqStart.disabled = true; qqReset.hidden = false;
+        if (isAgency) {
+          $('#qqPrice').value = ''; $('#qqPrice').focus();
+          qqHint.textContent = 'Enter the agreed price over $1,000 to see the mix.';
+        } else {
+          loadQQMix(label);
+        }
+      };
+      if (qp) qp.onclick = (e) => { const b = e.target.closest('[data-quote]'); if (b) selectQQPlan(b.dataset.quote); };
+      // Arrow keys for the radiogroup
+      if (qp) qp.addEventListener('keydown', (e) => {
+        const cards = [...qp.querySelectorAll('.qq-plan')];
+        const idx = cards.indexOf(document.activeElement);
+        if (idx < 0) return;
+        let n = null;
+        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') n = cards[(idx + 1) % cards.length];
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') n = cards[(idx - 1 + cards.length) % cards.length];
+        if (n) { e.preventDefault(); n.focus(); selectQQPlan(n.dataset.quote); }
+      });
+      const qqPriceInput = $('#qqPrice');
+      if (qqPriceInput) {
+        let t;
+        qqPriceInput.oninput = () => {
+          clearTimeout(t);
+          t = setTimeout(() => {
+            const v = Math.round(parseFloat(qqPriceInput.value) * 100);
+            if (v > 100000) { qqPriceCents = v; loadQQMix('Agency', v); }
+            else { qqMixBox.hidden = true; qqStart.disabled = true; qqHint.textContent = 'Enter a price over $1,000.'; }
+          }, 400);
+        };
+      }
+      const qqMixInput = $('#qqMix');
+      if (qqMixInput) qqMixInput.oninput = () => {
+        if (!qqMix) return;
+        qqPos = qqMix.steps[qqMix.steps.length - 1 - Number(qqMixInput.value)].p;
+        paintQQ();
+      };
+      if (qqReset) qqReset.onclick = () => {
+        qqPlan = null; qqMix = null; qqPos = null; qqPriceCents = null;
+        $$('#callPlans .qq-plan').forEach((x) => { x.classList.remove('sel'); x.setAttribute('aria-checked', 'false'); });
+        qqAgencyBox.hidden = true; qqMixBox.hidden = true;
+        qqStart.disabled = true; qqReset.hidden = true;
+        qqHint.textContent = 'Select a plan above to see the mix.';
+      };
+      if (qqStart) qqStart.onclick = () => {
+        if (!qqPlan) return;
+        let url = '#account/' + a.id + '/close?plan=' + encodeURIComponent(qqPlan);
+        if (qqPos != null) url += '&mix=' + qqPos;
+        if (qqPlan === 'Agency' && qqPriceCents) url += '&price=' + qqPriceCents;
+        location.hash = url;
+      };
       $('#log').onclick = async () => {
         $('#log').disabled = true;
         try { const r = await api('/calls', { method: 'POST', body: { accountId: a.id, outcome, note: $('#cn').value, callbackAt: fromLocal($('#cb').value) } });
@@ -538,6 +641,13 @@ const screens = {
     $('#nt').onsubmit = (e) => { e.preventDefault(); api(`/accounts/${a.id}/notes`, { method: 'POST', body: form(e.target) }).then(() => { toast('Added'); route(); }, fail); };
     const df = $('#df');
     if (df) {
+      // Quick quote handoff: ?plan=X&mix=Y&price=Z pre-fills the form
+      const qp = location.hash.match(/\?(.+)$/);
+      let qqPlan = null, qqMixPos = null, qqPrice = null;
+      if (qp) {
+        const params = new URLSearchParams(qp[1]);
+        qqPlan = params.get('plan'); qqMixPos = params.get('mix'); qqPrice = params.get('price');
+      }
       const sync = () => { const l = levels.find((x) => x.level === Number($('#lv').value)), agency = l.label === 'Agency';
         $('#pbox').hidden = !agency;
         $('#plbl').textContent = agency ? 'Agreed price in dollars (over $1,000)' : 'Plan price in dollars';
@@ -566,7 +676,26 @@ const screens = {
       $('#mx').oninput = () => { if (!MX) return; pos = MX.steps[MX.steps.length - 1 - Number($('#mx').value)].p; paint(); };
       $('#mxReset').onclick = () => { if (MX) { pos = MX.defaultPosition; paint(); } };
       $('#pc').oninput = split;
-      $('#lv').onchange = sync; sync();
+      $('#lv').onchange = sync;
+      // Apply quick quote params
+      if (qqPlan) {
+        const lvl = levels.find((l) => l.label === decodeURIComponent(qqPlan));
+        if (lvl) {
+          $('#lv').value = String(lvl.level);
+          if (qqPrice && lvl.label === 'Agency') $('#pc').value = String(Number(qqPrice) / 100);
+        }
+      }
+      sync();
+      // Apply mix position after sync loads the mix
+      if (qqMixPos != null) {
+        const applyMix = () => {
+          if (MX && MX.steps) {
+            const target = Number(qqMixPos);
+            if (MX.steps.some((s) => s.p === target)) { pos = target; paint(); }
+          } else setTimeout(applyMix, 200);
+        };
+        setTimeout(applyMix, 300);
+      }
       df.onsubmit = (e) => { e.preventDefault(); const f = form(df), l = levels.find((x) => x.level === Number(f.level)), cents = l.label === 'Agency' ? Math.round(parseFloat(f.price) * 100) : l.amountCents;
         api('/deals', { method: 'POST', body: { accountId: a.id, level: Number(f.level), notes: f.notes, priceCents: cents, ...(MX && pos != null ? { mixPosition: pos } : {}) } }).then(() => { toast('Sale closed. Fill in onboarding next.'); route(); }, fail); };
     }

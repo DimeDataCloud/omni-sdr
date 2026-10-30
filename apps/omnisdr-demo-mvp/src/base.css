@@ -101,10 +101,19 @@ a.info{color:var(--info);text-decoration:underline}
 .coldrop{min-height:40px;transition:outline-color var(--t-hover)}
 
 /* Small plan cards for Call Room quick quote */
-.plancards.sm{grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px}
-.plancards.sm .pcard{padding:12px}
-.plancards.sm .pcard b{font-size:14px}
-.plancards.sm .pcard .pprice{font-size:12px}
+/* Quick quote plan picker — 2x2 grid, generous touch targets, clear selected state */
+.qq-plans{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:8px 0}
+@media (min-width:560px){.qq-plans{grid-template-columns:repeat(4,1fr)}}
+.qq-plan{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-height:88px;padding:14px 16px;border:2px solid var(--line);border-radius:14px;background:var(--surface);cursor:pointer;text-align:left;transition:border-color var(--t-hover),transform var(--t-press),box-shadow var(--t-hover),background-color var(--t-hover)}
+.qq-plan b{font-size:16px;font-weight:700;letter-spacing:-.01em}
+.qq-plan .qq-price{font-size:14px;font-weight:700;color:var(--ink)}
+.qq-plan .qq-detail{font-size:11px;color:var(--muted);line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+@media (hover:hover){.qq-plan:hover{border-color:var(--control);transform:translateY(-2px);box-shadow:0 6px 16px rgba(0,0,0,.1)}}
+.qq-plan:active{transform:translateY(0) scale(.98)}
+.qq-plan.sel{border-color:var(--fill);background:color-mix(in srgb,var(--fill) 10%,var(--surface));box-shadow:0 0 0 1px var(--fill),0 4px 14px rgba(0,0,0,.08)}
+.qq-plan.sel::after{content:'✓';position:absolute;top:10px;right:12px;font-size:14px;font-weight:800;color:var(--fill)}
+.qq-plan:focus-visible{outline:2px solid var(--info);outline-offset:2px}
+.qq-plan[data-quote="Standard"]{border-color:color-mix(in srgb,var(--fill) 45%,var(--line))}
 
 /* Live mode toggle */
 .live-toggle{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;white-space:nowrap}
@@ -132,4 +141,13 @@ a.info{color:var(--info);text-decoration:underline}
 .learn-card[open] summary::after{transform:rotate(-90deg)}
 .learn-card > div.stack{padding:0 20px 20px}
 .learn-card summary:focus-visible{outline:2px solid var(--info);outline-offset:-2px}
+
+/* Call Room outcome buttons — clear selected state, keyboard hint badges */
+.outcomes{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.outcome-btn{position:relative;display:flex;align-items:center;gap:8px;justify-content:flex-start;min-height:48px;padding:10px 14px 10px 12px;font-weight:600;transition:border-color var(--t-hover),background-color var(--t-hover),transform var(--t-press)}
+.outcome-btn .okey{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 6px;border-radius:6px;background:var(--line);color:var(--muted);font-size:12px;font-weight:700}
+.outcome-btn[aria-pressed="true"],.outcome-btn.sel{border-color:var(--fill);background:color-mix(in srgb,var(--fill) 12%,var(--surface));box-shadow:0 0 0 1px var(--fill)}
+.outcome-btn[aria-pressed="true"] .okey,.outcome-btn.sel .okey{background:var(--fill);color:#fff}
+.outcome-btn:active{transform:scale(.97)}
+.outcome-btn:focus-visible{outline:2px solid var(--info);outline-offset:2px}
 }
