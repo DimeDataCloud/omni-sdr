@@ -118,6 +118,7 @@ export default function PrivacyPage() {
             <ul className="list-disc pl-5 space-y-2">
               <li>Call recordings: 90 days by default. A Client can set from 30 to 365 days.</li>
               <li>Consent and opt-out records: 5 years, to prove consent and honor opt-outs.</li>
+              <li>Waitlist and marketing contact data: until you opt out or ask us to delete it, then within 90 days. If you become a client, client retention rules apply instead.</li>
               <li>Other Client data: for the length of the Client&apos;s agreement plus 90 days, then deleted or returned to the Client.</li>
               <li>Billing records: as long as tax law requires.</li>
             </ul>

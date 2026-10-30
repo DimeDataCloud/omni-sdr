@@ -234,7 +234,7 @@ export default function OmniSdrLandingPage() {
                     style={{marginTop:'3px',flexShrink:0}}
                   />
                   <span>
-                    I agree to receive recurring marketing calls and text messages from OmniSDR at the number provided, including calls using an autodialer or artificial/AI-generated voice. Consent is not a condition of purchase. Msg &amp; data rates may apply. Reply STOP to opt out. See our <a href="/privacy" style={{textDecoration:'underline'}}>Privacy Policy</a>.
+                    I agree to receive recurring marketing calls and text messages from OmniSDR at the number provided, including calls using an autodialer or artificial/AI-generated voice. I also consent to OmniSDR collecting, storing, and using my information (including through AI systems for routing, review, and follow-up) as described in the Privacy Policy, and I understand my data is retained per the policy. Consent is not a condition of purchase. Msg &amp; data rates may apply. Reply STOP to opt out. See our <a href="/privacy" style={{textDecoration:'underline'}}>Privacy Policy</a>.
                   </span>
                 </label>
               </div>

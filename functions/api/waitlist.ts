@@ -5,7 +5,7 @@ interface Env {
   DB: D1Database;
 }
 
-const CONSENT_TEXT = "I agree to receive recurring marketing calls and text messages (including by autodialer or artificial/AI-generated voice) from OmniSDR at the number provided. Consent is not a condition of purchase. Msg & data rates may apply. Reply STOP to opt out.";
+const CONSENT_TEXT = "I agree to receive recurring marketing calls and text messages (including by autodialer or artificial/AI-generated voice). I also consent to OmniSDR collecting, storing, and using my information (including through AI systems for routing, review, and follow-up) as described in the Privacy Policy, and I understand my data is retained per the policy from OmniSDR at the number provided. Consent is not a condition of purchase. Msg & data rates may apply. Reply STOP to opt out.";
 
 function sanitize(input: unknown, maxLen: number): string {
   if (typeof input !== 'string') return '';
