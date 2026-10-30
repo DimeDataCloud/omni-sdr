@@ -26,7 +26,6 @@ export default function OmniSdrLandingPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
-  const [discountCode, setDiscountCode] = useState('');
 
   const nameInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLElement>(null);
@@ -50,7 +49,6 @@ export default function OmniSdrLandingPage() {
 
       if (res.ok && data.success) {
         setStatus('success');
-        setDiscountCode(data.accessCode || data.discountCode || 'OMNI-VIP-ACCESS');
         setFormData({ name: '', email: '', accountType: 'owner', company: '', phone: '', location: '' });
       } else {
         setStatus('error');
@@ -233,7 +231,7 @@ export default function OmniSdrLandingPage() {
                       <span>Early Access & Discount Locked!</span>
                     </div>
                     <p className={s.successText}>Thank you! Your spot is secured. You are locked in for our exclusive early-access discount when we launch.</p>
-                    <div className={s.pass}>VIP Pass: {discountCode}</div>
+                    <p className={s.successText}>We'll be in touch when early access opens.</p>
                   </div>
                 )}
 
