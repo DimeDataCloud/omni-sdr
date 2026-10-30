@@ -1,6 +1,6 @@
-// Rep playbook copy and the draft price ladder. Ported from apps/console/src/features/sales/playbookData.ts and
+// Rep playbook copy and the price ladder. Ported from apps/console/src/features/sales/playbookData.ts and
 // apps/console/src/lib/api/demo/sales.ts (DEFAULT_PRICES), which transcribe SALES-DECK-COPY slides 13, 17, 18 and 22.
-// When the copy file changes, change this file in the same PR. Every amount is DRAFT until Christian sets the final flag.
+// When the copy file changes, change this file in the same PR. Prices are final (isFinal: true).
 
 export const PRICES = {
   isFinal: true,
@@ -101,7 +101,7 @@ export const HOW = {
 export const PATH_GATE = 'The gate: after 20 real conversations in a niche, fewer than 2 paid pilots means we move to another niche. We rotate on facts, never by discounting.';
 
 export const OBJECTIONS = [
-  { id: 'price', heard: '"$499 is a lot."', answer: 'Fair question. The pilot price is a draft, and it is set against one job, not against software. What is a typical job worth to you? [listen] If a typical job is worth more than the pilot, one extra booked job covers it. We measure booked jobs and show you at day 14.' },
+  { id: 'price', heard: '"$499 is a lot."', answer: 'Fair question. The price is set against one job, not against software. What is a typical job worth to you? [listen] If a typical job is worth more than the pilot, one extra booked job covers it. We measure booked jobs and show you at day 14.' },
   { id: 'crm', heard: '"We already have a CRM or software that does this."', answer: 'Good, keep it. We do not replace it. We sit in front of it and handle the first reply, the follow-up and the booking. A CRM stores leads. It does not answer them at 9 pm. Can I time your form so we both see what actually happens?' },
   { id: 'person', heard: '"AI feels cheap. My customers want a person."', answer: 'They do, and they get one. We aim for a fast first reply so nobody is left waiting, and a person takes over the moment the lead asks, the job is big, or it is a complaint. For the first week you approve every message before it goes. Would you rather a lead wait six hours for a person, or hear back in minutes and then reach a person?' },
   { id: 'fast', heard: '"We answer fast enough."', answer: 'Great, then the free check will show it. We time your own form and your own line and give you the numbers. If you are fast, you will know. If there is a gap at night or on a job, you will see that too. Who covers after hours today?' },
