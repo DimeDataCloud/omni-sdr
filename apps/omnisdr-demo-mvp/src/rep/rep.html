@@ -438,7 +438,6 @@ const screens = {
       return `<section class="col" data-stage="${st}"><h2>${STAGE_LABEL[st]}<span>${list.length}</span></h2><div class="coldrop">${list.map((a) => `<div class="mini" draggable="true" data-id="${esc(a.id)}"><a class="lnk" href="#account/${esc(a.id)}">${esc(a.business)}</a>
         <small class="muted">${esc(a.next_step || a.niche || '')}</small><div class="row"><select data-move="${esc(a.id)}" aria-label="Move ${esc(a.business)} to stage" class="move-sel">${stages.map((s) => `<option value="${s}"${s === a.stage ? ' selected' : ''}>${STAGE_LABEL[s]}</option>`).join('')}</select>${['results_call', 'proposed'].includes(a.stage) ? `<a class="lnk" href="#account/${esc(a.id)}/close">Close the sale</a>` : ''}</div></div>`).join('')}</div></section>`;
     }).join('')}</div></div><div id="pListWrap"${PVIEW !== 'list' ? ' hidden' : ''}><section id="accountsSection"><h2>All accounts</h2><p class="sub">${admin ? 'Every lead and account in the book. Filter, sort into categories and hand them out.' : 'Every business you are working, prospect to live.'}</p>
-      ${admin ? '<div class="stats" id="tiles"></div>' : ''}
       <details class="card filter-card" id="filterCard"><summary><b>Search & filters</b><span class="muted" id="filterState"></span></summary><div class="stack" style="margin-top:12px"><div class="row"><input class="grow" id="q" type="search" placeholder="Search company, contact, category, city or phone" aria-label="Search accounts">
         <select id="st" aria-label="Stage" class="grow"><option value="">All stages</option>${K.stages.map((s) => `<option value="${s}">${STAGE_LABEL[s]}</option>`).join('')}</select>
         <select id="sa" aria-label="State" class="grow"><option value="">All states</option></select></div>
@@ -496,8 +495,6 @@ const screens = {
       if (F.sa && ![...sa.options].some((o) => o.value === F.sa)) sa.add(new Option(F.sa, F.sa)); sa.value = F.sa;
       $('#cats').innerHTML = x.niche.filter((r) => r.key).map((r) => `<option value="${esc(r.key)}">`).join('');
       if (!admin) return;
-      $('#tiles').innerHTML = [['Leads', x.total], ['Waiting to hand out', x.pool], ['Categories', x.niche.filter((r) => r.key).length], ['Reps with leads', x.owner.filter((r) => (REPS.find((p) => p.email === r.key) || {}).role !== 'admin').length]]
-        .map(([k, v]) => `<div class="card stat"><b>${v}</b><span>${k}</span></div>`).join('');
       const own = x.owner.map((r) => ({ k: r.key, n: r.n })); if (VIEW && !own.some((r) => r.k === VIEW)) own.push({ k: VIEW, n: 0 });
       $('#fOwner').innerHTML = chip('', 'All', x.total, !VIEW && !F.pool) + chip('pool', 'Waiting to hand out', x.pool, F.pool) + own.map((r) => chip(r.k, repName(r.k), r.n, VIEW === r.k)).join('');
       $$('#fArch .chip').forEach((c) => c.setAttribute('aria-pressed', String((c.dataset.k === '1') === F.arch)));
