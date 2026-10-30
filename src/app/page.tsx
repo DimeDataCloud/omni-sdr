@@ -22,6 +22,7 @@ export default function OmniSdrLandingPage() {
     phone: '',
     location: '',
   });
+  const [marketingConsent, setMarketingConsent] = useState(false);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -42,7 +43,7 @@ export default function OmniSdrLandingPage() {
       const res = await fetch('/api/waitlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ ...formData, marketingConsent }),
       });
 
       const data = await res.json();
@@ -50,6 +51,7 @@ export default function OmniSdrLandingPage() {
       if (res.ok && data.success) {
         setStatus('success');
         setFormData({ name: '', email: '', accountType: 'owner', company: '', phone: '', location: '' });
+        setMarketingConsent(false);
       } else {
         setStatus('error');
         setErrorMessage(data.error || 'Could not secure your discount. Please try again.');
@@ -222,9 +224,20 @@ export default function OmniSdrLandingPage() {
                 {!isSubmitting && <ArrowIcon className={s.arrow} />}
               </button>
 
-              <p className={s.consent} style={{fontSize:'11px',color:'#666',marginTop:'12px',lineHeight:'1.5'}}>
-                By submitting, you agree to receive recurring marketing calls and text messages (including by autodialer or prerecorded voice) from OmniSDR at the phone number provided. Consent is not a condition of purchase. Message and data rates may apply. Reply STOP to opt out of texts. See our <a href="/privacy" style={{textDecoration:'underline'}}>Privacy Policy</a>.
-              </p>
+              <div style={{marginTop:'12px',display:'flex',flexDirection:'column',gap:'8px'}}>
+                <label style={{display:'flex',gap:'8px',alignItems:'flex-start',fontSize:'12px',color:'#555',lineHeight:'1.5',cursor:'pointer'}}>
+                  <input
+                    type="checkbox"
+                    checked={marketingConsent}
+                    onChange={(e) => setMarketingConsent(e.target.checked)}
+                    required
+                    style={{marginTop:'3px',flexShrink:0}}
+                  />
+                  <span>
+                    I agree to receive recurring marketing calls and text messages (including by autodialer) from OmniSDR at the number provided. Consent is not a condition of purchase. Msg &amp; data rates may apply. Reply STOP to opt out. See our <a href="/privacy" style={{textDecoration:'underline'}}>Privacy Policy</a>.
+                  </span>
+                </label>
+              </div>
 
               {/* Status Messages: one live region that stays mounted, so screen readers announce what appears in it */}
               <div aria-live="polite">

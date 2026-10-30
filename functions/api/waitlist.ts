@@ -1,11 +1,11 @@
 // Waitlist API for omnisdr.com — D1 backend
-// Records TCPA consent for recurring marketing outreach
+// Records TCPA consent via checkbox
 
 interface Env {
   DB: D1Database;
 }
 
-const CONSENT_TEXT = "By submitting, you agree to receive recurring marketing calls and text messages (including by autodialer or prerecorded voice) from OmniSDR at the phone number provided. Consent is not a condition of purchase. Message and data rates may apply. Reply STOP to opt out of texts.";
+const CONSENT_TEXT = "I agree to receive recurring marketing calls and text messages (including by autodialer) from OmniSDR at the number provided. Consent is not a condition of purchase. Msg & data rates may apply. Reply STOP to opt out.";
 
 function sanitize(input: unknown, maxLen: number): string {
   if (typeof input !== 'string') return '';
@@ -35,12 +35,16 @@ export async function onRequestPost(context: { request: Request; env: Env }) {
     const phone = sanitize(body.phone, 30) || null;
     const location = sanitize(body.location, 100) || null;
     const accountType = sanitize(body.accountType, 20) === 'agency' ? 'agency' : 'owner';
+    const marketingConsent = body.marketingConsent === true;
 
     if (!name || name.length < 2) {
       return new Response(JSON.stringify({ error: 'Please provide a valid full name (minimum 2 characters)' }), { status: 400, headers });
     }
     if (!isValidEmail(email)) {
       return new Response(JSON.stringify({ error: 'Please enter a valid email address' }), { status: 400, headers });
+    }
+    if (!marketingConsent) {
+      return new Response(JSON.stringify({ error: 'Please check the consent box to join the waitlist.' }), { status: 400, headers });
     }
 
     // Rate limit: 5 submissions per IP per 10 minutes

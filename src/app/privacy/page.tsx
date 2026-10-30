@@ -65,25 +65,14 @@ export default function PrivacyPage() {
               <li>To run, secure and fix our services and website, and to prevent fraud and abuse.</li>
               <li>To bill Clients and keep business records.</li>
               <li>To meet legal obligations and respond to lawful requests.</li>
+              <li>To route and prioritize inquiries using AI systems, review contact records and conversation summaries, and draft follow-up messages (reviewed by a human before sending unless you agreed to automated follow-up).</li>
             </ul>
+            <p>Our AI tools do not make hiring, credit, housing, or other consequential decisions about individuals. AI providers we use are bound by contract not to train their models on your data.</p>
             <p>We do not sell personal information. We do not use Client call recordings, transcripts or messages to train AI models, and we use the no-training settings our providers offer. Our current providers and their settings are listed in Exhibit B of our Master Services Agreement, available from support{"@"}omnisdr.com.</p>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">4. How AI processes your information</h2>
-            <p>We use artificial intelligence to route, review, and act on information:</p>
-            <ul className="list-disc pl-5 space-y-2">
-              <li><strong>Lead routing:</strong> AI systems review incoming leads and inquiries to route them to the right team member, prioritize follow-up, and suggest next actions.</li>
-              <li><strong>Call and message handling:</strong> AI voice assistants answer calls, transcribe conversations, and draft follow-up messages. A human reviews AI-drafted outreach before it is sent unless you have agreed to fully automated follow-up.</li>
-              <li><strong>Data review:</strong> AI tools help our team review contact records, call summaries, and message threads to identify opportunities and ensure nothing is missed.</li>
-              <li><strong>What AI does not do:</strong> AI does not make hiring, credit, housing, or other consequential decisions about individuals. AI outputs are reviewed by humans before any significant action is taken.</li>
-              <li><strong>AI providers:</strong> we use third-party AI services (including language models) to process data. These providers are bound by contract not to train their models on your data. See §9 for the full list.</li>
-              <li><strong>Client agreements:</strong> businesses using our services receive our Master Services Agreement, AI Calling/Texting/Recording Compliance Addendum, and Data Processing Exhibit, which set the specific duties for AI disclosure, consent, recording, and data handling.</li>
-            </ul>
-          </section>
-
-          <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">5. Marketing to people who contact us</h2>
+            <h2 className="text-xl font-bold text-[#111111]">4. Marketing to people who contact us</h2>
             <p>When you fill in a form on omnisdr.com (such as the waitlist), you agree to receive recurring marketing communications from OmniSDR by phone, text message (including by autodialer or prerecorded voice), email, and social media. Consent is not a condition of purchase.</p>
             <ul className="list-disc pl-5 space-y-2">
               <li><strong>What we send:</strong> product updates, launch announcements, special offers, and follow-up messages about our services.</li>
@@ -94,7 +83,7 @@ export default function PrivacyPage() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">6. Text messaging</h2>
+            <h2 className="text-xl font-bold text-[#111111]">5. Text messaging</h2>
             <ul className="list-disc pl-5 space-y-2">
               <li>We send texts only for a Client to people who gave that Client the required consent, or who just contacted that Client and asked to hear back.</li>
               <li>Message frequency varies. Message and data rates may apply.</li>
@@ -105,16 +94,16 @@ export default function PrivacyPage() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">7. Calls and recordings</h2>
+            <h2 className="text-xl font-bold text-[#111111]">6. Calls and recordings</h2>
             <ul className="list-disc pl-5 space-y-2">
-              <li><strong>AI disclosure:</strong> every call and text conversation starts by identifying the business and stating that the caller is speaking with an AI assistant. Our default opening is: &quot;Thanks for calling [Business]. I&apos;m [Name], [Business]&apos;s AI assistant, and this call is recorded.&quot; Our AI will never deny being an AI when asked, claim to be a specific real person, or imitate the voice of a real person.</li>
+              <li><strong>AI disclosure:</strong> when our AI answers a call or starts a text conversation, it identifies itself as an AI assistant early in the conversation. It will never pretend to be a human when asked, claim to be a specific real person, or imitate anyone&apos;s voice.</li>
               <li>Calls may be recorded and transcribed. The caller is told this at the start of the call, and for Clients in states that require everyone&apos;s consent, before recording begins.</li>
               <li><strong>Outbound AI calls:</strong> we place AI-voice calls only to people who have given prior express consent. Each call identifies OmniSDR (or the Client on whose behalf we are calling) and provides a way to opt out or reach a human.</li>
             </ul>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">8. Who we share it with</h2>
+            <h2 className="text-xl font-bold text-[#111111]">7. Who we share it with</h2>
             <ul className="list-disc pl-5 space-y-2">
               <li><strong>The Client</strong> whose calls or messages it relates to.</li>
               <li><strong>Service providers</strong> who help us run the services: telephone and texting carriers, voice AI and language-model providers, hosting, email, and payment processing. They are bound by contract to use the data only to provide services to us. The list is in Exhibit B of our Master Services Agreement, available from support{"@"}omnisdr.com.</li>
@@ -125,7 +114,7 @@ export default function PrivacyPage() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">9. How long we keep it</h2>
+            <h2 className="text-xl font-bold text-[#111111]">8. How long we keep it</h2>
             <ul className="list-disc pl-5 space-y-2">
               <li>Call recordings: 90 days by default. A Client can set from 30 to 365 days.</li>
               <li>Consent and opt-out records: 5 years, to prove consent and honor opt-outs.</li>
@@ -135,12 +124,12 @@ export default function PrivacyPage() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">10. Security</h2>
+            <h2 className="text-xl font-bold text-[#111111]">9. Security</h2>
             <p>We use encryption in transit, access controls, and logging. If a breach affects your information, we will notify the Client concerned, and you where the law requires.</p>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">11. Your choices and rights</h2>
+            <h2 className="text-xl font-bold text-[#111111]">10. Your choices and rights</h2>
             <ul className="list-disc pl-5 space-y-2">
               <li>You can ask us to access, correct or delete information about you, or to stop contacting you. Email support{"@"}omnisdr.com.</li>
               <li>If your information was collected for a Client, we will forward your request to that Client and help them respond.</li>
@@ -149,17 +138,17 @@ export default function PrivacyPage() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">12. Children</h2>
+            <h2 className="text-xl font-bold text-[#111111]">11. Children</h2>
             <p>Our services are for businesses and adults. We do not knowingly collect information from children under 13.</p>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">13. Changes</h2>
+            <h2 className="text-xl font-bold text-[#111111]">12. Changes</h2>
             <p>We will post changes here and update the effective date. If a change is material, we will tell Clients in advance.</p>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">14. Contact</h2>
+            <h2 className="text-xl font-bold text-[#111111]">13. Contact</h2>
             <p>OmniSDR, 713 Harpeth Knoll Court, Nashville, TN 37221 · support{"@"}omnisdr.com</p>
           </section>
 
