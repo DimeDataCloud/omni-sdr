@@ -1,9 +1,11 @@
 // Waitlist API for omnisdr.com — D1 backend
-// Replaces the dead GCS Cloud Run endpoint (was 502ing)
+// Records TCPA consent for recurring marketing outreach
 
 interface Env {
   DB: D1Database;
 }
+
+const CONSENT_TEXT = "By submitting, you agree to receive recurring marketing calls and text messages (including by autodialer or prerecorded voice) from OmniSDR at the phone number provided. Consent is not a condition of purchase. Message and data rates may apply. Reply STOP to opt out of texts.";
 
 function sanitize(input: unknown, maxLen: number): string {
   if (typeof input !== 'string') return '';
@@ -57,11 +59,10 @@ export async function onRequestPost(context: { request: Request; env: Env }) {
 
     try {
       await env.DB.prepare(
-        `INSERT INTO waitlist_leads (id, name, email, account_type, company, phone, location, status, source, user_agent, ip, submitted_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'new', 'omnisdr.com/landing', ?, ?, ?)`
-      ).bind(id, name, email, accountType, company, phone, location, userAgent, ip, submittedAt).run();
+        `INSERT INTO waitlist_leads (id, name, email, account_type, company, phone, location, status, source, user_agent, ip, submitted_at, consent_text, consent_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'new', 'omnisdr.com/landing', ?, ?, ?, ?, ?)`
+      ).bind(id, name, email, accountType, company, phone, location, userAgent, ip, submittedAt, CONSENT_TEXT, submittedAt).run();
     } catch (e: any) {
-      // Duplicate email — treat as success (don't leak existence, don't error)
       if (e?.message?.includes('UNIQUE constraint failed')) {
         return new Response(JSON.stringify({ success: true, leadId: id, duplicate: true }), { status: 200, headers });
       }
@@ -78,5 +79,5 @@ export async function onRequestPost(context: { request: Request; env: Env }) {
   }
 }
 
-// No GET — reads stay out of the public function (see 2026-09-28 leak note in git history).
-// Export leads via: wrangler d1 execute omnisdr-waitlist --command "SELECT * FROM waitlist_leads"
+// No GET — reads stay out of the public function.
+// Export leads via: wrangler d1 execute omnisdr-rep --command "SELECT * FROM waitlist_leads"

@@ -70,7 +70,18 @@ export default function PrivacyPage() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">4. Text messaging</h2>
+            <h2 className="text-xl font-bold text-[#111111]">4. Marketing to people who contact us</h2>
+            <p>When you fill in a form on omnisdr.com (such as the waitlist), you agree to receive recurring marketing communications from OmniSDR by phone, text message (including by autodialer or prerecorded voice), email, and social media. Consent is not a condition of purchase.</p>
+            <ul className="list-disc pl-5 space-y-2">
+              <li><strong>What we send:</strong> product updates, launch announcements, special offers, and follow-up messages about our services.</li>
+              <li><strong>How to opt out:</strong> reply STOP to any text to stop texts; click unsubscribe in any email; email support{"@"}omnisdr.com to stop all marketing contact. We honor opt-outs promptly.</li>
+              <li><strong>Consent records:</strong> we store the exact consent wording you saw, the date and time, your IP address, and browser details, for at least 5 years.</li>
+              <li><strong>We do not sell</strong> your contact information or share it with third parties for their own marketing.</li>
+            </ul>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="text-xl font-bold text-[#111111]">5. Text messaging</h2>
             <ul className="list-disc pl-5 space-y-2">
               <li>We send texts only for a Client to people who gave that Client the required consent, or who just contacted that Client and asked to hear back.</li>
               <li>Message frequency varies. Message and data rates may apply.</li>
@@ -81,7 +92,7 @@ export default function PrivacyPage() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">5. Calls and recordings</h2>
+            <h2 className="text-xl font-bold text-[#111111]">6. Calls and recordings</h2>
             <ul className="list-disc pl-5 space-y-2">
               <li>Calls may be answered by an AI assistant, and the caller is told so at the start of the call.</li>
               <li>Calls may be recorded and transcribed. The caller is told this at the start of the call, and for Clients in states that require everyone&apos;s consent, before recording begins.</li>
@@ -89,7 +100,7 @@ export default function PrivacyPage() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">6. Who we share it with</h2>
+            <h2 className="text-xl font-bold text-[#111111]">7. Who we share it with</h2>
             <ul className="list-disc pl-5 space-y-2">
               <li><strong>The Client</strong> whose calls or messages it relates to.</li>
               <li><strong>Service providers</strong> who help us run the services: telephone and texting carriers, voice AI and language-model providers, hosting, email, and payment processing. They are bound by contract to use the data only to provide services to us. The list is in Exhibit B of our Master Services Agreement, available from support{"@"}omnisdr.com.</li>
@@ -100,7 +111,7 @@ export default function PrivacyPage() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">7. How long we keep it</h2>
+            <h2 className="text-xl font-bold text-[#111111]">8. How long we keep it</h2>
             <ul className="list-disc pl-5 space-y-2">
               <li>Call recordings: 90 days by default. A Client can set from 30 to 365 days.</li>
               <li>Consent and opt-out records: 5 years, to prove consent and honor opt-outs.</li>
@@ -110,12 +121,12 @@ export default function PrivacyPage() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">8. Security</h2>
+            <h2 className="text-xl font-bold text-[#111111]">9. Security</h2>
             <p>We use encryption in transit, access controls, and logging. If a breach affects your information, we will notify the Client concerned, and you where the law requires.</p>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">9. Your choices and rights</h2>
+            <h2 className="text-xl font-bold text-[#111111]">10. Your choices and rights</h2>
             <ul className="list-disc pl-5 space-y-2">
               <li>You can ask us to access, correct or delete information about you, or to stop contacting you. Email support{"@"}omnisdr.com.</li>
               <li>If your information was collected for a Client, we will forward your request to that Client and help them respond.</li>
@@ -124,17 +135,17 @@ export default function PrivacyPage() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">10. Children</h2>
+            <h2 className="text-xl font-bold text-[#111111]">11. Children</h2>
             <p>Our services are for businesses and adults. We do not knowingly collect information from children under 13.</p>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">11. Changes</h2>
+            <h2 className="text-xl font-bold text-[#111111]">12. Changes</h2>
             <p>We will post changes here and update the effective date. If a change is material, we will tell Clients in advance.</p>
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-xl font-bold text-[#111111]">12. Contact</h2>
+            <h2 className="text-xl font-bold text-[#111111]">13. Contact</h2>
             <p>OmniSDR, 713 Harpeth Knoll Court, Nashville, TN 37221 · support{"@"}omnisdr.com</p>
           </section>
 

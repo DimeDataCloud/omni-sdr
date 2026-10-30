@@ -222,6 +222,10 @@ export default function OmniSdrLandingPage() {
                 {!isSubmitting && <ArrowIcon className={s.arrow} />}
               </button>
 
+              <p className={s.consent} style={{fontSize:'11px',color:'#666',marginTop:'12px',lineHeight:'1.5'}}>
+                By submitting, you agree to receive recurring marketing calls and text messages (including by autodialer or prerecorded voice) from OmniSDR at the phone number provided. Consent is not a condition of purchase. Message and data rates may apply. Reply STOP to opt out of texts. See our <a href="/privacy" style={{textDecoration:'underline'}}>Privacy Policy</a>.
+              </p>
+
               {/* Status Messages: one live region that stays mounted, so screen readers announce what appears in it */}
               <div aria-live="polite">
                 {status === 'success' && (
