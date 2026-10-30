@@ -137,7 +137,8 @@ async function api(path, { method = 'GET', body, raw = false, noView = false } =
   return j;
 }
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), 2600); }
-const fail = (e) => toast(e.message);
+const fail = (e) => { toast(e.message); };
+const shakeEl = (el) => { if (!el) return; el.classList.remove('field-error'); void el.offsetWidth; el.classList.add('field-error'); setTimeout(() => el.classList.remove('field-error'), 350); };
 const when = (iso) => iso ? new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
 const day = (iso) => new Date(iso).toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
 const local = (iso) => { if (!iso) return ''; const d = new Date(iso); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
@@ -771,12 +772,17 @@ const screens = {
   },
 
   async deals() {
+    // Skeleton while loading
+    view.innerHTML = `<h1>My deals</h1><p class="sub">Every sale you closed, newest first.</p><section class="card"><div class="tbl"><table><thead><tr><th>Business</th><th>Plan</th><th>Price</th><th>Closed</th><th>Stage</th></tr></thead><tbody><tr class="skel"><td colspan="5"><div class="skeleton"></div></td></tr><tr class="skel"><td colspan="5"><div class="skeleton"></div></td></tr><tr class="skel"><td colspan="5"><div class="skeleton"></div></td></tr></tbody></table></div></section>`;
     const { deals } = await api('/deals'), admin = ME.role === 'admin';
     const pay = (x) => x.level === 1 && x.eachCents != null ? 'about ' + money(Math.round(x.eachCents / 100) * 100) : 'Set when Christian prices it';
     view.innerHTML = `<h1>My deals</h1><p class="sub">Every sale you closed, newest first. Pay targets shown; official split is 50/50.</p>
-      <div class="stats"><div class="card stat"><b>${deals.length}</b><span>Closed</span></div><div class="card stat"><b>${deals.filter((x) => x.stage === 'live').length}</b><span>Live</span></div><div class="card stat"><b>${money(deals.reduce((n, x) => n + x.price_cents, 0))}</b><span>Sold, before tax</span></div></div>
+      <div class="stats"><div class="card stat"><b>${deals.length}</b><span>Closed</span></div><div class="card stat"><b>${deals.filter((x) => x.stage === 'live').length}</b><span>Live</span></div><div class="card stat"><b id="soldTotal" data-v="0">$0</b><span>Sold, before tax</span></div></div>
       <section class="card"><div class="tbl"><table><thead><tr><th>Business</th><th>Plan</th><th>Price</th><th>Closed</th><th>Stage</th><th>Usage mix</th><th>Your pay, each</th>${admin ? '<th>Rep</th>' : ''}</tr></thead><tbody>${deals.length ? deals.map((x) => `<tr><td><a class="lnk" href="#account/${esc(x.account_id)}">${esc(x.business)}</a></td><td>${levelName(x.level)}</td><td>${money(x.price_cents)}</td><td>${when(x.closed_at)}</td><td>${STAGE_LABEL[x.stage] || ''}</td><td>${x.mix ? `${x.mix.minutes} min, ${x.mix.texts.toLocaleString()} texts` : ''}</td><td>${esc(pay(x))}</td>${admin ? `<td>${esc(x.rep_email)}</td>` : ''}</tr>`).join('') : `<tr><td colspan="${admin ? 8 : 7}" class="muted">No closed deals yet. The first plan is the first yes.</td></tr>`}</tbody></table></div>
       <p class="note">${esc(K.pay.note)}</p></section>`;
+    // Animate the sold total
+    const soldEl = $('#soldTotal');
+    if (soldEl) countUp(soldEl, deals.reduce((n, x) => n + x.price_cents, 0) / 100, (v) => money(Math.round(v * 100)));
   },
 
   async kit() {
