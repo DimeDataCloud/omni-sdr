@@ -282,6 +282,7 @@ const screens = {
         ${a.signal ? `<p><span class="muted">Why we are calling:</span> ${esc(a.signal)}</p>` : ''}
         ${a.notes ? `<p class="muted script">${esc(a.notes)}</p>` : ''}
         <div><h2>How did it go?</h2><div class="outcomes" id="oc">${K.outcomes.map((o) => `<button class="btn ghost" data-o="${o}" aria-pressed="false">${OUTCOME_LABEL[o] || label(o)}</button>`).join('')}</div><p class="muted">Press 1 to ${K.outcomes.length} to pick, Enter to log.</p></div>
+        <div><h2>Quick quote</h2><p class="muted">If they're ready, quote on the call.</p><div class="plancards sm" id="callPlans">${(K.prices.levels || []).filter((l) => l.level >= 1 && l.level <= 4).map((l) => `<button type="button" class="pcard" data-quote="${esc(l.label)}"><b>${esc(l.label)}</b><span class="pprice">${l.amountCents ? money(l.amountCents) + ' /mo' : 'Over $1,000'}</span></button>`).join('')}</div><p class="muted" id="quoteHint">Tap a plan to start the Order Form with it pre-selected.</p></div>
         <div id="cbBox" hidden><label for="cb">Callback time</label><input type="datetime-local" id="cb"></div>
         <div><label for="cn">Note</label><textarea id="cn" rows="3" maxlength="1000" placeholder="What they said, who to ask for, best time"></textarea></div>
         <div class="row"><button class="btn" id="log" disabled>Log call and next</button><button class="btn ghost" id="skip">Skip</button><a class="lnk" href="#account/${esc(a.id)}">Open account</a></div>
@@ -292,6 +293,8 @@ const screens = {
       $('#oc').onclick = (e) => { const b = e.target.closest('[data-o]'); if (!b) return; outcome = b.dataset.o; $$('#oc [data-o]').forEach((x) => x.setAttribute('aria-pressed', String(x === b))); $('#cbBox').hidden = outcome !== 'callback_scheduled'; $('#log').disabled = false; };
       $('#skip').onclick = () => { i++; draw(); };
       if ($('#fl')) $('#fl').onclick = async (e) => { const b = e.target.closest('[data-flag]'); if (!b) return; try { await setFlag(b.dataset.id, b.dataset.flag); accounts.splice(i, 1); draw(); } catch (er) { fail(er); } };
+      const qp = $('#callPlans');
+      if (qp) qp.onclick = (e) => { const b = e.target.closest('[data-quote]'); if (!b) return; location.hash = '#account/' + a.id + '/close?plan=' + encodeURIComponent(b.dataset.quote); };
       $('#log').onclick = async () => {
         $('#log').disabled = true;
         try { const r = await api('/calls', { method: 'POST', body: { accountId: a.id, outcome, note: $('#cn').value, callbackAt: fromLocal($('#cb').value) } });
@@ -313,12 +316,28 @@ const screens = {
   async pipeline() {
     const { accounts } = await api('/accounts');
     const stages = K.stages.filter((s) => s !== 'lost');
-    view.innerHTML = `<h1>Pipeline</h1><p class="sub">Change the stage on a card to move it. Onboarding and Live are set by Christian.</p><div class="board" id="board">${stages.map((st) => {
+    view.innerHTML = `<h1>Pipeline</h1><p class="sub">Drag cards between stages to move them. Onboarding and Live are set by Christian.</p><div class="board" id="board">${stages.map((st) => {
       const list = accounts.filter((a) => a.stage === st);
-      return `<section class="col"><h2>${STAGE_LABEL[st]}<span>${list.length}</span></h2>${list.map((a) => `<div class="mini"><a class="lnk" href="#account/${esc(a.id)}">${esc(a.business)}</a>
-        <small class="muted">${esc(a.next_step || a.niche || '')}</small><select data-id="${esc(a.id)}" aria-label="Stage for ${esc(a.business)}">${stageOptions(a.stage)}</select>${['results_call', 'proposed'].includes(a.stage) ? `<a class="lnk" href="#account/${esc(a.id)}/close">Close the sale</a>` : ''}</div>`).join('')}</section>`;
+      return `<section class="col" data-stage="${st}"><h2>${STAGE_LABEL[st]}<span>${list.length}</span></h2><div class="coldrop">${list.map((a) => `<div class="mini" draggable="true" data-id="${esc(a.id)}"><a class="lnk" href="#account/${esc(a.id)}">${esc(a.business)}</a>
+        <small class="muted">${esc(a.next_step || a.niche || '')}</small>${['results_call', 'proposed'].includes(a.stage) ? `<a class="lnk" href="#account/${esc(a.id)}/close">Close the sale</a>` : ''}</div>`).join('')}</div></section>`;
     }).join('')}</div>`;
-    $('#board').onchange = (e) => { const s = e.target.closest('select[data-id]'); if (s) api('/accounts/' + s.dataset.id, { method: 'PATCH', body: { stage: s.value } }).then(() => { toast('Moved'); route(); }, fail); };
+    // Drag and drop
+    const board = $('#board');
+    let dragId = null;
+    board.addEventListener('dragstart', (e) => { const m = e.target.closest('.mini'); if (!m) return; dragId = m.dataset.id; m.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
+    board.addEventListener('dragend', (e) => { const m = e.target.closest('.mini'); if (m) m.classList.remove('dragging'); document.querySelectorAll('.col.dragover').forEach((c) => c.classList.remove('dragover')); });
+    board.addEventListener('dragover', (e) => { e.preventDefault(); const col = e.target.closest('.col'); if (col) { document.querySelectorAll('.col.dragover').forEach((c) => c.classList.remove('dragover')); col.classList.add('dragover'); } e.dataTransfer.dropEffect = 'move'; });
+    board.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const col = e.target.closest('.col');
+      document.querySelectorAll('.col.dragover').forEach((c) => c.classList.remove('dragover'));
+      if (!col || !dragId) return;
+      const newStage = col.dataset.stage;
+      api('/accounts/' + dragId, { method: 'PATCH', body: { stage: newStage } }).then(() => { toast('Moved'); route(); }, fail);
+      dragId = null;
+    });
+    // Fallback: keep select for keyboard users (hidden, shown on focus)
+    
   },
 
   // Accounts and Leads in one list. Reps see their own rows; admins see everyone, or one rep through the Viewing switch,

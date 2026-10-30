@@ -92,4 +92,17 @@ tr.skel td{padding:12px 6px}
 .pill.info{background:var(--info-soft);color:var(--info)}
 .help{border-left:3px solid var(--info);padding-left:12px}
 a.info{color:var(--info);text-decoration:underline}
+
+/* Pipeline drag-and-drop */
+.mini{cursor:grab;transition:transform var(--t-hover),box-shadow var(--t-hover),opacity var(--t-hover)}
+.mini:active{cursor:grabbing}
+.mini.dragging{opacity:.5;transform:scale(.98);box-shadow:0 8px 24px rgba(0,0,0,.15)}
+.col.dragover .coldrop{outline:2px dashed var(--info);outline-offset:4px;border-radius:8px;min-height:60px}
+.coldrop{min-height:40px;transition:outline-color var(--t-hover)}
+
+/* Small plan cards for Call Room quick quote */
+.plancards.sm{grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px}
+.plancards.sm .pcard{padding:12px}
+.plancards.sm .pcard b{font-size:14px}
+.plancards.sm .pcard .pprice{font-size:12px}
 }
