@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="robots" content="noindex, nofollow"><meta name="referrer" content="no-referrer"><meta name="theme-color" content="#F7F5F0" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#0F100E" media="(prefers-color-scheme: dark)"><title>Your Order Form details · OmniSDR</title>
+<style nonce="__NONCE__">__CSS__
+.wrap{max-width:720px}
+.sheet{display:grid;gap:16px}
+.pkg{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin:0}.pkg div{display:grid;gap:2px}.pkg dt{color:var(--muted);font-size:13px}.pkg dd{margin:0;font-weight:600;font-size:18px;font-variant-numeric:tabular-nums}
+.fields{display:grid;gap:0 16px}@media(min-width:640px){.fields{grid-template-columns:1fr 1fr}}.fields .full{grid-column:1/-1}
+.check{display:flex;gap:10px;align-items:flex-start;margin:12px 0 0;font-weight:500}.check input{width:22px;height:22px;min-height:0;margin:2px 0 0;accent-color:var(--ink);flex:0 0 auto}
+.radios{display:flex;flex-wrap:wrap;gap:8px}.radios label{display:inline-flex;gap:8px;align-items:center;min-height:44px;margin:0;padding:0 14px;border:1px solid var(--control);border-radius:999px;font-weight:500;cursor:pointer}
+.radios input{width:20px;height:20px;min-height:0;margin:0;accent-color:var(--ink)}
+.radios label:has(input:checked){border-color:var(--ink);background:var(--ok-soft)}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+.radiogroup{border:0;margin:12px 0 0;padding:0}.radiogroup legend{font-weight:500;font-size:13px;margin:0 0 6px}.again{margin-top:12px}
+.done{border-color:var(--ink)}
+footer.small{color:var(--muted);font-size:13px;margin-top:24px}footer.small a{color:var(--ink)}
+.card{animation:enter var(--t-enter) ease both}
+</style></head>
+<body><div class="wrap">
+<header class="top"><div class="brand">__LOGO__<b>OmniSDR</b></div></header>
+<main id="view" aria-live="polite"><p class="muted">Loading…</p></main>
+<footer class="small"><p>Only you and your OmniSDR contact can see this page. It closes when the link expires. <a href="https://omnisdr.com/privacy" rel="noreferrer" target="_blank">Privacy policy</a></p></footer>
+</div>
+<script nonce="__NONCE__">
+'use strict';
+const $ = (s, r = document) => r.querySelector(s);
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const view = $('#view');
+const token = location.pathname.split('/')[2] || '';
+const money = (c) => '$' + (c / 100).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const num = (n) => Number(n).toLocaleString();
+
+function field(sec, f, v) {
+  const id = `${sec}_${f.key}`, name = `${sec}.${f.key}`;
+  if (f.kind === 'bool') return `<label class="check full"><input type="checkbox" id="${id}" name="${name}"${v ? ' checked' : ''}> ${esc(f.label)}</label>`;
+  if (f.kind === 'choice') return `<fieldset class="full radiogroup"><legend>${esc(f.label)}${f.req ? ' *' : ''}</legend><div class="radios">${Object.entries(f.options).map(([k, l]) => `<label><input type="radio" name="${name}" value="${esc(k)}"${v === k ? ' checked' : ''}> ${esc(l)}</label>`).join('')}</div></fieldset>`;
+  const wide = (f.max || 0) > 120 || f.kind === 'email' ? 'full' : '';
+  const type = f.kind === 'email' ? 'email' : 'text', extra = f.kind === 'state' ? ' maxlength="2" autocapitalize="characters"' : f.max ? ` maxlength="${f.max}"` : '';
+  return `<div class="${wide}"><label for="${id}">${esc(f.label)}${f.req ? ' *' : ''}</label>${(f.max || 0) > 300 ? `<textarea id="${id}" name="${name}" rows="3"${extra}>${esc(v)}</textarea>` : `<input id="${id}" name="${name}" type="${type}"${extra} value="${esc(v)}"${f.req ? ' required' : ''}>`}</div>`;
+}
+
+async function load() {
+  let d;
+  try { const r = await fetch('/of/api/' + encodeURIComponent(token), { credentials: 'omit' }); d = await r.json(); if (!r.ok) throw new Error(d.message || 'This link is not valid any more.'); }
+  catch (e) { view.innerHTML = `<div class="card"><h1>This link has closed</h1><p class="sub">${esc(e.message)}</p></div>`; return; }
+  const p = d.package, titles = { client: 'Your business', services: 'Services and setup', term: 'Term and payment' };
+  view.innerHTML = `<form id="f" class="sheet" novalidate>
+    <section class="card"><h1>Your Order Form details</h1><p class="sub">Order Form ${esc(d.number)}. Fill in what you can. Your OmniSDR contact reviews it with you before anything is filed.</p>
+      <dl class="pkg"><div><dt>Package</dt><dd>${esc(p.plan)}</dd></div>${p.priceCents != null ? `<div><dt>Price</dt><dd>${money(p.priceCents)} plus tax</dd></div>` : ''}${p.minutes != null ? `<div><dt>Usage included</dt><dd>${num(p.minutes)} min · ${num(p.texts)} texts</dd></div>` : ''}</dl></section>
+    ${Object.entries(d.sections).map(([sec, fields]) => `<section class="card"><h2>${esc(titles[sec] || sec)}</h2><div class="fields">${fields.map((f) => field(sec, f, (d.values[sec] || {})[f.key])).join('')}</div></section>`).join('')}
+    <section class="card"><h2>Getting you set up</h2><div class="fields">${d.onboardingFields.map((f) => `<div class="full"><label for="ob_${f.key}">${esc(f.label)}</label><textarea id="ob_${f.key}" name="onboarding.${f.key}" rows="2" maxlength="1000">${esc((d.values.onboarding || {})[f.key])}</textarea></div>`).join('')}</div></section>
+    <div class="hp" aria-hidden="true"><label for="website">Website</label><input id="website" name="website" tabindex="-1" autocomplete="off"></div>
+    <div class="card"><div id="msg" role="status"></div><button class="btn" id="go">Send to OmniSDR</button>${d.submittedAt ? '<p class="note again">You sent this already. Sending again replaces your earlier answers.</p>' : ''}</div>
+  </form>`;
+  $('#f').onsubmit = async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target), body = { client: {}, services: {}, term: {}, onboarding: {}, website: fd.get('website') || '' };
+    for (const [sec, fields] of Object.entries(d.sections)) for (const f of fields) {
+      const v = fd.get(`${sec}.${f.key}`); body[sec][f.key] = f.kind === 'bool' ? v === 'on' : v || '';
+    }
+    for (const f of d.onboardingFields) body.onboarding[f.key] = fd.get(`onboarding.${f.key}`) || '';
+    const go = $('#go'); go.disabled = true; go.textContent = 'Sending…';
+    try {
+      const r = await fetch('/of/api/' + encodeURIComponent(token), { method: 'POST', credentials: 'omit', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      const j = await r.json(); if (!r.ok) throw new Error(j.message || 'That did not go through.');
+      view.innerHTML = `<div class="card done"><h1>Thank you</h1><p class="sub">Your details are with your OmniSDR contact, who will go over them with you.</p></div>`;
+    } catch (er) { $('#msg').innerHTML = `<p class="err">${esc(er.message)}</p>`; go.disabled = false; go.textContent = 'Send to OmniSDR'; }
+  };
+}
+load();
+</script>
+</body></html>
