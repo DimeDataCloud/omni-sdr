@@ -7,7 +7,7 @@ background-image:radial-gradient(600px 600px at -10% -20%,color-mix(in srgb,var(
 [hidden]{display:none!important}
 .tab-hidden{display:none!important}
 .wrap{max-width:1040px;margin:0 auto;padding:var(--sp-4) var(--sp-4) calc(40px + env(safe-area-inset-bottom))}
-.brand{display:flex;align-items:center;gap:10px}.brand svg{width:32px;height:32px}.brand b{font-size:18px}
+.brand{display:flex;align-items:center;gap:10px}.brand svg{width:32px;height:32px}.brand img{border-radius:8px;display:block} /* the logo; pages with a nonce CSP block style attributes */.brand b{font-size:18px}
 header.top{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-3);padding:var(--sp-3) 0 var(--sp-5);position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--bg) 85%,transparent);backdrop-filter:blur(12px);margin:0 calc(var(--sp-4) * -1);padding-left:var(--sp-4);padding-right:var(--sp-4);border-bottom:1px solid color-mix(in srgb,var(--line) 50%,transparent)}
 h1{font-size:26px;line-height:32px;margin:0 0 var(--sp-2);font-weight:700;letter-spacing:-.02em}h2{font-size:16px;line-height:24px;margin:0 0 var(--sp-3);font-weight:700;letter-spacing:-.01em}
 p.sub{margin:0 0 var(--sp-4);color:var(--muted)}
@@ -51,7 +51,7 @@ table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}th,td{
 @keyframes rise{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
 @keyframes fade{from{opacity:0}to{opacity:1}}
 @keyframes hop{to{transform:translateY(-4px)}}
-@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 /* Plan cards (P0) - visual plan selection */
 .plancards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin:8px 0}
 .pcard{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:16px;border:2px solid var(--line);border-radius:12px;background:var(--surface);cursor:pointer;transition:border-color var(--t-hover),transform var(--t-press),box-shadow var(--t-hover);text-align:left}
@@ -167,4 +167,3 @@ a
 /* Spacing utilities */
 .mt12{margin-top:12px}
 .mb12{margin-bottom:12px}
-}
