@@ -91,7 +91,8 @@ fieldset.plain{border:0;margin:0;padding:0;min-width:0}fieldset.plain[disabled]{
 .radios input{width:20px;height:20px;min-height:0;margin:0;accent-color:var(--ink)}.radios label:has(input:checked){border-color:var(--ink);background:var(--ok-soft)}
 .sheet{display:grid;gap:12px}.sheet .kv{grid-template-columns:minmax(110px,36%) 1fr}.miss{margin:0;padding-left:20px}
 .attn{border-color:var(--warn);background:color-mix(in srgb,var(--warn-soft) 55%,var(--surface))}
-.errtext{color:var(--danger)}#ofSaved{font-size:13px}.ofpre{margin:16px 0}.ofpre:empty{display:none}.card>details:only-child{border-top:0;padding:0}
+.help{margin:6px 0 0;color:var(--muted);font-size:13px;line-height:18px}.legal{margin:4px 0 0;color:var(--muted);font-size:13px;line-height:18px}
+.lbl{display:block;font-weight:500;font-size:13px;margin:12px 0 6px}.fixed{margin:0;min-height:22px}.errtext{color:var(--danger)}#ofSaved{font-size:13px}.ofpre{margin:16px 0}.ofpre:empty{display:none}.card>details:only-child{border-top:0;padding:0}
 details.card{padding-top:var(--sp-3);padding-bottom:var(--sp-3)}details.card>summary{min-height:44px;list-style:none;gap:12px}details.card>summary::-webkit-details-marker{display:none}
 details.card>summary::after{content:'';margin-left:auto;width:8px;height:8px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:translateY(-2px) rotate(45deg);transition:transform var(--t-hover) ease}details.card[open]>summary::after{transform:translateY(2px) rotate(-135deg)}details.card>.stack{margin-top:8px}
 @media print{header.top,nav.main,.viewbar,.noprint,.toast,ol.steps{display:none!important}body{background:#fff!important;color:#000}
@@ -194,12 +195,16 @@ const dollars = (v) => { const s = String(v ?? '').replace(/[$,\s]/g, ''); if (!
 // One field. Names are "<section>.<key>", so a section reads back with ofRead.
 function ofField(sec, f, v) {
   const id = `of_${sec}_${f.key}`, name = `${sec}.${f.key}`, req = f.req ? ' *' : '';
+  const help = f.help ? `<p class="help" id="${id}_h">${esc(f.help)}</p>` : '', desc = f.help ? ` aria-describedby="${id}_h"` : '';
   if (f.kind === 'bool') return `<label class="check full"><input type="checkbox" id="${id}" name="${name}"${v ? ' checked' : ''}> ${esc(f.label)}</label>`;
-  if (f.kind === 'choice') return `<fieldset class="full radiogroup"><legend>${esc(f.label)}${req}</legend><div class="radios">${Object.entries(f.options).map(([k, l]) => `<label><input type="radio" name="${name}" value="${esc(k)}"${v === k ? ' checked' : ''}> ${esc(l)}</label>`).join('')}</div></fieldset>`;
+  if (f.kind === 'choice') return `<fieldset class="full radiogroup"${desc}><legend>${esc(f.label)}${req}</legend><div class="radios">${Object.entries(f.options).map(([k, l]) => `<label><input type="radio" name="${name}" value="${esc(k)}"${v === k ? ' checked' : ''}> ${esc(l)}</label>`).join('')}</div>${help}</fieldset>`;
   const wide = (f.max || 0) > 120 || f.kind === 'email' ? 'full' : '', type = f.kind === 'email' ? 'email' : f.kind === 'date' ? 'date' : 'text';
   const extra = f.kind === 'state' ? ' maxlength="2" autocapitalize="characters"' : f.max ? ` maxlength="${f.max}"` : '';
-  return `<div class="${wide}"><label for="${id}">${esc(f.label)}${req}</label>${(f.max || 0) > 300 ? `<textarea id="${id}" name="${name}" rows="3"${extra}>${esc(v)}</textarea>` : `<input id="${id}" name="${name}" type="${type}"${extra} value="${esc(v)}">`}</div>`;
+  return `<div class="${f.help ? 'full' : wide}"><label for="${id}">${esc(f.label)}${req}</label>${(f.max || 0) > 300 ? `<textarea id="${id}" name="${name}" rows="3"${extra}${desc}>${esc(v)}</textarea>` : `<input id="${id}" name="${name}" type="${type}"${extra} value="${esc(v)}"${desc}>`}${help}</div>`;
 }
+// An admin-only field as a rep sees it: the value, never an input. The server refuses a rep's value and keeps the admin's.
+const ofFixed = (f, v) => `<div class="full"><span class="lbl">${esc(f.label)}</span><p class="fixed">${v != null && v !== '' ? esc(ofShow(f, v)) : '<span class="muted">Not recorded yet. An admin records it.</span>'}</p></div>`;
+const ofFields = (sec, data, admin) => K.orderForm.sections[sec].map((f) => (f.admin && !admin ? ofFixed(f, (data[sec] || {})[f.key]) : ofField(sec, f, (data[sec] || {})[f.key]))).join('');
 function ofRead(el, sec) {
   const out = {};
   for (const f of K.orderForm.sections[sec]) { const x = el.elements[`${sec}.${f.key}`]; if (x) out[f.key] = f.kind === 'bool' ? x.checked : x.value; }
@@ -214,7 +219,8 @@ function ofSheet(F, acct) {
   const d = F.data, kv = (rows) => (rows.length ? `<dl class="kv">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>` : '<p class="muted">Nothing yet.</p>');
   const sec = (n) => kv(K.orderForm.sections[n].map((f) => [f.label, ofShow(f, (d[n] || {})[f.key])]).filter(([, v]) => v));
   return `<div class="sheet"><section class="card"><div class="ofhead"><h2>Order Form ${esc(F.label)}</h2>${ofPill(F.status)}</div>${acct ? `<p class="muted">${esc(acct.business)}</p>` : ''}</section>
-    <section class="card"><h2>Package</h2>${kv(ofPackageRows(d.package))}</section>${['client', 'services', 'term', 'signing'].map((n) => `<section class="card"><h2>${OF_TITLE[n]}</h2>${sec(n)}</section>`).join('')}</div>`;
+    <section class="card"><h2>Package</h2>${kv(ofPackageRows(d.package))}</section>${['client', 'services', 'term', 'signing'].map((n) => `<section class="card"><h2>${OF_TITLE[n]}</h2>${sec(n)}${n === 'term' ? `<p class="help">${esc(K.orderForm.notes.term)}</p>` : ''}</section>`).join('')}
+    <p class="legal">${esc(K.orderForm.notes.summary)}</p></div>`;
 }
 
 /* ---------- screens ---------- */
@@ -540,7 +546,7 @@ const screens = {
       if (k === 'package') return !!(d.package?.plan && d.package.priceCents != null);
       if (k === 'client') return K.orderForm.sections.client.every((f) => !f.req || (d.client || {})[f.key] != null);
       if (k === 'services') return ['answer', 'followUp', 'chase'].some((x) => (d.services || {})[x]);
-      if (k === 'term') return !!d.term?.paymentMethod;
+      if (k === 'term') return K.orderForm.sections.term.every((f) => !f.req || (d.term || {})[f.key] != null);
       return k === 'review' ? F.status === 'filed' : false; };
     const stepsHtml = () => OF_STEPS.map(([k, l]) => `<li><button type="button" data-step="${k}"${k === step ? ' aria-current="step"' : ''}${done(k) ? ' data-done' : ''}>${l}</button></li>`).join('');
     const missHtml = () => (MISSING.length && isOpen() ? `<div class="card stack"><h2>Still to fill in before filing</h2><ul class="miss">${MISSING.map((m) => `<li>${esc(m)}</li>`).join('')}</ul></div>` : '');
@@ -558,6 +564,7 @@ const screens = {
       for (const f of K.onboarding) { const now = D.account.onboarding[f.key] || '', them = (A.data.onboarding || {})[f.key] || ''; if (them && them !== now) rows.push([f.label, now, them]); }
       return `<section class="card stack attn noprint"><h2>The client filled this in</h2><p class="sub">Sent ${esc(when(A.submittedAt))}. Nothing counts until you take it, so go over each answer with them.</p>
         ${rows.length ? `<div class="tbl"><table><thead><tr><th>Field</th><th>On the form now</th><th>Client's answer</th></tr></thead><tbody>${rows.map(([l, a, b]) => `<tr><td>${esc(l)}</td><td>${a ? esc(a) : '<span class="muted">empty</span>'}</td><td><b>${esc(b)}</b></td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">Their answers match what the form already holds.</p>'}
+        ${A.data.requests ? `<p class="lbl">${esc(K.orderForm.notes.requests)}</p><pre class="tpl">${esc(A.data.requests)}</pre><p class="muted">Not copied into the form. Taking or setting aside the answers puts this on the account timeline.</p>` : ''}
         <div class="row"><button class="btn" type="button" data-ans="accept">Take their answers</button><button class="btn ghost" type="button" data-ans="reject">Set them aside</button></div></section>`;
     }
     function linkCard() {
@@ -578,7 +585,7 @@ const screens = {
         <div class="fields"><div><label for="ofPlan">Plan</label><select id="ofPlan">${K.orderForm.plans.map((x) => `<option value="${x}"${x === p.plan ? ' selected' : ''}${admin || K.orderForm.repPlans.includes(x) ? '' : ' disabled'}>${esc(planName(x))}</option>`).join('')}</select></div>
           <div><label for="ofPrice" id="ofPriceL">Price in dollars</label><input id="ofPrice" inputmode="decimal" value="${p.priceCents != null ? p.priceCents / 100 : ''}"></div>
           ${admin ? `<div><label for="ofDisc">Discount (admin)</label><input id="ofDisc" maxlength="200" value="${esc(p.discount)}"></div><div><label for="ofBuild">Build fee (admin)</label><input id="ofBuild" maxlength="200" value="${esc(p.buildFee)}"></div>` : ''}</div>
-        <p class="note" id="ofPriceNote"></p>
+        <p class="note" id="ofPriceNote"></p><p class="muted" id="ofPilotFee" hidden>${esc(K.orderForm.notes.pilotFee)}</p>
         <div class="mix" id="ofMix" hidden><h3>Usage mix</h3><p class="muted">Slide to trade calls for texts inside the same allowance. The price and the allowance stay as they are.</p>
           <div class="mixends"><span id="ofMxL">More calls</span><span id="ofMxR">More texts</span></div><input type="range" id="ofMx" min="0" max="0" step="1" value="0" aria-labelledby="ofMxL ofMxR">
           <div class="mixread"><div><b id="ofMin"></b><span>voice minutes</span></div><div><b id="ofTxt"></b><span>texts</span></div><div><b id="ofThr"></b><span>AI conversations</span></div></div>
@@ -586,10 +593,10 @@ const screens = {
         <p class="muted">${esc(K.taxNote)}${admin ? '' : ' No discounts.'}</p></fieldset></form>`;
     }
     const INTRO = { client: 'Filled in from the account where the portal has it. Check the legal name and the billing email with the owner.', services: 'What the system does for them and how their calls reach it.', term: 'How they pay and the term as agreed.' };
-    const secStep = (sec) => `<form class="card" id="ofForm" novalidate><fieldset class="plain"${fieldsetOpen()}><h2>${OF_TITLE[sec]}</h2><p class="sub">${INTRO[sec]}</p><div class="fields">${K.orderForm.sections[sec].map((f) => ofField(sec, f, (F.data[sec] || {})[f.key])).join('')}</div></fieldset></form>`;
+    const secStep = (sec) => `<form class="card" id="ofForm" novalidate><fieldset class="plain"${fieldsetOpen()}><h2>${OF_TITLE[sec]}</h2><p class="sub">${INTRO[sec]}</p><div class="fields">${ofFields(sec, F.data, admin)}</div>${sec === 'term' ? `<p class="help">${esc(K.orderForm.notes.term)}</p>` : ''}</fieldset></form>`;
     const voidBtn = () => (F.status === 'void' || (F.status === 'filed' && !admin) ? '' : `<button class="btn ghost" type="button" id="ofVoid">${F.status === 'filed' ? 'Void this Order Form' : 'Drop this draft'}</button>`);
     const reviewStep = () => `<div id="ofMiss">${missHtml()}</div>
-      <form class="card noprint" id="ofForm" novalidate><fieldset class="plain"${fieldsetOpen()}><h2>Signing</h2><p class="sub">No e-signature here. The client signs the Order Form; record the date it was signed and where the signed copy is filed.</p><div class="fields">${K.orderForm.sections.signing.map((f) => ofField('signing', f, (F.data.signing || {})[f.key])).join('')}</div></fieldset></form>
+      <form class="card noprint" id="ofForm" novalidate><fieldset class="plain"${fieldsetOpen()}><h2>Signing</h2><p class="sub">${esc(K.orderForm.notes.signing)}</p><div class="fields">${ofFields('signing', F.data, admin)}</div></fieldset></form>
       <div id="ofSheet">${ofSheet(F, D.account)}</div>
       <div class="row noprint ofnav"><span class="row"><button class="btn ghost" type="button" id="ofPrint">Print or save as PDF</button>${voidBtn()}</span>${isOpen() ? '<button class="btn" type="button" id="ofFile">File the Order Form</button>' : ''}</div>`;
     function handoffStep() {
@@ -606,7 +613,7 @@ const screens = {
       const i = OF_STEPS.findIndex(([k]) => k === step), prev = OF_STEPS[i - 1], next = OF_STEPS[i + 1];
       view.innerHTML = `<div id="ofRoot"><p class="noprint"><a class="lnk" href="#account/${esc(D.account.id)}/close">${esc(D.account.business)}</a></p>
         <div class="ofhead noprint"><h1>Order Form ${esc(F.label)}</h1><span class="row">${ofPill(F.status)}<span class="muted" id="ofSaved" role="status"></span></span></div>
-        <p class="sub noprint">Use it live on the call, or send the client a link for their part. Every change saves as you go.</p>
+        <p class="sub noprint">Use it live on the call, or send the client a link for their part. Every change saves as you go. ${esc(K.orderForm.notes.intro)}</p>
         <div class="stack noprint ofpre">${answersCard()}${linkCard()}</div>
         <ol class="steps" id="ofSteps" aria-label="Order Form steps">${stepsHtml()}</ol>${lockNote()}
         <div class="stack" id="ofBody">${BODY[step]()}</div>
@@ -653,7 +660,7 @@ const screens = {
       const plan = $('#ofPlan'), price = $('#ofPrice');
       async function loadMix() {
         const pl = plan.value, pilot = pl === 'Pilot', c = dollars(price.value), me = ++mixReq;
-        $('#ofPriceL').textContent = pilot ? 'Pilot price in dollars, $499 minimum' : 'Agreed price in dollars';
+        $('#ofPriceL').textContent = pilot ? 'Pilot price in dollars, $499 minimum' : 'Agreed price in dollars'; $('#ofPilotFee').hidden = !pilot;
         price.disabled = !isOpen() || (!pilot && !admin); // the server refuses it anyway
         let m = null;
         try {

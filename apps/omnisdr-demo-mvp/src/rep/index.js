@@ -178,7 +178,7 @@ async function api(req, env, me, path, m) {
 
   if (m === 'GET' && path === '/me') return { email: me.email, name: me.name, role: me.role };
   if (m === 'GET' && path === '/content') return { prices: C.PRICES, pay: C.PAY, taxNote: C.TAX_NOTE, pricingGuide: C.PRICING_GUIDE, path: C.PATH, pathGate: C.PATH_GATE, how: C.HOW, objections: C.OBJECTIONS, method: C.OBJECTION_METHOD, never: C.NEVER_SAY, swaps: C.SWAPS, opener: C.OPENER, demoSteps: C.DEMO_STEPS, demoLimits: C.DEMO_LIMITS, onboarding: C.ONBOARDING_FIELDS, stages: STAGES, outcomes: OUTCOMES, pilot: C.PILOT, mix: { overage: M.MIX.overage, minMinutes: M.MIX.minMinutes, minTexts: M.MIX.minTexts },
-    orderForm: { sections: O.SECTIONS, plans: O.PLANS, repPlans: O.REP_PLANS, clientSections: O.CLIENT_SECTIONS, mixPlans: M.MIX.plans.map((p) => p.label), linkDays: O.LINK_DAYS },
+    orderForm: { sections: O.SECTIONS, plans: O.PLANS, repPlans: O.REP_PLANS, clientSections: O.CLIENT_SECTIONS, mixPlans: M.MIX.plans.map((p) => p.label), linkDays: O.LINK_DAYS, notes: O.NOTES },
     templates: K.TEMPLATES, qualify: K.QUALIFY, discovery: K.DISCOVERY, auditSteps: K.AUDIT_STEPS, auditFields: K.AUDIT_FIELDS, resultsCall: K.RESULTS_CALL, resultsSay: K.RESULTS_SAY, resultsDont: K.RESULTS_DONT,
     afterYes: K.AFTER_YES, safety: K.SAFETY, daily: K.DAILY, glossary: K.GLOSSARY, brand: K.BRAND, resources: K.RESOURCES };
 
@@ -416,6 +416,7 @@ async function api(req, env, me, path, m) {
 
   // One Order Form. Scoped through its account: a rep reaches only their own accounts' forms; any other id is not found.
   if (seg[0] === 'order-forms' && seg[1]) {
+    if (m === 'GET' && seg.length === 2) await D.batch(O.purgeAnswers(D, now())); // before the read, so the status shown is current
     const f = await D.prepare('SELECT * FROM order_forms WHERE id = ?').bind(seg[1]).first();
     if (!f) throw notFound('Order Form');
     const a = await account(env, me, f.account_id), data = obj(f.data), isOpen = ['draft', 'client_review'].includes(f.status), t = now();
@@ -433,8 +434,8 @@ async function api(req, env, me, path, m) {
       if (!isOpen) throw new Bad(409, 'This Order Form is filed. Start a new one to change it');
       const b = await body(req), next = { ...data };
       if ('package' in b) next.package = fieldCheck(() => O.cleanPackage(b.package, isAdmin(me)));
-      for (const name of ['client', 'services', 'term', 'signing']) if (name in b) next[name] = fieldCheck(() => O.cleanSection(name, b[name]));
-      await D.batch([D.prepare('UPDATE order_forms SET data = ?, signed_at = ?, filed_location = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify(next), next.signing?.signedAt ?? null, next.signing?.filedLocation ?? null, t, f.id),
+      for (const name of ['client', 'services', 'term', 'signing']) if (name in b) next[name] = fieldCheck(() => O.saveSection(name, data[name], b[name], isAdmin(me)));
+      await D.batch([D.prepare('UPDATE order_forms SET data = ?, signed_at = ?, filed_location = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify(next), O.signedOn(next) || null, next.signing?.filedLocation ?? null, t, f.id),
         audit(env, me.email, 'update', 'order_form', f.id, null, { sections: Object.keys(b).filter((k) => k in O.SECTIONS || k === 'package') })]);
       return { form: await reread(), missing: O.missing(next) };
     }
@@ -444,7 +445,7 @@ async function api(req, env, me, path, m) {
       if (gaps.length) return json({ ok: false, message: 'Still missing: ' + gaps.join(', '), missing: gaps }, 422);
       await D.batch([D.prepare("UPDATE order_forms SET status = 'filed', updated_at = ? WHERE id = ?").bind(t, f.id),
         D.prepare('UPDATE client_links SET revoked_at = ? WHERE order_form_id = ? AND revoked_at IS NULL').bind(t, f.id),
-        note(`Order Form ${label} filed (signed ${data.signing.signedAt})`), audit(env, me.email, 'file', 'order_form', f.id, { status: f.status }, { status: 'filed' })]);
+        note(`Order Form ${label} filed (signed ${O.signedOn(data)})`), audit(env, me.email, 'file', 'order_form', f.id, { status: f.status }, { status: 'filed' })]);
       return { form: await reread() };
     }
     if (m === 'POST' && seg[2] === 'void') {
@@ -473,23 +474,27 @@ async function api(req, env, me, path, m) {
       }
     }
     // What the client filled in waits here until the rep takes it into the form (and the onboarding details) or drops it.
+    // Either way the answers' text is then removed. Their questions or requests are never copied into the form; they go
+    // on the account timeline so the rep still has them.
     if (m === 'POST' && seg[2] === 'client') {
       const b = await body(req), waiting = (await links()).find((l) => l.submitted_at && !l.reviewed_at);
       if (!waiting) throw notFound('client answers');
+      const asked = typeof obj(waiting.submission).requests === 'string' && obj(waiting.submission).requests.trim();
+      const done = [D.prepare('UPDATE client_links SET reviewed_at = ?, submission = NULL WHERE token_hash = ?').bind(t, waiting.token_hash),
+        ...(asked ? [note(`Client questions or requests on ${label}: ${asked}`)] : [])];
       if (b.action === 'accept') {
         if (!isOpen) throw new Bad(409, 'This Order Form is already ' + f.status);
         const sub = obj(waiting.submission), next = { ...data };
-        for (const name of O.CLIENT_SECTIONS) next[name] = { ...(data[name] || {}), ...fieldCheck(() => O.cleanSection(name, sub[name])) };
+        for (const name of O.CLIENT_SECTIONS) next[name] = { ...(data[name] || {}), ...fieldCheck(() => O.cleanSection(name, sub[name], 'client')) };
         const ob = { ...obj(a.onboarding) };
         for (const fld of C.ONBOARDING_FIELDS) { const v = str((sub.onboarding || {})[fld.key], 1000, fld.label); if (v) ob[fld.key] = v; }
-        await D.batch([D.prepare("UPDATE order_forms SET data = ?, status = 'draft', updated_at = ? WHERE id = ?").bind(JSON.stringify(next), t, f.id),
-          D.prepare('UPDATE client_links SET reviewed_at = ? WHERE token_hash = ?').bind(t, waiting.token_hash),
+        await D.batch([D.prepare("UPDATE order_forms SET data = ?, status = 'draft', updated_at = ? WHERE id = ?").bind(JSON.stringify(next), t, f.id), ...done,
           D.prepare('UPDATE accounts SET onboarding = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify(ob), t, a.id),
           note(`Client answers taken into ${label}`), audit(env, me.email, 'client_accept', 'order_form', f.id, null, { sections: O.CLIENT_SECTIONS })]);
         return { form: await reread(), missing: O.missing(next) };
       }
       if (b.action === 'reject') {
-        await D.batch([D.prepare('UPDATE client_links SET reviewed_at = ? WHERE token_hash = ?').bind(t, waiting.token_hash),
+        await D.batch([...done,
           ...(f.status === 'client_review' ? [D.prepare("UPDATE order_forms SET status = 'draft', updated_at = ? WHERE id = ?").bind(t, f.id)] : []),
           note(`Client answers for ${label} set aside`), audit(env, me.email, 'client_reject', 'order_form', f.id, null, null)]);
         return { form: await reread() };

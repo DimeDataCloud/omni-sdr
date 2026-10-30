@@ -1,8 +1,9 @@
 // Client fill-in link (Christian 2026-10-29, via Halo): /of/<token> is the page, /of/api/<token> reads and takes the answers.
 // It sits outside /rep and its Access check, so the token is the only key: every answer is about that one Order Form, and a
 // missing, wrong, expired or turned-off token reads the same as any other (404). The client sees and edits only their own
-// details, services and setup, term and payment, and the onboarding details; never the account list, notes, reps, or pricing
-// beyond the agreed package. What they send waits in client_links until the rep accepts it. The portal sends nothing.
+// details, services and setup, term and payment, and the onboarding details; never the account list, notes, reps, pricing
+// beyond the agreed package, or an admin-only field (special terms). What they send waits in client_links until the rep
+// accepts it, and its text is removed once reviewed or once the link runs out. The portal sends nothing.
 // Rate limits: per visitor per day (hashed IP), per link (requests and submissions). A hidden honeypot field drops bots.
 import clientHtml from './client.html';
 import CSS from '../base.css';
@@ -42,7 +43,7 @@ export async function handleClient(req, env) {
     const seen = await D.prepare('INSERT INTO public_hits (key, n) VALUES (?, 1) ON CONFLICT(key) DO UPDATE SET n = n + 1 RETURNING n').bind(await visitorKey(req, env)).first();
     if (seen && seen.n > LIMITS.ipPerDay) return json({ ok: false, message: 'Too many requests today. Try again tomorrow.' }, 429);
     // Keys start with the day, so earlier days sort first; now and then drop them so the table stays one day long.
-    if (Math.random() < 0.02) await D.prepare('DELETE FROM public_hits WHERE key < ?').bind('of:' + t.slice(0, 10)).run();
+    if (Math.random() < 0.02) await D.batch([D.prepare('DELETE FROM public_hits WHERE key < ?').bind('of:' + t.slice(0, 10)), ...O.purgeAnswers(D, t)]);
 
     const pageMatch = p.match(/^\/of\/([^/]+)\/?$/), apiMatch = p.match(/^\/of\/api\/([^/]+)$/);
     if (pageMatch && pageMatch[1] !== 'api') return m === 'GET' && O.isToken(pageMatch[1]) ? page() : gone();
@@ -59,10 +60,13 @@ export async function handleClient(req, env) {
     if (m === 'GET') {
       const acct = await D.prepare('SELECT onboarding FROM accounts WHERE id = ?').bind(f.account_id).first();
       const sent = link.submitted_at && !link.reviewed_at ? obj(link.submission) : {}; // their own answers back, while they wait
-      const values = Object.fromEntries(O.CLIENT_SECTIONS.map((n) => [n, { ...(data[n] || {}), ...(sent[n] || {}) }]));
+      const mine = (n, o = {}) => Object.fromEntries(O.clientFields(n).filter((f) => o[f.key] != null).map((f) => [f.key, o[f.key]])); // never an admin field's value
+      const values = Object.fromEntries(O.CLIENT_SECTIONS.map((n) => [n, { ...mine(n, data[n]), ...mine(n, sent[n]) }]));
       values.onboarding = { ...obj(acct && acct.onboarding), ...(sent.onboarding || {}) };
+      values.requests = typeof sent.requests === 'string' ? sent.requests : '';
       return json({ ok: true, number: label, expiresAt: link.expires_at, submittedAt: link.submitted_at, package: packageView(data.package),
-        sections: Object.fromEntries(O.CLIENT_SECTIONS.map((n) => [n, O.SECTIONS[n]])), onboardingFields: ONBOARDING_FIELDS, values });
+        sections: Object.fromEntries(O.CLIENT_SECTIONS.map((n) => [n, O.clientFields(n)])), onboardingFields: ONBOARDING_FIELDS, values,
+        wording: { term: O.NOTES.term, requests: O.NOTES.requests, pilotFee: O.NOTES.pilotFee } });
     }
     if (m === 'POST') {
       const o = req.headers.get('origin'); if (o && o !== u.origin) return json({ ok: false, message: 'Cross-site request refused' }, 403);
@@ -74,13 +78,18 @@ export async function handleClient(req, env) {
       // A person never sees the `website` field; a filled one is thanked and dropped, so a bot learns nothing.
       if (typeof b.website === 'string' && b.website.trim()) return json({ ok: true });
       const sub = {};
-      try { for (const n of O.CLIENT_SECTIONS) sub[n] = O.cleanSection(n, b[n]); } catch (e) { if (e instanceof O.FieldError) return json({ ok: false, message: e.message }, 400); throw e; }
+      try { for (const n of O.CLIENT_SECTIONS) sub[n] = O.cleanSection(n, b[n], 'client'); } catch (e) { if (e instanceof O.FieldError) return json({ ok: false, message: e.message }, 400); throw e; }
       sub.onboarding = {};
       for (const fld of ONBOARDING_FIELDS) {
         const v = (b.onboarding || {})[fld.key];
         if (v == null || v === '') continue;
         if (typeof v !== 'string' || v.length > 1000) return json({ ok: false, message: `${fld.label} is limited to 1000 characters` }, 400);
         if (v.trim()) sub.onboarding[fld.key] = v.trim();
+      }
+      // Questions or requests: shown to the rep beside the answers, never copied into the form.
+      if (b.requests != null && b.requests !== '') {
+        if (typeof b.requests !== 'string' || b.requests.length > 1000) return json({ ok: false, message: 'Questions or requests are limited to 1000 characters' }, 400);
+        if (b.requests.trim()) sub.requests = b.requests.trim();
       }
       await D.batch([
         D.prepare('UPDATE client_links SET submission = ?, submitted_at = ?, reviewed_at = NULL, posts = posts + 1 WHERE token_hash = ?').bind(JSON.stringify(sub), t, link.token_hash),

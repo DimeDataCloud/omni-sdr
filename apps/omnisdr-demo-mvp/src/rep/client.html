@@ -14,11 +14,12 @@
 .done{border-color:var(--ink)}
 footer.small{color:var(--muted);font-size:13px;margin-top:24px}footer.small a{color:var(--ink)}
 .card{animation:enter var(--t-enter) ease both}
+.help{margin:6px 0 0;color:var(--muted);font-size:13px;line-height:18px}.legal{margin:12px 0 0;color:var(--muted);font-size:13px;line-height:18px}
 </style></head>
 <body><div class="wrap">
 <header class="top"><div class="brand">__LOGO__<b>OmniSDR</b></div></header>
 <main id="view" aria-live="polite"><p class="muted">Loading…</p></main>
-<footer class="small"><p>Only you and your OmniSDR contact can see this page. It closes when the link expires. <a href="https://omnisdr.com/privacy" rel="noreferrer" target="_blank">Privacy policy</a></p></footer>
+<footer class="small"><p>Anyone with this link can see this page, so do not forward it. It closes after 7 days. Filling it in does not sign, accept or buy anything. The Order Form takes effect only when you and OmniSDR both sign it. We use what you enter to prepare your Order Form and set up service. Do not enter passwords, card or bank numbers, or Social Security numbers here. <a href="https://omnisdr.com/privacy" rel="noreferrer" target="_blank">Privacy policy</a></p></footer>
 </div>
 <script nonce="__NONCE__">
 'use strict';
@@ -30,12 +31,12 @@ const money = (c) => '$' + (c / 100).toLocaleString(undefined, { minimumFraction
 const num = (n) => Number(n).toLocaleString();
 
 function field(sec, f, v) {
-  const id = `${sec}_${f.key}`, name = `${sec}.${f.key}`;
+  const id = `${sec}_${f.key}`, name = `${sec}.${f.key}`, note = f.help || f.clientHelp, help = note ? `<p class="help" id="${id}_h">${esc(note)}</p>` : '', desc = note ? ` aria-describedby="${id}_h"` : '';
   if (f.kind === 'bool') return `<label class="check full"><input type="checkbox" id="${id}" name="${name}"${v ? ' checked' : ''}> ${esc(f.label)}</label>`;
-  if (f.kind === 'choice') return `<fieldset class="full radiogroup"><legend>${esc(f.label)}${f.req ? ' *' : ''}</legend><div class="radios">${Object.entries(f.options).map(([k, l]) => `<label><input type="radio" name="${name}" value="${esc(k)}"${v === k ? ' checked' : ''}> ${esc(l)}</label>`).join('')}</div></fieldset>`;
+  if (f.kind === 'choice') return `<fieldset class="full radiogroup"${desc}><legend>${esc(f.label)}${f.req ? ' *' : ''}</legend><div class="radios">${Object.entries(f.options).map(([k, l]) => `<label><input type="radio" name="${name}" value="${esc(k)}"${v === k ? ' checked' : ''}> ${esc(l)}</label>`).join('')}</div>${help}</fieldset>`;
   const wide = (f.max || 0) > 120 || f.kind === 'email' ? 'full' : '';
   const type = f.kind === 'email' ? 'email' : 'text', extra = f.kind === 'state' ? ' maxlength="2" autocapitalize="characters"' : f.max ? ` maxlength="${f.max}"` : '';
-  return `<div class="${wide}"><label for="${id}">${esc(f.label)}${f.req ? ' *' : ''}</label>${(f.max || 0) > 300 ? `<textarea id="${id}" name="${name}" rows="3"${extra}>${esc(v)}</textarea>` : `<input id="${id}" name="${name}" type="${type}"${extra} value="${esc(v)}"${f.req ? ' required' : ''}>`}</div>`;
+  return `<div class="${note ? 'full' : wide}"><label for="${id}">${esc(f.label)}${f.req ? ' *' : ''}</label>${(f.max || 0) > 300 ? `<textarea id="${id}" name="${name}" rows="3"${extra}${desc}>${esc(v)}</textarea>` : `<input id="${id}" name="${name}" type="${type}"${extra} value="${esc(v)}"${f.req ? ' required' : ''}${desc}>`}${help}</div>`;
 }
 
 async function load() {
@@ -45,15 +46,16 @@ async function load() {
   const p = d.package, titles = { client: 'Your business', services: 'Services and setup', term: 'Term and payment' };
   view.innerHTML = `<form id="f" class="sheet" novalidate>
     <section class="card"><h1>Your Order Form details</h1><p class="sub">Order Form ${esc(d.number)}. Fill in what you can. Your OmniSDR contact reviews it with you before anything is filed.</p>
-      <dl class="pkg"><div><dt>Package</dt><dd>${esc(p.plan)}</dd></div>${p.priceCents != null ? `<div><dt>Price</dt><dd>${money(p.priceCents)} plus tax</dd></div>` : ''}${p.minutes != null ? `<div><dt>Usage included</dt><dd>${num(p.minutes)} min · ${num(p.texts)} texts</dd></div>` : ''}</dl></section>
-    ${Object.entries(d.sections).map(([sec, fields]) => `<section class="card"><h2>${esc(titles[sec] || sec)}</h2><div class="fields">${fields.map((f) => field(sec, f, (d.values[sec] || {})[f.key])).join('')}</div></section>`).join('')}
+      <dl class="pkg"><div><dt>Package</dt><dd>${esc(p.plan)}</dd></div>${p.priceCents != null ? `<div><dt>Price</dt><dd>${money(p.priceCents)} plus tax</dd></div>` : ''}${p.minutes != null ? `<div><dt>Usage included</dt><dd>${num(p.minutes)} min · ${num(p.texts)} texts</dd></div>` : ''}</dl>${p.plan === 'Pilot' ? `<p class="legal">${esc(d.wording.pilotFee)}</p>` : ''}</section>
+    ${Object.entries(d.sections).map(([sec, fields]) => `<section class="card"><h2>${esc(titles[sec] || sec)}</h2><div class="fields">${fields.map((f) => field(sec, f, (d.values[sec] || {})[f.key])).join('')}</div>${sec === 'term' ? `<p class="legal">${esc(d.wording.term)}</p>` : ''}</section>`).join('')}
     <section class="card"><h2>Getting you set up</h2><div class="fields">${d.onboardingFields.map((f) => `<div class="full"><label for="ob_${f.key}">${esc(f.label)}</label><textarea id="ob_${f.key}" name="onboarding.${f.key}" rows="2" maxlength="1000">${esc((d.values.onboarding || {})[f.key])}</textarea></div>`).join('')}</div></section>
+    <section class="card"><h2>Anything else</h2><label for="requests">${esc(d.wording.requests)}</label><textarea id="requests" name="requests" rows="3" maxlength="1000">${esc(d.values.requests)}</textarea></section>
     <div class="hp" aria-hidden="true"><label for="website">Website</label><input id="website" name="website" tabindex="-1" autocomplete="off"></div>
     <div class="card"><div id="msg" role="status"></div><button class="btn" id="go">Send to OmniSDR</button>${d.submittedAt ? '<p class="note again">You sent this already. Sending again replaces your earlier answers.</p>' : ''}</div>
   </form>`;
   $('#f').onsubmit = async (e) => {
     e.preventDefault();
-    const fd = new FormData(e.target), body = { client: {}, services: {}, term: {}, onboarding: {}, website: fd.get('website') || '' };
+    const fd = new FormData(e.target), body = { client: {}, services: {}, term: {}, onboarding: {}, requests: fd.get('requests') || '', website: fd.get('website') || '' };
     for (const [sec, fields] of Object.entries(d.sections)) for (const f of fields) {
       const v = fd.get(`${sec}.${f.key}`); body[sec][f.key] = f.kind === 'bool' ? v === 'on' : v || '';
     }
@@ -62,7 +64,7 @@ async function load() {
     try {
       const r = await fetch('/of/api/' + encodeURIComponent(token), { method: 'POST', credentials: 'omit', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
       const j = await r.json(); if (!r.ok) throw new Error(j.message || 'That did not go through.');
-      view.innerHTML = `<div class="card done"><h1>Thank you</h1><p class="sub">Your details are with your OmniSDR contact, who will go over them with you.</p></div>`;
+      view.innerHTML = `<div class="card done"><h1>Thank you.</h1><p class="sub">Your details are with your OmniSDR contact, who will go over them with you. Nothing is signed or charged yet.</p></div>`;
     } catch (er) { $('#msg').innerHTML = `<p class="err">${esc(er.message)}</p>`; go.disabled = false; go.textContent = 'Send to OmniSDR'; }
   };
 }

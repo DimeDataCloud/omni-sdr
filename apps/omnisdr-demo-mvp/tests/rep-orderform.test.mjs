@@ -48,9 +48,14 @@ async function account(DB, who) {
 }
 const FILLED = {
   client: { legalName: 'Sample Dental LLC', address: '100 Example Street', city: 'Newark', state: 'NJ', zip: '07102', signerName: 'Pat Sample', signerTitle: 'Owner', billingEmail: 'billing@sampledental.example' },
-  term: { paymentMethod: 'card', initialTerm: 'The Pilot Period', renewal: 'Month to month' },
-  signing: { signedAt: '2026-10-29', filedLocation: 'Joe folder, OmniSDR-Records' },
+  term: { paymentMethod: 'card', initialTerm: 'pilot', renewal: 'month_to_month' },
+  signing: { clientSignedAt: '2026-10-28', filedLocation: 'Joe folder, OmniSDR-Records' },
 };
+// What a rep fills in, then Christian's signing date, which only an admin records.
+async function fill(DB, id) {
+  assert.equal((await api(DB, A, `/order-forms/${id}`, { method: 'PATCH', body: FILLED })).status, 200);
+  assert.equal((await api(DB, BOSS, `/order-forms/${id}`, { method: 'PATCH', body: { signing: { ...FILLED.signing, providerSignedAt: '2026-10-29' } } })).status, 200);
+}
 
 test('Order Form numbers run in order with no gaps, a draft resumes, and a voided number is never reused', async () => {
   const DB = setup(), a1 = await account(DB, A), a2 = await account(DB, A);
@@ -98,10 +103,20 @@ test('a rep reaches only their own Order Forms; an admin reaches all', async () 
 test('filing needs every required field, Agency is ACH only, and a filed form is locked and feeds omni-invoice', async () => {
   const DB = setup(), a = await account(DB, A), id = (await api(DB, A, `/accounts/${a.id}/order-forms`, { method: 'POST' })).body.form.id;
   const early = await api(DB, A, `/order-forms/${id}/file`, { method: 'POST' });
-  assert.equal(early.status, 422); assert.ok(early.body.missing.includes('Payment method')); assert.ok(early.body.missing.includes('Signing date'));
+  assert.equal(early.status, 422);
+  for (const m of ['Payment method (on file and charged automatically under MSA Section 5.3)', 'Initial term', 'Date the client signed', 'Date Christian signed for OmniSDR']) assert.ok(early.body.missing.includes(m), m);
+  assert.ok(!early.body.missing.includes('Renewal')); // the only renewal there is comes prefilled
   assert.equal((await api(DB, A, `/order-forms/${id}/invoice.json`)).status, 409);
   assert.equal((await api(DB, A, `/order-forms/${id}`, { method: 'PATCH', body: { client: { ...FILLED.client, state: 'New Jersey' } } })).status, 400); // two letters
-  assert.equal((await api(DB, A, `/order-forms/${id}`, { method: 'PATCH', body: FILLED })).status, 200);
+  // Terms are choices: nothing written in. A Pilot package takes The Pilot Period.
+  assert.equal((await api(DB, A, `/order-forms/${id}`, { method: 'PATCH', body: { term: { ...FILLED.term, initialTerm: 'Two years' } } })).status, 400);
+  assert.ok((await api(DB, A, `/order-forms/${id}`, { method: 'PATCH', body: { term: { ...FILLED.term, initialTerm: 'one_month' } } })).body.missing.some((m) => /takes The Pilot Period/.test(m)));
+  // Christian's signing date is an admin's: a rep is refused, and a rep's save keeps the admin's date.
+  assert.equal((await api(DB, A, `/order-forms/${id}`, { method: 'PATCH', body: { signing: { ...FILLED.signing, providerSignedAt: '2026-10-29' } } })).status, 403);
+  await fill(DB, id);
+  const kept = await api(DB, A, `/order-forms/${id}`, { method: 'PATCH', body: { signing: { clientSignedAt: '2026-10-28', filedLocation: 'Moved' } } });
+  assert.equal(kept.body.form.data.signing.providerSignedAt, '2026-10-29'); assert.equal(kept.body.form.signed_at, '2026-10-29'); // the later date
+  assert.deepEqual(kept.body.missing, []);
   // An admin's Agency form with card is still missing its ACH.
   const agency = await api(DB, BOSS, `/order-forms/${id}`, { method: 'PATCH', body: { package: { plan: 'Agency', priceCents: 99900 } } });
   assert.ok(agency.body.missing.some((m) => /ACH only/.test(m)));
@@ -114,7 +129,9 @@ test('filing needs every required field, Agency is ACH only, and a filed form is
   const r = await rec.json();
   assert.deepEqual({ ...r }, { clientName: 'Sample Dental LLC', customerEmail: 'billing@sampledental.example', plan: 'Pilot', orderFormDate: '2026-10-29', isSigned: true,
     state: 'NJ', paymentMethod: 'card', orderFormNumber: 'OF-0001', addressLine1: '100 Example Street', city: 'Newark', postalCode: '07102',
-    voiceMinutes: 300, texts: 3000, aiThreads: 1000, usageMix: 'default', term: 'The Pilot Period, Month to month', memo: '' });
+    voiceMinutes: 300, texts: 3000, aiThreads: 1000, usageMix: 'default', term: 'The Pilot Period (30 days from go-live), Month to month', memo: '' });
+  // One signature is not signed: isSigned needs both dates.
+  assert.equal(O.invoiceRecord({ number: 1, data: { signing: { clientSignedAt: '2026-10-28' } } }).isSigned, false);
   // Off the slider's default, the export says adjusted, so omni-invoice reads the mix as the form's own numbers.
   const pk = O.cleanPackage({ plan: 'Pilot', priceCents: 75000 }, false), other = M.mixSteps(pk.allowanceCents).steps.find((x) => x.p !== pk.mixPosition).p;
   assert.equal(O.invoiceRecord({ number: 2, data: { package: pk } }).usageMix, 'default');
@@ -168,18 +185,23 @@ test('client answers: allow-listed, honeypot dropped, held for the rep, then acc
   assert.equal(DB.db.prepare('SELECT submitted_at FROM client_links').get().submitted_at, null); // the honeypot answer was dropped
   assert.equal((await send({ client: {} }, { headers: { origin: 'https://evil.example' } })).status, 403);
   assert.equal((await send({ client: { state: 'New Jersey' } })).status, 400);
-  const ok = await send({ client: { legalName: 'Sample Dental LLC', entityType: 'Limited liability company', secret: 'x' }, term: { paymentMethod: 'card' },
-    package: { plan: 'Plus', priceCents: 1 }, onboarding: { hours: 'Mon to Fri, 8 to 5', nope: 'x' } });
+  const ok = await send({ client: { legalName: 'Sample Dental LLC', entityType: 'Limited liability company', secret: 'x' }, term: { paymentMethod: 'card', specialTerms: 'Free forever' },
+    package: { plan: 'Plus', priceCents: 1 }, onboarding: { hours: 'Mon to Fri, 8 to 5', nope: 'x' }, requests: 'Can you start Monday?' });
   assert.equal(ok.status, 200);
   let rep = (await api(DB, A, `/order-forms/${id}`)).body;
   assert.equal(rep.form.status, 'client_review'); assert.equal(rep.clientAnswers.data.client.entityType, 'Limited liability company');
   assert.equal(rep.clientAnswers.data.client.secret, undefined); assert.equal(rep.clientAnswers.data.package, undefined);
   assert.equal(rep.clientAnswers.data.onboarding.nope, undefined);
+  assert.equal(rep.clientAnswers.data.term.specialTerms, undefined); // admin only: the client never sets it
+  assert.equal(rep.clientAnswers.data.requests, 'Can you start Monday?');
   assert.equal((await api(DB, B, `/order-forms/${id}/client`, { method: 'POST', body: { action: 'accept' } })).status, 404); // not B's
   const acc = await api(DB, A, `/order-forms/${id}/client`, { method: 'POST', body: { action: 'accept' } });
   assert.equal(acc.status, 200); assert.equal(acc.body.form.status, 'draft');
   assert.equal(acc.body.form.data.client.entityType, 'Limited liability company'); assert.equal(acc.body.form.data.package.plan, 'Pilot'); // the package never moves
   assert.equal(acc.body.form.data.term.paymentMethod, 'card');
+  assert.ok(!JSON.stringify(acc.body.form.data).includes('start Monday')); // never copied into the form
+  assert.ok(DB.db.prepare("SELECT body FROM activities WHERE body LIKE '%start Monday%'").get()); // kept on the timeline
+  assert.equal(DB.db.prepare('SELECT COUNT(*) n FROM client_links WHERE submission IS NOT NULL').get().n, 0); // the answers' text is gone
   const ob = (await api(DB, A, `/accounts/${a.id}`)).body.account.onboarding;
   assert.equal(ob.hours, 'Mon to Fri, 8 to 5');
   rep = (await api(DB, A, `/order-forms/${id}`)).body; assert.equal(rep.clientAnswers, null);
@@ -200,7 +222,7 @@ test('rate limits: per visitor per day and per link', async () => {
 
 test('a filed or voided form closes its link', async () => {
   const DB = setup(), { id, token } = await linked(DB);
-  await api(DB, A, `/order-forms/${id}`, { method: 'PATCH', body: FILLED });
+  await fill(DB, id);
   assert.equal((await api(DB, A, `/order-forms/${id}/file`, { method: 'POST' })).status, 200);
   assert.equal((await pub(DB, '/of/api/' + token)).status, 404);
   assert.equal((await api(DB, A, `/order-forms/${id}/link`, { method: 'POST' })).status, 409);
@@ -211,4 +233,26 @@ test('stage moves to Onboarding and Live stay admin only', async () => {
   assert.equal((await api(DB, A, `/accounts/${a.id}`, { method: 'PATCH', body: { stage: 'onboarding' } })).status, 403);
   assert.equal((await api(DB, A, `/accounts/${a.id}`, { method: 'PATCH', body: { stage: 'live' } })).status, 403);
   assert.equal((await api(DB, BOSS, `/accounts/${a.id}`, { method: 'PATCH', body: { stage: 'onboarding' } })).status, 200);
+});
+
+test('special terms are an admin\'s: a rep is refused, a rep\'s save keeps them, and the client page never shows them', async () => {
+  const DB = setup(), { id, token } = await linked(DB);
+  assert.equal((await api(DB, A, `/order-forms/${id}`, { method: 'PATCH', body: { term: { ...FILLED.term, specialTerms: 'Section 4: first month free' } } })).status, 403);
+  assert.equal((await api(DB, BOSS, `/order-forms/${id}`, { method: 'PATCH', body: { term: { ...FILLED.term, specialTerms: 'Section 4: first month free' } } })).status, 200);
+  const kept = await api(DB, A, `/order-forms/${id}`, { method: 'PATCH', body: { term: { ...FILLED.term, paymentMethod: 'ach' } } });
+  assert.equal(kept.body.form.data.term.specialTerms, 'Section 4: first month free'); assert.equal(kept.body.form.data.term.paymentMethod, 'ach');
+  const page = (await j(await pub(DB, '/of/api/' + token))).body;
+  assert.ok(!page.sections.term.some((f) => f.key === 'specialTerms')); assert.ok(!JSON.stringify(page).includes('first month free'));
+  assert.ok(page.sections.term.every((f) => f.kind === 'choice')); // the client picks terms, never writes them
+  assert.equal(page.wording.term, O.NOTES.term);
+});
+
+test('client answers left unreviewed when the link runs out are set aside and their text removed', async () => {
+  const DB = setup(), { id, token } = await linked(DB);
+  assert.equal((await pub(DB, '/of/api/' + token, { method: 'POST', body: { client: { tradingName: 'Sample Smiles' }, requests: 'Call me' } })).status, 200);
+  assert.equal((await api(DB, A, `/order-forms/${id}`)).body.form.status, 'client_review');
+  DB.db.prepare('UPDATE client_links SET expires_at = ?').run('2000-01-01T00:00:00.000Z');
+  const r = (await api(DB, A, `/order-forms/${id}`)).body;
+  assert.equal(r.form.status, 'draft'); assert.equal(r.clientAnswers, null);
+  assert.equal(DB.db.prepare('SELECT COUNT(*) n FROM client_links WHERE submission IS NOT NULL').get().n, 0);
 });
