@@ -79,7 +79,7 @@ test('the package is priced from config: a rep quotes the four plans and never a
   const DB = setup(), a = await account(DB, A), id = (await api(DB, A, `/accounts/${a.id}/order-forms`, { method: 'POST' })).body.form.id;
   const pkg = (who, p) => api(DB, who, `/order-forms/${id}`, { method: 'PATCH', body: { package: p } });
   const std = await pkg(A, { plan: 'Standard', priceCents: 49900 });
-  assert.equal(std.status, 200); assert.equal(std.body.form.data.package.allowanceCents, 17500);
+  assert.equal(std.status, 200); assert.equal(std.body.form.data.package.allowanceCents, 15000);
   assert.deepEqual([std.body.form.data.package.minutes, std.body.form.data.package.texts, std.body.form.data.package.threads], [300, 3000, 1000]);
   assert.equal((await pkg(A, { plan: 'Standard', priceCents: 49900, mixPosition: 100 })).body.form.data.package.minutes, 580);
   assert.equal((await pkg(A, { plan: 'Pilot', priceCents: 49900 })).status, 400); // no Pilot product
