@@ -62,4 +62,34 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 /* Cyan info accents */
 .info-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--info)}
 a.info{color:var(--info)}
+
+/* Phase 2a: View Transitions for Order Form steps */
+::view-transition-old(root){animation:vt-out .28s cubic-bezier(0.16,1,0.3,1)}
+::view-transition-new(root){animation:vt-in .28s cubic-bezier(0.16,1,0.3,1)}
+@keyframes vt-out{to{opacity:0;transform:translateX(-24px)}}
+@keyframes vt-in{from{opacity:0;transform:translateX(24px)}}
+/* Phase 2b: sibling-index() stagger for lists */
+@supports (top:calc(1px * sibling-index())){
+.list>li,.mini,.pcard{animation:pop .4s cubic-bezier(0.16,1,0.3,1) both;animation-delay:calc((sibling-index() - 1) * 50ms)}
+tbody tr:nth-child(-n+20){animation:pop .35s cubic-bezier(0.16,1,0.3,1) both;animation-delay:calc((sibling-index() - 1) * 30ms)}
+}
+/* Phase 2c: @starting-style for toast exit */
+.toast{transition:opacity .3s cubic-bezier(0.16,1,0.3,1),transform .3s cubic-bezier(0.16,1,0.3,1),display .3s allow-discrete}
+.toast[hidden]{opacity:0;transform:translate(-50%,8px)}
+@starting-style{.toast:not([hidden]){opacity:0;transform:translate(-50%,8px)}}
+/* Phase 2d: Skeleton loaders */
+.skeleton{background:linear-gradient(90deg,var(--line) 25%,var(--surface) 50%,var(--line) 75%);background-size:200% 100%;animation:shimmer 1.4s infinite;border-radius:4px;min-height:20px}
+@keyframes shimmer{to{background-position:-200% 0}}
+tr.skel td{padding:12px 6px}
+/* Phase 2e: @property for animated mint border */
+@property --a{syntax:"<angle>";inherits:false;initial-value:0deg}
+.pcard.sel{border:2px solid transparent;background:linear-gradient(var(--surface),var(--surface)) padding-box,conic-gradient(from var(--a),var(--fill),var(--fill-h),var(--fill)) border-box;animation:spin-a 4s linear infinite}
+@keyframes spin-a{to{--a:360deg}}
+/* Phase 3b: Form shake on error */
+@keyframes shake{25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+.field-error{animation:shake .3s cubic-bezier(0.16,1,0.3,1);border-color:var(--danger)!important}
+/* Phase 4: Cyan info application */
+.pill.info{background:var(--info-soft);color:var(--info)}
+.help{border-left:3px solid var(--info);padding-left:12px}
+a.info{color:var(--info);text-decoration:underline}
 }

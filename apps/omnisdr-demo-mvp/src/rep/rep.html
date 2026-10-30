@@ -154,6 +154,16 @@ async function setFlag(id, kind) { await api('/accounts/' + encodeURIComponent(i
 const stageOptions = (cur) => K.stages.map((s) => `<option value="${s}"${s === cur ? ' selected' : ''}${['onboarding', 'live'].includes(s) && ME.role !== 'admin' ? ' disabled' : ''}>${STAGE_LABEL[s]}</option>`).join('');
 // Account tabs by name, for #account/<id>/<tab> links and for keeping the open tab across a save.
 const ACCOUNT_TAB = { details: '0', audit: '4', messages: '5', timeline: '1', onboarding: '2', close: '3' };
+const countUp = (el, to, fmt) => {
+  const from = parseFloat(el.dataset.v || '0'), start = performance.now(), dur = 600;
+  const step = (t) => {
+    const p = Math.min(1, (t - start) / dur), e = 1 - Math.pow(1 - p, 4); // expo.out
+    const v = from + (to - from) * e;
+    el.textContent = fmt ? fmt(v) : Math.round(v).toLocaleString();
+    if (p < 1) requestAnimationFrame(step); else el.dataset.v = to;
+  };
+  requestAnimationFrame(step);
+};
 const money = (c) => '$' + (c / 100).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const form = (f) => Object.fromEntries(new FormData(f).entries());
 const ul = (items, cls = 'tight') => `<ul class="${cls}">${items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>`;
@@ -638,7 +648,12 @@ const screens = {
     }
     async function go(k) {
       await flush(); if (lastError) return toast('Fix this first: ' + lastError.message);
-      step = k; history.replaceState(null, '', '#deal/' + F.id + '/' + k); paint(); scrollTo(0, 0);
+      const update = () => { step = k; history.replaceState(null, '', '#deal/' + F.id + '/' + k); paint(); scrollTo(0, 0); };
+      if (document.startViewTransition) {
+        document.startViewTransition(update);
+      } else {
+        update();
+      }
     }
     const act = async (fn, msg) => { try { await fn(); await reload(); if (msg) toast(msg); paint(); } catch (e) { fail(e); } };
 
@@ -668,8 +683,21 @@ const screens = {
       file().then((r) => r.text()).then((t) => { if ($('#ofInv')) $('#ofInv').textContent = t; }, (e) => { if ($('#ofInv')) $('#ofInv').textContent = e.message; });
       $('#ofDl').onclick = async () => { try { const url = URL.createObjectURL(await (await file()).blob()); const a = Object.assign(document.createElement('a'), { href: url, download: `${F.label}-for-invoicing.json` }); a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); } catch (e) { fail(e); } };
       $('#ofOnb').onsubmit = (e) => { e.preventDefault(); act(() => api('/accounts/' + D.account.id, { method: 'PATCH', body: { onboarding: form(e.target) } }), 'Onboarding saved'); };
-      if ($('#ofSale')) $('#ofSale').onclick = () => { const p = F.data.package;
-        act(() => api('/deals', { method: 'POST', body: { accountId: D.account.id, level: PLAN_LEVEL[p.plan], priceCents: p.priceCents, notes: `Order Form ${F.label}`, ...(p.mixPosition != null ? { mixPosition: p.mixPosition } : {}) } }), 'Sale recorded. The account is in onboarding.'); };
+      if ($('#ofSale')) $('#ofSale').onclick = () => {
+        const btn = $('#ofSale'), p = F.data.package;
+        const orig = btn.innerHTML;
+        btn.innerHTML = 'Recording...'; btn.disabled = true;
+        // act() shows toast on success/fail; restore button after it settles
+        const done = () => { btn.innerHTML = '✓ Recorded!'; btn.classList.add('success'); };
+        const failed = () => { btn.innerHTML = orig; btn.disabled = false; };
+        // Wrap the api call to detect success/fail since act() swallows errors
+        act(async () => {
+          try {
+            await api('/deals', { method: 'POST', body: { accountId: D.account.id, level: PLAN_LEVEL[p.plan], priceCents: p.priceCents, notes: `Order Form ${F.label}`, ...(p.mixPosition != null ? { mixPosition: p.mixPosition } : {}) } });
+            done();
+          } catch (e) { failed(); throw e; }
+        }, 'Sale recorded. The account is in onboarding.');
+      };
     }
     // The package: the plan, the price and the mix. Slider steps come from the server (one copy of the math).
     function wirePkg(el) {
