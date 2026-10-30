@@ -41,7 +41,7 @@ const pub = (DB, path, { method = 'GET', body, headers = {}, ip = '203.0.113.7' 
 const j = async (r) => ({ status: r.status, body: await r.json() });
 const api = async (DB, who, path, opts) => j(await call(DB, who, '/rep/api' + path, opts));
 
-// A fake account like the Pilot sample (Sample Dental LLC, NJ), owned by `who`.
+// A fake account like the sample (Sample Dental LLC, NJ), owned by `who`.
 async function account(DB, who) {
   const r = await api(DB, who, '/accounts', { method: 'POST', body: { business: 'Sample Dental LLC', phone: '555-010-0100', email: 'billing@sampledental.example', address: '100 Example Street', city: 'Newark', state: 'NJ', zip: '07102', contact: { name: 'Pat Sample' } } });
   return r.body.account;
@@ -72,25 +72,27 @@ test('a new Order Form starts from what the account already holds', async () => 
   const DB = setup(), a = await account(DB, A), d = (await api(DB, A, `/accounts/${a.id}/order-forms`, { method: 'POST' })).body.form.data;
   assert.equal(d.client.legalName, 'Sample Dental LLC'); assert.equal(d.client.billingEmail, 'billing@sampledental.example');
   assert.equal(d.client.state, 'NJ'); assert.equal(d.client.signerName, 'Pat Sample'); assert.equal(d.services.numbers, '555-010-0100');
-  assert.equal(d.package.plan, 'Pilot'); assert.equal(d.package.priceCents, 49900);
+  assert.equal(d.package.plan, 'Standard'); assert.equal(d.package.priceCents, 49900);
 });
 
-test('the package is priced from config: a rep quotes the Pilot only and never a discount; an admin may do both', async () => {
+test('the package is priced from config: a rep quotes the four plans and never a discount; an admin may do both', async () => {
   const DB = setup(), a = await account(DB, A), id = (await api(DB, A, `/accounts/${a.id}/order-forms`, { method: 'POST' })).body.form.id;
   const pkg = (who, p) => api(DB, who, `/order-forms/${id}`, { method: 'PATCH', body: { package: p } });
-  const pilot = await pkg(A, { plan: 'Pilot', priceCents: 49900 });
-  assert.equal(pilot.status, 200); assert.equal(pilot.body.form.data.package.allowanceCents, 17500);
-  assert.deepEqual([pilot.body.form.data.package.minutes, pilot.body.form.data.package.texts, pilot.body.form.data.package.threads], [300, 3000, 1000]);
-  assert.equal((await pkg(A, { plan: 'Pilot', priceCents: 49900, mixPosition: 100 })).body.form.data.package.minutes, 580);
-  assert.equal((await pkg(A, { plan: 'Pilot', priceCents: 49800 })).status, 400);
-  assert.equal((await pkg(A, { plan: 'Pilot', priceCents: 49900, mixPosition: 101 })).status, 400);
-  // Refused for a rep, allowed for an admin.
-  assert.equal((await pkg(A, { plan: 'Standard', priceCents: 49900 })).status, 403);
-  assert.equal((await pkg(A, { plan: 'Pilot', priceCents: 49900, discount: '10% off' })).status, 403);
-  assert.equal((await pkg(A, { plan: 'Agency', priceCents: 99900 })).status, 403);
-  const std = await pkg(BOSS, { plan: 'Standard', priceCents: 49900, mixPosition: 100 });
-  assert.equal(std.status, 200); assert.deepEqual([std.body.form.data.package.minutes, std.body.form.data.package.texts], [580, 0]);
-  assert.equal((await pkg(BOSS, { plan: 'Pilot', priceCents: 49900, buildFee: 'none' })).status, 200);
+  const std = await pkg(A, { plan: 'Standard', priceCents: 49900 });
+  assert.equal(std.status, 200); assert.equal(std.body.form.data.package.allowanceCents, 15000);
+  assert.deepEqual([std.body.form.data.package.minutes, std.body.form.data.package.texts, std.body.form.data.package.threads], [300, 3000, 1000]);
+  assert.equal((await pkg(A, { plan: 'Standard', priceCents: 49900, mixPosition: 100 })).body.form.data.package.minutes, 580);
+  assert.equal((await pkg(A, { plan: 'Pilot', priceCents: 49900 })).status, 400); // no Pilot product
+  assert.equal((await pkg(A, { plan: 'Custom', priceCents: 49900 })).status, 400); // no Custom Build
+  assert.equal((await pkg(A, { plan: 'Standard', priceCents: 49900, mixPosition: 101 })).status, 400);
+  // A discount note is refused for a rep, allowed for an admin.
+  assert.equal((await pkg(A, { plan: 'Standard', priceCents: 49900, discount: '10% off' })).status, 403);
+  // Agency must be over $1,000, and reps may quote it too.
+  assert.equal((await pkg(A, { plan: 'Agency', priceCents: 100000 })).status, 400);
+  assert.equal((await pkg(A, { plan: 'Agency', priceCents: 99900 })).status, 400);
+  const agency = await pkg(A, { plan: 'Agency', priceCents: 100100 });
+  assert.equal(agency.status, 200); assert.equal(agency.body.form.data.package.allowanceCents, undefined); // Agency has no mix: no allowance
+  assert.equal((await pkg(BOSS, { plan: 'Standard', priceCents: 49900, buildFee: 'none' })).status, 200);
 });
 
 test('a rep reaches only their own Order Forms; an admin reaches all', async () => {
@@ -108,9 +110,8 @@ test('filing needs every required field, Agency is ACH only, and a filed form is
   assert.ok(!early.body.missing.includes('Renewal')); // the only renewal there is comes prefilled
   assert.equal((await api(DB, A, `/order-forms/${id}/invoice.json`)).status, 409);
   assert.equal((await api(DB, A, `/order-forms/${id}`, { method: 'PATCH', body: { client: { ...FILLED.client, state: 'New Jersey' } } })).status, 400); // two letters
-  // Terms are choices: nothing written in. A Pilot package takes The Pilot Period.
+  // Terms are choices: nothing written in.
   assert.equal((await api(DB, A, `/order-forms/${id}`, { method: 'PATCH', body: { term: { ...FILLED.term, initialTerm: 'Two years' } } })).status, 400);
-  assert.ok((await api(DB, A, `/order-forms/${id}`, { method: 'PATCH', body: { term: { ...FILLED.term, initialTerm: 'one_month' } } })).body.missing.some((m) => /takes The Pilot Period/.test(m)));
   // Christian's signing date is an admin's: a rep is refused, and a rep's save keeps the admin's date.
   assert.equal((await api(DB, A, `/order-forms/${id}`, { method: 'PATCH', body: { signing: { ...FILLED.signing, providerSignedAt: '2026-10-29' } } })).status, 403);
   await fill(DB, id);
@@ -118,24 +119,24 @@ test('filing needs every required field, Agency is ACH only, and a filed form is
   assert.equal(kept.body.form.data.signing.providerSignedAt, '2026-10-29'); assert.equal(kept.body.form.signed_at, '2026-10-29'); // the later date
   assert.deepEqual(kept.body.missing, []);
   // An admin's Agency form with card is still missing its ACH.
-  const agency = await api(DB, BOSS, `/order-forms/${id}`, { method: 'PATCH', body: { package: { plan: 'Agency', priceCents: 99900 } } });
+  const agency = await api(DB, BOSS, `/order-forms/${id}`, { method: 'PATCH', body: { package: { plan: 'Agency', priceCents: 100100 } } });
   assert.ok(agency.body.missing.some((m) => /ACH only/.test(m)));
-  await api(DB, BOSS, `/order-forms/${id}`, { method: 'PATCH', body: { package: { plan: 'Pilot', priceCents: 49900 } } });
+  await api(DB, BOSS, `/order-forms/${id}`, { method: 'PATCH', body: { package: { plan: 'Standard', priceCents: 49900 } } });
   const filed = await api(DB, A, `/order-forms/${id}/file`, { method: 'POST' });
   assert.equal(filed.status, 200); assert.equal(filed.body.form.status, 'filed');
   assert.equal((await api(DB, A, `/order-forms/${id}`, { method: 'PATCH', body: { client: { legalName: 'Changed' } } })).status, 409);
   const rec = await call(DB, A, `/rep/api/order-forms/${id}/invoice.json`);
   assert.match(rec.headers.get('content-disposition'), /OF-0001-for-invoicing\.json/);
   const r = await rec.json();
-  assert.deepEqual({ ...r }, { clientName: 'Sample Dental LLC', customerEmail: 'billing@sampledental.example', plan: 'Pilot', orderFormDate: '2026-10-29', isSigned: true,
+  assert.deepEqual({ ...r }, { clientName: 'Sample Dental LLC', customerEmail: 'billing@sampledental.example', plan: 'Standard', orderFormDate: '2026-10-29', isSigned: true,
     state: 'NJ', paymentMethod: 'card', orderFormNumber: 'OF-0001', addressLine1: '100 Example Street', city: 'Newark', postalCode: '07102',
     voiceMinutes: 300, texts: 3000, aiThreads: 1000, usageMix: 'default', term: 'The Pilot Period (30 days from go-live), Month to month', memo: '' });
   // One signature is not signed: isSigned needs both dates.
   assert.equal(O.invoiceRecord({ number: 1, data: { signing: { clientSignedAt: '2026-10-28' } } }).isSigned, false);
   // Off the slider's default, the export says adjusted, so omni-invoice reads the mix as the form's own numbers.
-  const pk = O.cleanPackage({ plan: 'Pilot', priceCents: 75000 }, false), other = M.mixSteps(pk.allowanceCents).steps.find((x) => x.p !== pk.mixPosition).p;
+  const pk = O.cleanPackage({ plan: 'Standard', priceCents: 75000 }, false), other = M.mixSteps(pk.allowanceCents).steps.find((x) => x.p !== pk.mixPosition).p;
   assert.equal(O.invoiceRecord({ number: 2, data: { package: pk } }).usageMix, 'default');
-  assert.equal(O.invoiceRecord({ number: 2, data: { package: O.cleanPackage({ plan: 'Pilot', priceCents: 75000, mixPosition: other }, false) } }).usageMix, 'adjusted');
+  assert.equal(O.invoiceRecord({ number: 2, data: { package: O.cleanPackage({ plan: 'Standard', priceCents: 75000, mixPosition: other }, false) } }).usageMix, 'adjusted');
   // A filed form is an admin's to void.
   assert.equal((await api(DB, A, `/order-forms/${id}/void`, { method: 'POST' })).status, 403);
   assert.equal((await api(DB, BOSS, `/order-forms/${id}/void`, { method: 'POST' })).body.form.status, 'void');
@@ -157,8 +158,8 @@ test('the client link shows one Order Form and nothing else, and keeps no token 
   assert.match(await page.text(), /omnisdr\.com\/privacy/);
   const r = await j(await pub(DB, '/of/api/' + token));
   assert.equal(r.status, 200); assert.equal(r.body.number, 'OF-0001');
-  const mix = O.cleanPackage({ plan: 'Pilot' }, false);
-  assert.deepEqual(r.body.package, { plan: 'Pilot', priceCents: 49900, minutes: mix.minutes, texts: mix.texts, threads: mix.threads });
+  const mix = O.cleanPackage({ plan: 'Standard', priceCents: 49900 }, false);
+  assert.deepEqual(r.body.package, { plan: 'Standard', priceCents: 49900, minutes: mix.minutes, texts: mix.texts, threads: mix.threads });
   assert.ok(mix.minutes > 0 && mix.texts > 0);
   const text = JSON.stringify(r.body);
   for (const secret of [A, 'Rep A', 'owner_email', 'allowanceCents', 'notes', id]) assert.ok(!text.includes(secret), `leaks ${secret}`);
@@ -197,7 +198,7 @@ test('client answers: allow-listed, honeypot dropped, held for the rep, then acc
   assert.equal((await api(DB, B, `/order-forms/${id}/client`, { method: 'POST', body: { action: 'accept' } })).status, 404); // not B's
   const acc = await api(DB, A, `/order-forms/${id}/client`, { method: 'POST', body: { action: 'accept' } });
   assert.equal(acc.status, 200); assert.equal(acc.body.form.status, 'draft');
-  assert.equal(acc.body.form.data.client.entityType, 'Limited liability company'); assert.equal(acc.body.form.data.package.plan, 'Pilot'); // the package never moves
+  assert.equal(acc.body.form.data.client.entityType, 'Limited liability company'); assert.equal(acc.body.form.data.package.plan, 'Standard'); // the package never moves
   assert.equal(acc.body.form.data.term.paymentMethod, 'card');
   assert.ok(!JSON.stringify(acc.body.form.data).includes('start Monday')); // never copied into the form
   assert.ok(DB.db.prepare("SELECT body FROM activities WHERE body LIKE '%start Monday%'").get()); // kept on the timeline
@@ -248,7 +249,7 @@ test('special terms are an admin\'s: a rep is refused, a rep\'s save keeps them,
   // Legal: ACH first and preferred, card optional, and the MSA sentence shown once (in the label only).
   const pay = page.sections.term.find((f) => f.key === 'paymentMethod');
   assert.deepEqual(Object.entries(pay.options), [['ach', 'ACH (bank), preferred'], ['card', 'Card']]);
-  assert.equal(pay.help, undefined); assert.equal(pay.clientHelp, undefined);
+  assert.equal(pay.help, 'No surcharge is added for card payments.'); assert.equal(pay.clientHelp, undefined);
 });
 
 test('client answers left unreviewed when the link runs out are set aside and their text removed', async () => {

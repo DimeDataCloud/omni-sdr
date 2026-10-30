@@ -17,17 +17,17 @@ export const PRICES = {
   ],
 };
 
-// Christian 2026-10-27. Pool = price minus payment fees minus the client's credit allowance; rep 50%, dev 50%, every month.
-// Sales tax is billed to the client on top. Figures are DRAFT with the prices (CREDIT-ALLOWANCE-MODEL sections 6 and 8).
+// Christian 2026-10-29. The pay pool is the OmniSDR partnership pool: price minus payment fees minus the client's
+// credit allowance. The split is officially 50/50; the per-plan targets below are for planning and easy math.
+// Sales tax is billed to the client on top. No surcharge for card payments.
 export const PAY = {
   repShare: 0.5,
-  note: "You earn 50% of the pay pool every month the client stays: the price minus payment fees and the client's credit allowance (their usage budget at our cost). Sales tax is added to the client's bill, so it never comes out of your pay. All figures are draft until prices are final.",
+  note: "You earn 50% of the pay pool every month the client stays: the price minus payment fees and the client's credit allowance (their usage budget at our cost). Sales tax is added to the client's bill, so it never comes out of your pay. The per-plan targets are for planning; the official split is 50/50.",
   table: [
-    { plan: 'Pilot or Standard ($499)', allowance: '$175', each: 'about $151' },
-    { plan: 'Bigger pilot (you set it, above $499)', allowance: '35% of the price, at least $330 from $899', each: 'half of what is left after fees and allowance' },
-    { plan: 'Lite ($299)', allowance: '$105', each: 'about $90' },
-    { plan: 'Plus ($899)', allowance: '$330', each: 'about $264' },
-    { plan: 'Agency ($999 a month and up)', allowance: 'Built per quote', each: '$150 for the first location, $100 for each added one' },
+    { plan: 'Lite ($299)', allowance: '$75', each: 'target $80 (50/50 official)' },
+    { plan: 'Standard ($499)', allowance: '$150', each: 'target $150 (50/50 official)' },
+    { plan: 'Plus ($899)', allowance: '$350', each: 'target $250 (50/50 official)' },
+    { plan: 'Agency (over $1,000 a month)', allowance: 'Built per quote', each: '$150 for the first location, $100 for each added one' },
   ],
 };
 // Pilot pricing (Christian 2026-10-27): $499 floor, the rep sets any price above it, and the credit allowance is 35% of
@@ -43,17 +43,18 @@ export function pilotSplit(priceCents) {
 }
 export const TAX_NOTE = "Prices are before sales tax. Tax is added to the client's bill.";
 
-// Rep guide "Pricing" chapter (v5). Who may quote what.
+// Rep guide "Pricing" chapter (v6, Christian 2026-10-29). Who may quote what.
+// Reps quote all four plans. A pilot is the first 30 days of a plan, not a separate product. There is no Custom Build.
 export const PRICING_GUIDE = {
-  lede: 'Every price is a draft until Christian sets the final price at go-live. Confirm with Christian before quoting any number.',
+  lede: 'Reps quote Lite $299, Standard $499, Plus $899 a month, or Agency over $1,000. A pilot is the first 30 days of a plan, not a separate product. Confirm with Christian before quoting any number.',
   quote: [
     { level: 0, rule: 'Yes. Offer it on every first touch.' },
-    { level: 1, rule: 'Yes. $499 plus tax is the minimum. For a busier business, quote more; the allowance grows with the price (35% of it). Never go below $499.' },
-    { level: 2, rule: 'Not yet. Say: "After the pilot we look at your numbers and set a monthly plan that fits your trade."' },
+    { level: 1, rule: 'Yes. Quote the plan price plus tax: Lite $299, Standard $499, Plus $899 a month. The first 30 days are the pilot period.' },
+    { level: 2, rule: 'Yes. Same plans, same prices.' },
     { level: 3, rule: 'Not yet. Do not say a number.' },
-    { level: 4, rule: "No. Send the owner's needs to Christian; he quotes it." },
+    { level: 4, rule: 'Yes. Over $1,000 a month, ACH only. Single or multi-location; each location takes a plan or an over-$1,000 custom package.' },
   ],
-  rule: "You never offer a discount or a free trial. Change terms, never the price. The only discount is on an agency quote, approved by Christian in writing. Sales tax goes on the owner's bill.",
+  rule: "You never offer a discount or a free trial. Change terms, never the price. Sales tax goes on the owner's bill. No surcharge for card payments.",
   say: '"We price against one job, not against software. What is a typical job worth to you?"',
 };
 
