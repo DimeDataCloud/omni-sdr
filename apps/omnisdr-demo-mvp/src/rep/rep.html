@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="robots" content="noindex, nofollow"><meta name="theme-color" content="#F7F5F0" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#0F100E" media="(prefers-color-scheme: dark)"><title>Rep portal · OmniSDR</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="robots" content="noindex, nofollow"><meta name="theme-color" content="#F7F5F0" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#0F100E" media="(prefers-color-scheme: dark)"><title>Rep portal · OmniSDR</title><link rel="icon" href="data:,">
 <style nonce="__NONCE__">__CSS__
 nav.main{display:flex;gap:4px;overflow-x:auto;margin:0 0 16px;border-bottom:1px solid var(--line);scrollbar-width:none}nav.main::-webkit-scrollbar{display:none}
 nav.main a{flex:0 0 auto;min-height:44px;display:flex;align-items:center;padding:0 12px;color:var(--muted);font-weight:600;text-decoration:none;border-bottom:3px solid transparent}
@@ -47,7 +47,7 @@ dialog{border:1px solid var(--line);border-radius:16px;background:var(--surface)
 main>.card,main>section.card,main>.grid{margin-bottom:16px}
 .tpl{white-space:pre-wrap;overflow-wrap:anywhere;margin:0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);font:inherit;user-select:text}
 .est{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}.tight{margin:0;padding-left:20px}
-.viewbar{margin:-8px 0 16px}.viewbar select{width:auto;min-width:200px}.sel{width:44px}
+.viewbar{margin:-8px 0 16px}.viewbar select{width:auto;min-width:200px}th.sel,td.sel{width:44px}
 .chips{display:flex;flex-wrap:wrap;gap:6px}.chip{min-height:36px;padding:0 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--text);font:inherit;font-size:14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
 .chip b{font-variant-numeric:tabular-nums;color:var(--muted);font-weight:600}.chip[aria-pressed=true]{border-color:var(--ink);outline:2px solid var(--ink);outline-offset:-1px}
 .bulk{position:sticky;bottom:calc(8px + env(safe-area-inset-bottom));z-index:3;box-shadow:0 6px 24px rgba(0,0,0,.18)}.splitlist{display:flex;flex-wrap:wrap;gap:4px 14px}
@@ -74,7 +74,7 @@ dialog[open]{animation:rise var(--t-enter)}dialog[open]::backdrop{animation:fade
 h1{font-size:26px;line-height:32px;letter-spacing:-.025em}@media(min-width:700px){h1{font-size:30px;line-height:36px}}
 .card{border-radius:20px;box-shadow:0 2px 8px -2px rgba(17,17,17,.04),0 1px 2px -1px rgba(17,17,17,.02)}
 .btn{border-radius:999px}.btn.sm{padding:0 14px}
-header.top .brand b{font-size:17px;letter-spacing:-.01em}header.top .brand svg{width:26px;height:26px}
+header.top .brand b{font-size:17px;letter-spacing:-.01em}header.top .brand svg,header.top .brand img{width:26px;height:26px}
 #who{padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface);font-size:13px}#who:empty{display:none}
 nav.main{gap:4px;width:max-content;max-width:100%;padding:4px;border:1px solid var(--line);border-radius:999px;background:color-mix(in srgb,var(--surface) 72%,transparent);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
 nav.main a{min-height:40px;padding:0 16px;border-bottom:0;border-radius:999px;transition:background-color var(--t-hover),color var(--t-hover)}
@@ -105,9 +105,13 @@ details.card{padding-top:var(--sp-3);padding-bottom:var(--sp-3)}details.card>sum
 details.card>summary::after{content:'';margin-left:auto;width:8px;height:8px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:translateY(-2px) rotate(45deg);transition:transform var(--t-hover)}details.card[open]>summary::after{transform:translateY(2px) rotate(-135deg)}details.card>.stack{margin-top:8px}
 @media print{header.top,nav.main,.viewbar,.noprint,.toast,ol.steps{display:none!important}body{background:#fff!important;color:#000}
   .wrap{max-width:none;padding:0}.card{box-shadow:none;border:1px solid #bbb;break-inside:avoid}.sheet{gap:8px}#view.enter{animation:none}}
+/* What used to be inline style attributes: the page's CSP (style-src nonce) blocks those, so they never applied. */
+.hint{font-size:12px;font-weight:400}.w160{max-width:160px}.sk60{height:60px}.dashed{border-style:dashed}.accent{border-color:var(--fill)}
+.m0{margin:0}.mb0{margin-bottom:0}.mb4{margin:0 0 4px}.mb8{margin:0 0 8px}
+.wf{margin:4px 0 0;font-size:13px}.wf .now{color:var(--ink);font-weight:600}.wf .done{color:var(--text)}
 </style></head>
 <body><div class="wrap">
-<header class="top"><div class="brand">__LOGO__<b>OmniSDR · Rep</b><span style="background:#7BFF93;color:#000;font-size:10px;padding:2px 6px;border-radius:4px;margin-left:8px">v999</span></div><span class="muted" id="who"></span></header>
+<header class="top"><div class="brand">__LOGO__<b>OmniSDR · Rep</b></div><span class="muted" id="who"></span></header>
 <nav class="main" id="nav" aria-label="Rep portal">
   <a href="#today" data-g="home">Home</a><a href="#pipeline" data-g="sales">Sales</a><a href="#learn" data-g="learn">Learn</a><a href="#deals" data-g="deals">My deals</a><a href="#team" hidden id="navTeam" data-g="team">Team</a>
 </nav>
@@ -224,7 +228,7 @@ const dollars = (v) => { const s = String(v ?? '').replace(/[$,\s]/g, ''); if (!
 function ofField(sec, f, v, acctSrc, extraHint) {
   const id = `of_${sec}_${f.key}`, name = `${sec}.${f.key}`, req = f.req ? ' *' : '';
   const help = f.help ? `<p class="help" id="${id}_h">${esc(f.help)}</p>` : '', desc = f.help ? ` aria-describedby="${id}_h"` : '';
-  const srcBadge = (acctSrc ? ' <span class="muted" style="font-size:0.8em">(from account)</span>' : '') + (extraHint || '');
+  const srcBadge = (acctSrc ? ' <span class="muted hint">(from account)</span>' : '') + (extraHint || '');
   if (f.kind === 'bool') return `<label class="check full"><input type="checkbox" id="${id}" name="${name}"${v ? ' checked' : ''}> ${esc(f.label)}${srcBadge}</label>`;
   if (f.kind === 'choice') return `<fieldset class="full radiogroup"${desc}><legend>${esc(f.label)}${req}${srcBadge}</legend><div class="radios">${Object.entries(f.options).map(([k, l]) => `<label><input type="radio" name="${name}" value="${esc(k)}"${v === k ? ' checked' : ''}> ${esc(l)}</label>`).join('')}</div>${help}</fieldset>`;
   const wide = (f.max || 0) > 120 || f.kind === 'email' ? 'full' : '', type = f.kind === 'email' ? 'email' : f.kind === 'date' ? 'date' : 'text';
@@ -236,7 +240,7 @@ const ACCT_FIELD_MAP = { client: { legalName: 'business', tradingName: 'business
 // tradingName matches legalName — show hint instead of making it look like separate work
 const tradingSameHint = (sec, key, val, data) => {
   if (sec === 'client' && key === 'tradingName' && val && data.client && data.client.legalName && String(val).trim() === String(data.client.legalName).trim()) {
-    return ' <span class="muted" style="font-size:0.8em">(same as legal name)</span>';
+    return ' <span class="muted hint">(same as legal name)</span>';
   }
   return '';
 };
@@ -311,7 +315,7 @@ const screens = {
         <div><h2>How did it go?</h2><div class="outcomes" id="oc" role="radiogroup" aria-label="Call outcome">${K.outcomes.map((o, i) => `<button type="button" role="radio" aria-checked="false" class="btn ghost outcome-btn" data-o="${o}"><span class="okey">${i + 1}</span>${OUTCOME_LABEL[o] || label(o)}</button>`).join('')}</div><p class="muted">Press 1 to ${K.outcomes.length} to pick, Enter to log.</p></div>
         <div><h2>Quick quote</h2><p class="muted">Pick a plan, slide to adjust the talk/text mix, then start the Order Form.</p>
           <div class="qq-plans" id="callPlans" role="radiogroup" aria-label="Quote plan">${(K.prices.levels || []).filter((l) => l.level >= 1 && l.level <= 4).map((l) => `<button type="button" role="radio" aria-checked="false" class="qq-plan" data-quote="${esc(l.label)}"><b>${esc(l.label)}</b><span class="qq-price">${l.amountCents ? money(l.amountCents) + ' /mo' : 'Over $1,000'}</span><span class="qq-detail">${esc(l.what ? l.what.split('.')[0] : '')}</span></button>`).join('')}</div>
-          <div id="qqAgencyBox" hidden class="stack mt12"><label for="qqPrice"><b>Agreed price</b> <span class="muted">Over $1,000 a month</span></label><div class="row"><input id="qqPrice" type="number" inputmode="decimal" min="1001" placeholder="1500" style="max-width:160px"><span class="muted">a month</span></div></div>
+          <div id="qqAgencyBox" hidden class="stack mt12"><label for="qqPrice"><b>Agreed price</b> <span class="muted">Over $1,000 a month</span></label><div class="row"><input id="qqPrice" type="number" inputmode="decimal" min="1001" placeholder="1500" class="w160"><span class="muted">a month</span></div></div>
           <div id="qqMixBox" hidden class="mix mt12"><h3>Usage mix</h3><p class="note">Slide to trade talk minutes for texts inside the same allowance.</p>
             <div class="mixends"><span>More talk</span><span>More text</span></div>
             <input type="range" id="qqMix" min="0" max="100" step="1" value="50" aria-label="Talk versus text mix">
@@ -444,7 +448,7 @@ const screens = {
     if (!admin || VIEW) F.pool = false;
     if (!admin) F.arch = false;
     const keep = () => { try { sessionStorage.setItem(KEEP, JSON.stringify(F)); } catch {} };
-    view.innerHTML = `<h1>Pipeline</h1><p class="sub">Drag cards between stages to move them.</p><div class="board"><section class="col"><h2>Loading<span></span></h2><div class="coldrop"><div class="mini"><div class="skeleton" style="height:60px"></div></div><div class="mini"><div class="skeleton" style="height:60px"></div></div></div></section><section class="col"><h2><span></span></h2><div class="coldrop"><div class="mini"><div class="skeleton" style="height:60px"></div></div></div></section></div>`;
+    view.innerHTML = `<h1>Pipeline</h1><p class="sub">Drag cards between stages to move them.</p><div class="board"><section class="col"><h2>Loading<span></span></h2><div class="coldrop"><div class="mini"><div class="skeleton sk60"></div></div><div class="mini"><div class="skeleton sk60"></div></div></div></section><section class="col"><h2><span></span></h2><div class="coldrop"><div class="mini"><div class="skeleton sk60"></div></div></div></section></div>`;
     const { accounts } = await api('/accounts');
     const stages = K.stages.filter((s) => s !== 'lost');
     const PVIEW = sessionStorage.getItem('rep.pipelineView') || 'list';
@@ -610,7 +614,7 @@ const screens = {
     const NEXT = { new: ['audit', 'Next: run the free check'], results_call: ['close', 'Next: the Order Form'], proposed: ['close', 'Next: the Order Form'], onboarding: ['onboarding', 'Next: onboarding'] }, next = NEXT[a.stage];
     view.innerHTML = `<p><a class="lnk" href="#pipeline">All accounts</a></p><h1>${esc(a.business)}</h1><p class="sub">${esc([a.niche, a.city, a.state].filter(Boolean).join(' · '))}</p>
       <div class="row acts"><label for="stg" class="muted">Stage</label><select id="stg">${stageOptions(a.stage)}</select>${next ? `<button class="btn" type="button" id="nextGo" data-tab="${next[0]}">${next[1]}</button>` : ''}</div>
-      ${(() => { const flow = [['new','Qualify'],['results_call','Close'],['proposed','Close'],['onboarding','Onboard'],['live','Live']]; const seen = new Set(); const labels = []; let curIdx = -1; flow.forEach(([s,l],i) => { if (!seen.has(l)) { seen.add(l); labels.push(l); } if (s === a.stage) curIdx = labels.length - 1; }); if (curIdx < 0) return ''; return `<p class="muted noprint" style="margin:4px 0 0;font-size:0.85em">Workflow: ${labels.map((l,i) => `<span style="${i===curIdx?'color:var(--mint);font-weight:700':i<curIdx?'color:var(--text)':''}">${l}</span>`).join(' <span aria-hidden="true">→</span> ')}</p>`; })()}
+      ${(() => { const flow = [['new','Qualify'],['results_call','Close'],['proposed','Close'],['onboarding','Onboard'],['live','Live']]; const seen = new Set(); const labels = []; let curIdx = -1; flow.forEach(([s,l],i) => { if (!seen.has(l)) { seen.add(l); labels.push(l); } if (s === a.stage) curIdx = labels.length - 1; }); if (curIdx < 0) return ''; return `<p class="muted noprint wf">Workflow: ${labels.map((l,i) => `<span class="${i===curIdx?'now':i<curIdx?'done':''}">${l}</span>`).join(' <span aria-hidden="true">→</span> ')}</p>`; })()}
       <div class="tabs" role="tablist">${[['Overview', 0], ['Qualify', 4], ['Activity', 1], ['Close', 3], ['Onboard', 2]].map(([t, k]) => `<button class="tab" role="tab" data-t="${k}" aria-selected="${k === 0}">${t}</button>`).join('')}</div>
       <div data-p="0" class="grid two"><form class="card" id="ef"><div class="fields">
         ${[['business', 'Business name', 'full'], ['niche', 'Category'], ['phone', 'Phone'], ['email', 'Email'], ['website', 'Website', 'full'], ['address', 'Address', 'full'], ['city', 'City'], ['state', 'State'], ['signal', 'Why we are calling', 'full'], ['next_step', 'Next step', 'full']]
@@ -624,8 +628,8 @@ const screens = {
           <div class="full row"><label class="row"><input type="checkbox" name="isPrimary" class="cb"> Primary contact</label><button class="btn ghost">Add person</button></div></form></section>
         <section class="card stack"><h2>Calling</h2><p>${a.dial.ok ? 'Cleared to call.' : esc(DIAL_WHY[a.dial.reason] || 'Not cleared to call.')}</p><p class="muted">Line type: ${esc(a.line_type)} · Scrubbed: ${a.scrubbed_at ? when(a.scrubbed_at) : 'never'}${a.flag ? ' · ' + esc(label(a.flag)) : ''}</p><div class="row" id="afl">${flagBtns(a.id)}</div></section>
         <section class="card"><h2>Open tasks</h2><ul class="list">${d.tasks.map((k) => `<li><div class="t">${esc(k.title)}<small>${when(k.due_at)}</small></div></li>`).join('') || '<li class="muted">None.</li>'}</ul></section></div></div>
-      <div data-p="1" hidden class="stack"><details class="card"><summary><b>Message templates</b><span class="muted">Starter wording, filled in for this account</span></summary><div class="stack" style="margin-top:12px"><p class="sub">Adjust it, copy it, send it from your own phone or email, then log it.</p>${tpls({ business: a.business, name: ((d.contacts.find((c) => c.is_primary) || d.contacts[0] || {}).name || '').split(' ')[0] || 'there', rep: (ME.name || '').split(' ')[0], account: true })}</div></details><div class="card stack"><form id="nt" class="row"><select name="kind" aria-label="Kind" class="grow"><option value="note">Note</option><option value="email">Email sent</option><option value="text">Text sent</option><option value="demo">Demo given</option></select><input name="body" class="grow" required maxlength="2000" placeholder="What happened" aria-label="Note"><button class="btn">Add</button></form>
-        <ul class="list timeline">${d.activities.map((v) => `<li><small>${when(v.created_at)} · ${esc(label(v.kind))}</small><div>${esc(v.body)}</div></li>`).join('')}</ul></div>
+      <div data-p="1" hidden class="stack"><details class="card"><summary><b>Message templates</b><span class="muted">Starter wording, filled in for this account</span></summary><div class="stack mt12"><p class="sub">Adjust it, copy it, send it from your own phone or email, then log it.</p>${tpls({ business: a.business, name: ((d.contacts.find((c) => c.is_primary) || d.contacts[0] || {}).name || '').split(' ')[0] || 'there', rep: (ME.name || '').split(' ')[0], account: true })}</div></details><div class="card stack"><form id="nt" class="row"><select name="kind" aria-label="Kind" class="grow"><option value="note">Note</option><option value="email">Email sent</option><option value="text">Text sent</option><option value="demo">Demo given</option></select><input name="body" class="grow" required maxlength="2000" placeholder="What happened" aria-label="Note"><button class="btn">Add</button></form>
+        <ul class="list timeline">${d.activities.map((v) => `<li><small>${when(v.created_at)} · ${esc(label(v.kind))}</small><div>${esc(v.body)}</div></li>`).join('')}</ul></div></div>
       <div data-p="4" hidden class="stack" id="qualifyTab"><!-- Qualify content injected by JS --></div>
       
       <form data-p="2" hidden class="card" id="of"><p class="sub">Fill this in with the owner on the call after the yes. The developer starts from it. Info from Overview is already filled in.</p><div class="fields">${K.onboarding.map((f) => {
@@ -638,7 +642,7 @@ const screens = {
         ${forms.length ? `<ul class="list">${forms.map((x) => `<li><div class="t">${esc(x.label)} ${ofPill(x.status)}<small>${esc([planName(x.data.package?.plan), x.data.package?.priceCents != null ? money(x.data.package.priceCents) : '', when(x.updated_at)].filter(Boolean).join(' · '))}</small></div><a class="btn ghost sm" href="#deal/${esc(x.id)}">Open</a></li>`).join('')}</ul>` : ''}
         <p>${openForm ? `<a class="btn" href="#deal/${esc(openForm.id)}">Resume ${esc(openForm.label)}</a>` : '<button class="btn" type="button" id="ofStart">Start the Order Form</button>'}</p></section>
         <div class="card stack">${d.deals.length ? `<p>Closed: ${d.deals.map((x) => `${levelName(x.level)}, ${money(x.price_cents)}${x.price_is_draft ? ' (draft price)' : ''}, ${when(x.closed_at)}`).join('; ')}</p>` : ''}
-        ${['onboarding', 'live'].includes(a.stage) ? '<p class="muted">This account is signed. Next is the Onboarding tab.</p>' : `<section class="card stack" style="border-style:dashed"><h2>Quick close</h2><p class="sub">Already have the details? Skip the Order Form and record the sale directly.</p><form id="df" class="stack"><span class="lbl">What they bought</span><div class="qq-plans" id="dfPlans" role="radiogroup" aria-label="Plan">${levels.map((l) => `<button type="button" role="radio" aria-checked="${l.level === 2 ? 'true' : 'false'}" class="qq-plan${l.level === 2 ? ' sel' : ''}" data-level="${l.level}"><b>${esc(l.label)}</b><span class="qq-price">${l.amountCents != null ? money(l.amountCents) + ' /mo' : 'Over $1,000'}</span></button>`).join('')}</div><input type="hidden" id="lv" name="level" value="2">
+        ${['onboarding', 'live'].includes(a.stage) ? '<p class="muted">This account is signed. Next is the Onboarding tab.</p>' : `<section class="card stack dashed"><h2>Quick close</h2><p class="sub">Already have the details? Skip the Order Form and record the sale directly.</p><form id="df" class="stack"><span class="lbl">What they bought</span><div class="qq-plans" id="dfPlans" role="radiogroup" aria-label="Plan">${levels.map((l) => `<button type="button" role="radio" aria-checked="${l.level === 2 ? 'true' : 'false'}" class="qq-plan${l.level === 2 ? ' sel' : ''}" data-level="${l.level}"><b>${esc(l.label)}</b><span class="qq-price">${l.amountCents != null ? money(l.amountCents) + ' /mo' : 'Over $1,000'}</span></button>`).join('')}</div><input type="hidden" id="lv" name="level" value="2">
           <div id="pbox" hidden><label for="pc" id="plbl">Agreed price in dollars (admin)</label><input id="pc" name="price" inputmode="decimal"><p class="note" id="psplit"></p>
             <div class="mix" id="mixbox" hidden><h3>Usage mix</h3><p class="note">Slide to trade calls for texts inside the same allowance. Price, allowance and your pay stay exactly as they are.</p>
               <dl class="mixfixed"><div><dt>Price</dt><dd id="mxPrice"></dd></div><div><dt>Allowance</dt><dd id="mxAllow"></dd></div><div><dt>You and the developer, each</dt><dd id="mxPay"></dd></div></dl>
@@ -674,29 +678,29 @@ const screens = {
       tab.dataset.injected = '1';
       tab.innerHTML = `
         <div class="card">
-          <h2 style="margin:0 0 4px">Qualify</h2>
-          <p class="sub" style="margin:0">Step 2 of the path: research the business and run the free check before the demo. Their numbers, not ours.</p>
+          <h2 class="mb4">Qualify</h2>
+          <p class="sub m0">Step 2 of the path: research the business and run the free check before the demo. Their numbers, not ours.</p>
         </div>
         <details class="card">
           <summary><b>How to run the free check</b></summary>
-          <div style="margin-top:12px"><ol class="tight"><li>Check their Google reviews and ratings</li><li>Call the business after hours to test answer rate</li><li>Submit their contact form to test response time</li><li>Calculate lost-job value from missed leads</li></ol></div>
+          <div class="mt12">${ol(K.auditSteps)}</div>
         </details>
         <div class="card stack" id="qFields">
-          <h2 style="margin:0">Research</h2>
+          <h2 class="m0">Research</h2>
           <div class="fields" id="qResearch"></div>
-          <h2 style="margin:12px 0 0">Call test</h2>
+          <h2 class="mt12 mb0">Call test</h2>
           <div class="fields" id="qCall"></div>
-          <h2 style="margin:12px 0 0">Form test</h2>
+          <h2 class="mt12 mb0">Form test</h2>
           <div class="fields" id="qForm"></div>
         </div>
-        <div class="card stack" style="border-color:var(--fill)">
-          <h2 style="margin:0">Lost-job math</h2>
-          <p class="sub" style="margin:0">Their numbers, not ours. Do the math out loud on the call.</p>
+        <div class="card stack accent">
+          <h2 class="m0">Lost-job math</h2>
+          <p class="sub m0">Their numbers, not ours. Do the math out loud on the call.</p>
           <div class="fields">
             <div><label for="q_jobValue">Average job value ($)</label><input id="q_jobValue" inputmode="decimal" maxlength="20" placeholder="e.g. 450"></div>
             <div><label for="q_missed">Leads missed / month</label><input id="q_missed" inputmode="decimal" maxlength="20" placeholder="e.g. 8"></div>
           </div>
-          <div id="q_est" style="font-size:20px;font-weight:700;color:var(--fill)"></div>
+          <p id="q_est" class="est m0"></p>
         </div>
         <div class="card">
           <div class="row">
@@ -746,19 +750,13 @@ const screens = {
       if (stage) data.stage = stage;
       save(data, msg || 'Audit saved');
     };
+    qInject(); // the markup must exist before anything is bound to it
     const qjv = $('#q_jobValue'), qms = $('#q_missed');
     if (qjv) qjv.oninput = qCalc;
     if (qms) qms.oninput = qCalc;
     const qs = $('#qSave');
     if (qs) qs.onclick = () => qSave();
-    qInject(); qRender();
-    // K diagnostic
-    const ks = document.getElementById('kStatus');
-    if (ks) {
-      const kInfo = typeof K === 'undefined' ? 'K UNDEFINED' : K === null ? 'K NULL' : 'K OK, keys: ' + Object.keys(K).slice(0,5).join(',');
-      ks.textContent = 'K status: ' + kInfo;
-      ks.style.background = (K && K.auditSteps) ? '#133A20' : '#3B1414';
-    }
+    qRender();
     // The open tab lives in the hash via replaceState (no hashchange, no reload), so a save that re-renders lands back on it.
     tabs.forEach((t) => (t.onclick = () => { show(t.dataset.t); const n = Object.keys(ACCOUNT_TAB).find((k) => ACCOUNT_TAB[k] === t.dataset.t); history.replaceState(null, '', '#account/' + a.id + (n === 'details' ? '' : '/' + n)); }));
     const want = location.hash.split('/')[2]; if (Object.hasOwn(ACCOUNT_TAB, want)) show(ACCOUNT_TAB[want]);
@@ -886,7 +884,7 @@ const screens = {
       if (k === 'services') return ['answer', 'followUp', 'chase'].some((x) => (d.services || {})[x]);
       if (k === 'term') return K.orderForm.sections.term.every((f) => !f.req || (d.term || {})[f.key] != null);
       return k === 'review' ? F.status === 'filed' : false; };
-    const stepsHtml = () => { const steps = activeSteps(); const idx = steps.findIndex(([k]) => k === step); return `<p class="muted noprint" style="margin:0 0 8px">Step ${idx + 1} of ${steps.length}: ${esc(steps[idx][1])}</p><ol class="steps" id="ofSteps" aria-label="Order Form steps">` + steps.map(([k, l]) => `<li><button type="button" data-step="${k}"${k === step ? ' aria-current="step"' : ''}${done(k) ? ' data-done' : ''}>${l}</button></li>`).join('') + `</ol>`; };
+    const stepsHtml = () => { const steps = activeSteps(); const idx = steps.findIndex(([k]) => k === step); return `<p class="muted noprint mb8">Step ${idx + 1} of ${steps.length}: ${esc(steps[idx][1])}</p><ol class="steps" id="ofSteps" aria-label="Order Form steps">` + steps.map(([k, l]) => `<li><button type="button" data-step="${k}"${k === step ? ' aria-current="step"' : ''}${done(k) ? ' data-done' : ''}>${l}</button></li>`).join('') + `</ol>`; };
     const missHtml = () => (MISSING.length && isOpen() ? `<div class="card stack"><h2>Still to fill in before filing</h2><ul class="miss">${MISSING.map((m) => `<li>${esc(m)}</li>`).join('')}</ul></div>` : '');
     function afterSave() {
       if (!$('#ofRoot')) return; // they left the flow before the save landed
