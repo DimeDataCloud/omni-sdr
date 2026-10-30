@@ -53,11 +53,11 @@ main>.card,main>section.card,main>.grid{margin-bottom:16px}
 .bulk{position:sticky;bottom:calc(8px + env(safe-area-inset-bottom));z-index:3;box-shadow:0 6px 24px rgba(0,0,0,.18)}.splitlist{display:flex;flex-wrap:wrap;gap:4px 14px}
 @media (pointer:coarse){.chip{min-height:44px}}
 ol.path{margin:0;padding-left:22px;display:grid;gap:10px}ol.path li b{display:block}ol.path li span{display:block;max-width:72ch}
-#view.enter{animation:enter var(--t-enter) ease}
-dialog[open]{animation:rise var(--t-enter) ease}dialog[open]::backdrop{animation:fade var(--t-enter) ease}
+#view.enter{animation:enter var(--t-enter)}
+dialog[open]{animation:rise var(--t-enter)}dialog[open]::backdrop{animation:fade var(--t-enter)}
 @keyframes toastIn{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}} /* keeps the -50% centring */
-.toast:not([hidden]){animation:toastIn var(--t-enter) ease}
-.chip{transition:border-color var(--t-hover) ease,background-color var(--t-hover) ease}
+.toast:not([hidden]){animation:toastIn var(--t-enter)}
+.chip{transition:border-color var(--t-hover),background-color var(--t-hover)}
 .acts{margin:4px 0 16px}.acts label{margin:0}.acts select{width:auto;min-width:180px}
 .show-sm{display:none}@media (max-width:640px){.hide-sm{display:none}.show-sm{display:inline}}
 /* Team on a phone: each rep is a card (name and View as on top, each number labelled below) instead of a table that
@@ -77,7 +77,7 @@ h1{font-size:26px;line-height:32px;letter-spacing:-.025em}@media(min-width:700px
 header.top .brand b{font-size:17px;letter-spacing:-.01em}header.top .brand svg{width:26px;height:26px}
 #who{padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface);font-size:13px}#who:empty{display:none}
 nav.main{gap:4px;width:max-content;max-width:100%;padding:4px;border:1px solid var(--line);border-radius:999px;background:color-mix(in srgb,var(--surface) 72%,transparent);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
-nav.main a{min-height:40px;padding:0 16px;border-bottom:0;border-radius:999px;transition:background-color var(--t-hover) ease,color var(--t-hover) ease}
+nav.main a{min-height:40px;padding:0 16px;border-bottom:0;border-radius:999px;transition:background-color var(--t-hover),color var(--t-hover)}
 nav.main a[aria-current=page]{background:var(--fill);color:#1A1A1A}
 @media (hover:hover){nav.main a:not([aria-current]):hover{color:var(--text);background:color-mix(in srgb,var(--fill) 25%,transparent)}}
 nav.tier2{margin-top:-8px;padding:0;border:0;background:none;-webkit-backdrop-filter:none;backdrop-filter:none}nav.tier2 a{min-height:36px;padding:0 14px}
@@ -87,7 +87,7 @@ nav.tier2 a[aria-current=page]{background:var(--surface);color:var(--text);box-s
 .ofhead{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between}.ofhead h1,.ofhead h2{margin:0}
 ol.steps{list-style:none;margin:0 0 16px;padding:0;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;counter-reset:st;-webkit-overflow-scrolling:touch}ol.steps::-webkit-scrollbar{display:none}
 ol.steps li{flex:0 0 auto;counter-increment:st}
-ol.steps button{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 14px 0 6px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--muted);font-weight:600;cursor:pointer;transition:border-color var(--t-hover) ease,color var(--t-hover) ease}
+ol.steps button{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 14px 0 6px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--muted);font-weight:600;cursor:pointer;transition:border-color var(--t-hover),color var(--t-hover)}
 ol.steps button::before{content:counter(st);display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--bg);color:var(--text);font-size:13px;font-variant-numeric:tabular-nums}
 ol.steps button[data-done]::before{content:'\2713';background:var(--ok-soft);color:var(--ink)}
 ol.steps button[aria-current=step]{color:var(--text);border-color:var(--text)}ol.steps button[aria-current=step]::before{background:var(--fill);color:#1A1A1A}
@@ -102,7 +102,7 @@ fieldset.plain{border:0;margin:0;padding:0;min-width:0}fieldset.plain[disabled]{
 .help{margin:6px 0 0;color:var(--muted);font-size:13px;line-height:18px}.legal{margin:4px 0 0;color:var(--muted);font-size:13px;line-height:18px}
 .lbl{display:block;font-weight:500;font-size:13px;margin:12px 0 6px}.fixed{margin:0;min-height:22px}.errtext{color:var(--danger)}#ofSaved{font-size:13px}.ofpre{margin:16px 0}.ofpre:empty{display:none}.card>details:only-child{border-top:0;padding:0}
 details.card{padding-top:var(--sp-3);padding-bottom:var(--sp-3)}details.card>summary{min-height:44px;list-style:none;gap:12px}details.card>summary::-webkit-details-marker{display:none}
-details.card>summary::after{content:'';margin-left:auto;width:8px;height:8px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:translateY(-2px) rotate(45deg);transition:transform var(--t-hover) ease}details.card[open]>summary::after{transform:translateY(2px) rotate(-135deg)}details.card>.stack{margin-top:8px}
+details.card>summary::after{content:'';margin-left:auto;width:8px;height:8px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:translateY(-2px) rotate(45deg);transition:transform var(--t-hover)}details.card[open]>summary::after{transform:translateY(2px) rotate(-135deg)}details.card>.stack{margin-top:8px}
 @media print{header.top,nav.main,.viewbar,.noprint,.toast,ol.steps{display:none!important}body{background:#fff!important;color:#000}
   .wrap{max-width:none;padding:0}.card{box-shadow:none;border:1px solid #bbb;break-inside:avoid}.sheet{gap:8px}#view.enter{animation:none}}
 </style></head>
@@ -593,11 +593,11 @@ const screens = {
       return `<form class="card" id="ofForm" novalidate><fieldset class="plain stack"${fieldsetOpen()}><h2>Package</h2>
         <p class="sub">${admin ? 'The plan and the agreed price.' : "Reps quote Lite, Standard, Plus and Agency."}</p>
         <div><span class="lbl">Plan</span><div class="plancards" id="ofPlanCards" role="radiogroup" aria-label="Plan">${K.orderForm.plans.map((x) => {
-          const lvl = (K.prices.levels || []).find((l) => l.label === x), mx = (K.orderForm.mixPlans || {})[x];
+          const lvl = (K.prices.levels || []).find((l) => l.label === x);
           const price = lvl && lvl.amountCents ? money(lvl.amountCents) + ' /mo' : 'Over $1,000 /mo';
-          const detail = mx ? `${mx.minutes || ''} min · ${(mx.texts || 0).toLocaleString()} texts` : (x === 'Agency' ? 'Built per quote' : '');
+          const detail = x === 'Agency' ? 'Built per quote' : esc(lvl ? lvl.what.split('.')[0] + '.' : '');
           const sel = x === p.plan, dis = !(admin || K.orderForm.repPlans.includes(x));
-          return `<button type="button" role="radio" aria-checked="${sel}" class="pcard${sel ? ' sel' : ''}${x === 'Standard' ? ' pop' : ''}" data-plan="${esc(x)}"${dis ? ' disabled' : ''}>${x === 'Standard' ? '<span class="pbadge">Most popular</span>' : ''}<b>${esc(planName(x))}</b><span class="pprice">${esc(price)}</span><span class="pdetail">${esc(detail)}</span></button>`;
+          return `<button type="button" role="radio" aria-checked="${sel}" class="pcard${sel ? ' sel' : ''}${x === 'Standard' ? ' pop' : ''}" data-plan="${esc(x)}"${dis ? ' disabled' : ''}>${x === 'Standard' ? '<span class="pbadge">Most popular</span>' : ''}<b>${esc(planName(x))}</b><span class="pprice">${esc(price)}</span><span class="pdetail">${detail}</span></button>`;
         }).join('')}</div><input type="hidden" id="ofPlan" value="${esc(p.plan || 'Standard')}"></div>
           <div><label for="ofPrice" id="ofPriceL">Price in dollars</label><input id="ofPrice" inputmode="decimal" value="${p.priceCents != null ? p.priceCents / 100 : ''}"></div>
           ${admin ? `<div><label for="ofDisc">Discount (admin)</label><input id="ofDisc" maxlength="200" value="${esc(p.discount)}"></div><div><label for="ofBuild">Build fee (admin)</label><input id="ofBuild" maxlength="200" value="${esc(p.buildFee)}"></div>` : ''}</div>
