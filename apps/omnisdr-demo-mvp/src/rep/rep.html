@@ -221,10 +221,10 @@ const levelName = (l) => ({1:'Lite',2:'Standard',3:'Plus',4:'Agency'}[l] || `Lev
 const ofPill = (s) => `<span class="pill ${OF_STATUS[s][1]}">${OF_STATUS[s][0]}</span>`;
 const dollars = (v) => { const s = String(v ?? '').replace(/[$,\s]/g, ''); if (!s) return null; const n = Number(s); return Number.isFinite(n) ? Math.round(n * 100) : NaN; };
 // One field. Names are "<section>.<key>", so a section reads back with ofRead.
-function ofField(sec, f, v, acctSrc) {
+function ofField(sec, f, v, acctSrc, extraHint) {
   const id = `of_${sec}_${f.key}`, name = `${sec}.${f.key}`, req = f.req ? ' *' : '';
   const help = f.help ? `<p class="help" id="${id}_h">${esc(f.help)}</p>` : '', desc = f.help ? ` aria-describedby="${id}_h"` : '';
-  const srcBadge = acctSrc ? ' <span class="muted" style="font-size:0.8em">(from account)</span>' : '';
+  const srcBadge = (acctSrc ? ' <span class="muted" style="font-size:0.8em">(from account)</span>' : '') + (extraHint || '');
   if (f.kind === 'bool') return `<label class="check full"><input type="checkbox" id="${id}" name="${name}"${v ? ' checked' : ''}> ${esc(f.label)}${srcBadge}</label>`;
   if (f.kind === 'choice') return `<fieldset class="full radiogroup"${desc}><legend>${esc(f.label)}${req}${srcBadge}</legend><div class="radios">${Object.entries(f.options).map(([k, l]) => `<label><input type="radio" name="${name}" value="${esc(k)}"${v === k ? ' checked' : ''}> ${esc(l)}</label>`).join('')}</div>${help}</fieldset>`;
   const wide = (f.max || 0) > 120 || f.kind === 'email' ? 'full' : '', type = f.kind === 'email' ? 'email' : f.kind === 'date' ? 'date' : 'text';
@@ -233,6 +233,13 @@ function ofField(sec, f, v, acctSrc) {
 }
 // Map order form fields to account fields to detect pre-filled values
 const ACCT_FIELD_MAP = { client: { legalName: 'business', tradingName: 'business', address: 'address', city: 'city', state: 'state', zip: 'zip' }, services: { numbers: 'phone' } };
+// tradingName matches legalName — show hint instead of making it look like separate work
+const tradingSameHint = (sec, key, val, data) => {
+  if (sec === 'client' && key === 'tradingName' && val && data.client && data.client.legalName && String(val).trim() === String(data.client.legalName).trim()) {
+    return ' <span class="muted" style="font-size:0.8em">(same as legal name)</span>';
+  }
+  return '';
+};
 const isFromAcct = (sec, key, val, acct) => {
   const acctKey = (ACCT_FIELD_MAP[sec] || {})[key];
   if (!acctKey || !acct || val == null || val === '') return false;
@@ -241,10 +248,13 @@ const isFromAcct = (sec, key, val, acct) => {
 };
 // An admin-only field as a rep sees it: the value, never an input. The server refuses a rep's value and keeps the admin's.
 const ofFixed = (f, v) => `<div class="full"><span class="lbl">${esc(f.label)}</span><p class="fixed">${v != null && v !== '' ? esc(ofShow(f, v)) : '<span class="muted">Not recorded yet. An admin records it.</span>'}</p></div>`;
-const ofFields = (sec, data, admin, acct) => K.orderForm.sections[sec].map((f) => { const v = (data[sec] || {})[f.key]; return (f.admin && !admin ? ofFixed(f, v) : ofField(sec, f, v, isFromAcct(sec, f.key, v, acct))); }).join('');
+const ofFields = (sec, data, admin, acct) => K.orderForm.sections[sec].map((f) => { const v = (data[sec] || {})[f.key]; const sameHint = tradingSameHint(sec, f.key, v, data); return (f.admin && !admin ? ofFixed(f, v) : ofField(sec, f, v, isFromAcct(sec, f.key, v, acct), sameHint)); }).join('');
 function ofRead(el, sec) {
   const out = {};
   for (const f of K.orderForm.sections[sec]) { const x = el.elements[`${sec}.${f.key}`]; if (x) out[f.key] = f.kind === 'bool' ? x.checked : x.value; }
+  // Auto-default: billing email falls back to notice email when left blank
+  if (sec === 'client' && !out.billingEmail && out.noticeEmail) out.billingEmail = out.noticeEmail;
+  if (sec === 'client' && !out.billingName && out.signerName) out.billingName = out.signerName;
   return out;
 }
 const ofShow = (f, v) => (v == null || v === '' ? '' : f.kind === 'bool' ? (v ? 'Yes' : 'No') : f.kind === 'choice' ? f.options[v] || String(v) : String(v));
@@ -600,6 +610,7 @@ const screens = {
     const NEXT = { new: ['audit', 'Next: run the free check'], results_call: ['close', 'Next: the Order Form'], proposed: ['close', 'Next: the Order Form'], onboarding: ['onboarding', 'Next: onboarding'] }, next = NEXT[a.stage];
     view.innerHTML = `<p><a class="lnk" href="#pipeline">All accounts</a></p><h1>${esc(a.business)}</h1><p class="sub">${esc([a.niche, a.city, a.state].filter(Boolean).join(' · '))}</p>
       <div class="row acts"><label for="stg" class="muted">Stage</label><select id="stg">${stageOptions(a.stage)}</select>${next ? `<button class="btn" type="button" id="nextGo" data-tab="${next[0]}">${next[1]}</button>` : ''}</div>
+      ${(() => { const flow = [['new','Qualify'],['results_call','Close'],['proposed','Close'],['onboarding','Onboard'],['live','Live']]; const idx = flow.findIndex(([s]) => s === a.stage); if (idx < 0) return ''; return `<p class="muted noprint" style="margin:4px 0 0;font-size:0.85em">Workflow: ${flow.map(([s,l],i) => `<span style="${i===idx?'color:var(--mint);font-weight:700':i<idx?'color:var(--text)':''}">${l}</span>`).join(' <span aria-hidden="true">→</span> ')}</p>`; })()}
       <div class="tabs" role="tablist">${[['Overview', 0], ['Qualify', 4], ['Activity', 1], ['Close', 3], ['Onboard', 2]].map(([t, k]) => `<button class="tab" role="tab" data-t="${k}" aria-selected="${k === 0}">${t}</button>`).join('')}</div>
       <div data-p="0" class="grid two"><form class="card" id="ef"><div class="fields">
         ${[['business', 'Business name', 'full'], ['niche', 'Category'], ['phone', 'Phone'], ['email', 'Email'], ['website', 'Website', 'full'], ['address', 'Address', 'full'], ['city', 'City'], ['state', 'State'], ['signal', 'Why we are calling', 'full'], ['next_step', 'Next step', 'full']]
