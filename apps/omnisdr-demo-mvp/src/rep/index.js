@@ -200,6 +200,13 @@ async function api(req, env, me, path, m) {
     return { tasks: tasks.results, counts: { attempts, conversations, interested: by.interested || 0 }, stages: Object.fromEntries(stages.results.map((r) => [r.stage, r.n])) };
   }
 
+  if (m === 'GET' && path === '/waitlist') {
+    const r = await D.prepare(
+      `SELECT * FROM waitlist_leads ORDER BY submitted_at DESC LIMIT 200`
+    ).all();
+    return { leads: r.results };
+  }
+
   if (m === 'GET' && path === '/queue') {
     const r = await D.prepare(`SELECT a.*, (SELECT name FROM contacts c WHERE c.account_id = a.id ORDER BY is_primary DESC LIMIT 1) contact_name
       FROM accounts a WHERE a.archived = 0 AND a.stage IN ('new','results_call','proposed') AND (a.next_action_at IS NULL OR a.next_action_at <= ?) AND ${scope(me, 'a.', view).sql}

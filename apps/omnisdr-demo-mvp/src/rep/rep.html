@@ -116,7 +116,7 @@ details.card>summary::after{content:'';margin-left:auto;width:8px;height:8px;bor
 <body><div class="wrap">
 <header class="top"><div class="brand">__LOGO__<b>OmniSDR · Rep</b></div><span class="muted" id="who"></span></header>
 <nav class="main" id="nav" aria-label="Rep portal">
-  <a href="#today" data-g="home">Home</a><a href="#pipeline" data-g="sales">Sales</a><a href="#learn" data-g="learn">Learn</a><a href="#deals" data-g="deals">My deals</a><a href="#team" hidden id="navTeam" data-g="team">Team</a>
+  <a href="#today" data-g="home">Home</a><a href="#pipeline" data-g="sales">Sales</a><a href="#waitlist" data-g="sales">Wait-list</a><a href="#learn" data-g="learn">Learn</a><a href="#deals" data-g="deals">My deals</a><a href="#team" hidden id="navTeam" data-g="team">Team</a>
 </nav>
 <nav class="main tier2" id="subnav" aria-label="Section" hidden></nav>
 <div class="row viewbar" id="viewbar" hidden><label for="vw">Viewing</label><select id="vw"></select></div>
@@ -1118,6 +1118,15 @@ const screens = {
     $('#days').onclick = (e) => { const b = e.target.closest('[data-done]'); if (b) api('/tasks/' + b.dataset.done, { method: 'PATCH', body: { status: 'done' } }).then(() => { toast('Done'); route(); }, fail); };
   },
 
+  async waitlist() {
+    view.innerHTML = `<h1>Wait-list</h1><p class="sub">Signups from omnisdr.com — newest first. <span class="pill" style="background:var(--fill);color:#1A1A1A;font-weight:700;">Wait-list</span> leads are warm inbound.</p><section class="card"><div class="tbl"><table><thead><tr><th>Name</th><th>Email</th><th>Type</th><th>Company</th><th>Phone</th><th>Signed up</th></tr></thead><tbody><tr class="skel"><td colspan="6"><div class="skeleton"></div></td></tr><tr class="skel"><td colspan="6"><div class="skeleton"></div></td></tr></tbody></table></div></section>`;
+    const { leads } = await api('/waitlist');
+    const fmtDate = (iso) => { try { return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); } catch { return ''; } };
+    view.innerHTML = `<h1>Wait-list</h1><p class="sub">Signups from omnisdr.com — newest first. <span class="pill" style="background:var(--fill);color:#1A1A1A;font-weight:700;">Wait-list</span> leads are warm inbound.</p>
+      <div class="stats"><div class="card stat"><b>${leads.length}</b><span>Total signups</span></div><div class="card stat"><b>${leads.filter((x) => x.account_type === 'agency').length}</b><span>Agency</span></div><div class="card stat"><b>${leads.filter((x) => x.account_type === 'owner').length}</b><span>Owner</span></div></div>
+      <section class="card"><div class="tbl"><table><thead><tr><th>Name</th><th>Email</th><th>Type</th><th>Company</th><th>Phone</th><th>Signed up</th></tr></thead><tbody>${leads.length ? leads.map((x) => `<tr><td>${esc(x.name)} <span class="pill" style="background:var(--fill);color:#1A1A1A;font-size:11px;padding:2px 8px;">Wait-list</span></td><td><a class="lnk" href="mailto:${esc(x.email)}">${esc(x.email)}</a></td><td>${x.account_type === 'agency' ? 'Agency' : 'Owner'}</td><td>${esc(x.company || '—')}</td><td>${esc(x.phone || '—')}</td><td>${fmtDate(x.submitted_at)}</td></tr>`).join('') : `<tr><td colspan="6" class="muted">No signups yet. Share omnisdr.com to fill this list.</td></tr>`}</tbody></table></div></section>`;
+  },
+
   async deals() {
     // Skeleton while loading
     view.innerHTML = `<h1>My deals</h1><p class="sub">Every sale you closed, newest first.</p><section class="card"><div class="tbl"><table><thead><tr><th>Business</th><th>Plan</th><th>Price</th><th>Closed</th><th>Stage</th></tr></thead><tbody><tr class="skel"><td colspan="5"><div class="skeleton"></div></td></tr><tr class="skel"><td colspan="5"><div class="skeleton"></div></td></tr><tr class="skel"><td colspan="5"><div class="skeleton"></div></td></tr></tbody></table></div></section>`;
@@ -1253,7 +1262,7 @@ function clearCallsKey() { if (callsKeyHandler) { document.removeEventListener('
 // Top-level groups. Hash routes are unchanged; a tab's third value marks it admin only.
 const GROUPS = [
   { key: 'home', tabs: [['today', 'Today']] },
-  { key: 'sales', tabs: [['pipeline', 'Pipeline'], ['calls', 'Call Room']] },
+  { key: 'sales', tabs: [['pipeline', 'Pipeline'], ['calls', 'Call Room'], ['waitlist', 'Wait-list']] },
   { key: 'learn', tabs: [['learn', 'Learn']] },
   { key: 'deals', tabs: [['deals', 'My deals']] },
   { key: 'team', tabs: [['team', 'Team'], ['engine', 'Lead Engine', true]] },
