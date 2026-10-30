@@ -428,13 +428,18 @@ const screens = {
     view.innerHTML = `<h1>Pipeline</h1><p class="sub">Drag cards between stages to move them.</p><div class="board"><section class="col"><h2>Loading<span></span></h2><div class="coldrop"><div class="mini"><div class="skeleton" style="height:60px"></div></div><div class="mini"><div class="skeleton" style="height:60px"></div></div></div></section><section class="col"><h2><span></span></h2><div class="coldrop"><div class="mini"><div class="skeleton" style="height:60px"></div></div></div></section></div>`;
     const { accounts } = await api('/accounts');
     const stages = K.stages.filter((s) => s !== 'lost');
-    view.innerHTML = `<h1>Pipeline</h1><p class="sub">Drag cards between stages to move them. Onboarding and Live are set by Christian.</p><div class="board" id="board">${stages.map((st) => {
+    const PVIEW = sessionStorage.getItem('rep.pipelineView') || 'list';
+    const setPView = (v) => { try { sessionStorage.setItem('rep.pipelineView', v); } catch {} route(); };
+    view.innerHTML = `<h1>Pipeline</h1><div class="row" role="tablist" aria-label="Pipeline view" style="margin-bottom:12px">
+      <button type="button" role="tab" aria-selected="${PVIEW === 'board'}" class="btn ${PVIEW === 'board' ? '' : 'ghost'} sm" data-pview="board">Board</button>
+      <button type="button" role="tab" aria-selected="${PVIEW === 'list'}" class="btn ${PVIEW === 'list' ? '' : 'ghost'} sm" data-pview="list">List</button>
+    </div><div id="pBoardWrap"${PVIEW !== 'board' ? ' hidden' : ''}><p class="sub">Drag cards between stages to move them. Onboarding and Live are set by Christian.</p><div class="board" id="board">${stages.map((st) => {
       const list = accounts.filter((a) => a.stage === st);
       return `<section class="col" data-stage="${st}"><h2>${STAGE_LABEL[st]}<span>${list.length}</span></h2><div class="coldrop">${list.map((a) => `<div class="mini" draggable="true" data-id="${esc(a.id)}"><a class="lnk" href="#account/${esc(a.id)}">${esc(a.business)}</a>
         <small class="muted">${esc(a.next_step || a.niche || '')}</small><div class="row"><select data-move="${esc(a.id)}" aria-label="Move ${esc(a.business)} to stage" class="move-sel">${stages.map((s) => `<option value="${s}"${s === a.stage ? ' selected' : ''}>${STAGE_LABEL[s]}</option>`).join('')}</select>${['results_call', 'proposed'].includes(a.stage) ? `<a class="lnk" href="#account/${esc(a.id)}/close">Close the sale</a>` : ''}</div></div>`).join('')}</div></section>`;
-    }).join('')}</div><hr class="sect"><section id="accountsSection"><h2>All accounts</h2><p class="sub">${admin ? 'Every lead and account in the book. Filter, sort into categories and hand them out.' : 'Every business you are working, prospect to live.'}</p>
+    }).join('')}</div></div><div id="pListWrap"${PVIEW !== 'list' ? ' hidden' : ''}><section id="accountsSection"><h2>All accounts</h2><p class="sub">${admin ? 'Every lead and account in the book. Filter, sort into categories and hand them out.' : 'Every business you are working, prospect to live.'}</p>
       ${admin ? '<div class="stats" id="tiles"></div>' : ''}
-      <section class="card stack"><div class="row"><input class="grow" id="q" type="search" placeholder="Search name, category, city or phone" aria-label="Search accounts">
+      <section class="card stack"><div class="row"><input class="grow" id="q" type="search" placeholder="Search company, contact, category, city or phone" aria-label="Search accounts">
         <select id="st" aria-label="Stage" class="grow"><option value="">All stages</option>${K.stages.map((s) => `<option value="${s}">${STAGE_LABEL[s]}</option>`).join('')}</select>
         <select id="sa" aria-label="State" class="grow"><option value="">All states</option></select></div>
         <div><p class="muted">Category</p><div class="chips" id="fNiche"></div></div>
@@ -456,7 +461,9 @@ const screens = {
         <div><label for="ny">City</label><input id="ny" name="city" maxlength="80"></div>
         <div><label for="ns">State</label><input id="ns" name="state" maxlength="40"></div>
         <div class="full"><label for="ng">Why we are calling (the signal)</label><input id="ng" name="signal" maxlength="300" placeholder="Form went unanswered 6 hours on a Tuesday"></div>
-      </div><div class="row"><button class="btn">Save</button><button class="btn ghost" type="button" id="cx">Cancel</button></div></form></dialog></section>`;
+      </div><div class="row"><button class="btn">Save</button><button class="btn ghost" type="button" id="cx">Cancel</button></div></form></dialog></section></div>`;
+    // View toggle
+    view.querySelectorAll('[data-pview]').forEach((b) => b.onclick = () => setPView(b.dataset.pview));
     // Drag and drop
     const board = $('#board');
     let dragId = null;
@@ -602,7 +609,7 @@ const screens = {
         ${forms.length ? `<ul class="list">${forms.map((x) => `<li><div class="t">${esc(x.label)} ${ofPill(x.status)}<small>${esc([planName(x.data.package?.plan), x.data.package?.priceCents != null ? money(x.data.package.priceCents) : '', when(x.updated_at)].filter(Boolean).join(' · '))}</small></div><a class="btn ghost sm" href="#deal/${esc(x.id)}">Open</a></li>`).join('')}</ul>` : ''}
         <p>${openForm ? `<a class="btn" href="#deal/${esc(openForm.id)}">Resume ${esc(openForm.label)}</a>` : '<button class="btn" type="button" id="ofStart">Start the Order Form</button>'}</p></section>
         <div class="card stack">${d.deals.length ? `<p>Closed: ${d.deals.map((x) => `${levelName(x.level)}, ${money(x.price_cents)}${x.price_is_draft ? ' (draft price)' : ''}, ${when(x.closed_at)}`).join('; ')}</p>` : ''}
-        ${['onboarding', 'live'].includes(a.stage) ? '<p class="muted">This account is signed. Next is the Onboarding tab.</p>' : `<section class="card stack" style="border-style:dashed"><h2>Quick close</h2><p class="sub">Already have the details? Skip the Order Form and record the sale directly.</p><form id="df" class="stack"><label for="lv">What they bought</label><select id="lv" name="level">${levels.map((l) => `<option value="${l.level}">${esc(l.label)}: ${l.amountCents != null ? money(l.amountCents) + ' a month' : 'over $1,000 a month'}</option>`).join('')}</select>
+        ${['onboarding', 'live'].includes(a.stage) ? '<p class="muted">This account is signed. Next is the Onboarding tab.</p>' : `<section class="card stack" style="border-style:dashed"><h2>Quick close</h2><p class="sub">Already have the details? Skip the Order Form and record the sale directly.</p><form id="df" class="stack"><span class="lbl">What they bought</span><div class="qq-plans" id="dfPlans" role="radiogroup" aria-label="Plan">${levels.map((l) => `<button type="button" role="radio" aria-checked="${l.level === 2 ? 'true' : 'false'}" class="qq-plan${l.level === 2 ? ' sel' : ''}" data-level="${l.level}"><b>${esc(l.label)}</b><span class="qq-price">${l.amountCents != null ? money(l.amountCents) + ' /mo' : 'Over $1,000'}</span></button>`).join('')}</div><input type="hidden" id="lv" name="level" value="2">
           <div id="pbox" hidden><label for="pc" id="plbl">Agreed price in dollars (admin)</label><input id="pc" name="price" inputmode="decimal"><p class="note" id="psplit"></p>
             <div class="mix" id="mixbox" hidden><h3>Usage mix</h3><p class="note">Slide to trade calls for texts inside the same allowance. Price, allowance and your pay stay exactly as they are.</p>
               <dl class="mixfixed"><div><dt>Price</dt><dd id="mxPrice"></dd></div><div><dt>Allowance</dt><dd id="mxAllow"></dd></div><div><dt>You and the developer, each</dt><dd id="mxPay"></dd></div></dl>
@@ -676,7 +683,24 @@ const screens = {
       $('#mx').oninput = () => { if (!MX) return; pos = MX.steps[MX.steps.length - 1 - Number($('#mx').value)].p; paint(); };
       $('#mxReset').onclick = () => { if (MX) { pos = MX.defaultPosition; paint(); } };
       $('#pc').oninput = split;
-      $('#lv').onchange = sync;
+      $('#dfPlans').onclick = (e) => {
+        const b = e.target.closest('[data-level]'); if (!b) return;
+        $('#lv').value = b.dataset.level;
+        $$('#dfPlans .qq-plan').forEach((x) => {
+          const on = x === b;
+          x.classList.toggle('sel', on); x.setAttribute('aria-checked', String(on));
+        });
+        sync();
+      };
+      $('#dfPlans').addEventListener('keydown', (e) => {
+        const cards = [...$('#dfPlans').querySelectorAll('.qq-plan')];
+        const idx = cards.indexOf(document.activeElement);
+        if (idx < 0) return;
+        let n = null;
+        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') n = cards[(idx + 1) % cards.length];
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') n = cards[(idx - 1 + cards.length) % cards.length];
+        if (n) { e.preventDefault(); n.focus(); n.click(); }
+      });
       // Apply quick quote params
       if (qqPlan) {
         const lvl = levels.find((l) => l.label === decodeURIComponent(qqPlan));

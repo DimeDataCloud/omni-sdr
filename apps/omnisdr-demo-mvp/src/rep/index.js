@@ -213,7 +213,7 @@ async function api(req, env, me, path, m) {
       const sa = u.searchParams.get('state'); if (sa) { where.push('state = ?'); args.push(sa.slice(0, 40)); }
       // The pool: leads still held by an admin, waiting to be handed out. Admin only; a rep's scope already limits them.
       if (isAdmin(me) && u.searchParams.get('pool') === '1') where.push("owner_email IN (SELECT email FROM reps WHERE role = 'admin')");
-      const q = (u.searchParams.get('q') || '').trim().slice(0, 80); if (q) { where.push("(business LIKE ? ESCAPE '\\' OR niche LIKE ? ESCAPE '\\' OR city LIKE ? ESCAPE '\\' OR phone LIKE ? ESCAPE '\\')"); const like = '%' + q.replace(/[\\%_]/g, (c) => '\\' + c) + '%'; args.push(like, like, like, like); }
+      const q = (u.searchParams.get('q') || '').trim().slice(0, 80); if (q) { where.push("(business LIKE ? ESCAPE '\\' OR niche LIKE ? ESCAPE '\\' OR city LIKE ? ESCAPE '\\' OR phone LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM contacts c WHERE c.account_id = accounts.id AND c.name LIKE ? ESCAPE '\\'))"); const like = '%' + q.replace(/[\\%_]/g, (c) => '\\' + c) + '%'; args.push(like, like, like, like, like); }
       const r = await D.prepare(`SELECT * FROM accounts WHERE ${where.join(' AND ')} ORDER BY updated_at DESC LIMIT 500`).bind(...args).all();
       return { accounts: r.results.map(shape) };
     }
