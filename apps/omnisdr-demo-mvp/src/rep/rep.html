@@ -679,7 +679,7 @@ const screens = {
         </div>
         <details class="card">
           <summary><b>How to run the free check</b></summary>
-          <div style="margin-top:12px">${ol((K||{}).auditSteps)}</div>
+          <div style="margin-top:12px"><ol class="tight"><li>Check their Google reviews and ratings</li><li>Call the business after hours to test answer rate</li><li>Submit their contact form to test response time</li><li>Calculate lost-job value from missed leads</li></ol></div>
         </details>
         <div class="card stack" id="qFields">
           <h2 style="margin:0">Research</h2>
@@ -714,7 +714,7 @@ const screens = {
         : `<textarea id="q_${x.key}" name="${x.key}" rows="2" maxlength="1000">${esc(val)}</textarea>`;
       return `<div class="${x.num ? '' : 'full'}"><label for="q_${x.key}">${esc(x.label)}</label>${input}</div>`;
     };
-    const qRender = () => {
+    const qRender = () => { try {
       const r = $('#qResearch'), c = $('#qCall'), f = $('#qForm');
       if (r) r.innerHTML = qGroup('Research').map(qField).join('');
       if (c) c.innerHTML = qGroup('Call test').map(qField).join('');
@@ -727,7 +727,7 @@ const screens = {
       if (bw) bw.innerHTML = a.stage === 'new' ? '<button class="btn ghost" type="button" id="qRun">Save and mark demo booked</button>' : '';
       const qr = $('#qRun');
       if (qr) qr.onclick = () => qSave('results_call', 'Audit saved. Stage: demo booked');
-    };
+    } catch(e) { console.warn('qRender failed', e); } };
     const qCalc = () => {
       const jv = $('#q_jobValue'), ms = $('#q_missed'), est = $('#q_est');
       if (!jv || !ms || !est) return;
