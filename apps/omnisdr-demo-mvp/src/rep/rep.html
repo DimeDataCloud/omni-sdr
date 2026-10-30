@@ -196,7 +196,7 @@ function isHot(a, now = Date.now()) {
 const OF_STEPS = [['package', 'Package'], ['client', 'Client'], ['services', 'Services'], ['term', 'Term and payment'], ['review', 'Review and sign'], ['handoff', 'Hand-off']];
 const OF_STATUS = { draft: ['Draft', ''], client_review: ['Client filled in, review', 'warn'], filed: ['Filed', ''], void: ['Void', 'bad'] };
 const OF_TITLE = { client: 'Client details', services: 'Services and setup', term: 'Term and payment', signing: 'Signing' };
-const PLAN_LEVEL = { Pilot: 1, Lite: 2, Standard: 2, Plus: 2, Custom: 4, Agency: 4 }; // the price level a filed plan closes at
+const PLAN_LEVEL = { Lite: 1, Standard: 2, Plus: 3, Agency: 4 }; // the price level a filed plan closes at
 const planName = (p) => (p === 'Custom' ? 'Custom Build' : p || '');
 const ofPill = (s) => `<span class="pill ${OF_STATUS[s][1]}">${OF_STATUS[s][0]}</span>`;
 const dollars = (v) => { const s = String(v ?? '').replace(/[$,\s]/g, ''); if (!s) return null; const n = Number(s); return Number.isFinite(n) ? Math.round(n * 100) : NaN; };
@@ -463,7 +463,7 @@ const screens = {
         ${forms.length ? `<ul class="list">${forms.map((x) => `<li><div class="t">${esc(x.label)} ${ofPill(x.status)}<small>${esc([planName(x.data.package?.plan), x.data.package?.priceCents != null ? money(x.data.package.priceCents) : '', when(x.updated_at)].filter(Boolean).join(' · '))}</small></div><a class="btn ghost sm" href="#deal/${esc(x.id)}">Open</a></li>`).join('')}</ul>` : ''}
         <p>${openForm ? `<a class="btn" href="#deal/${esc(openForm.id)}">Resume ${esc(openForm.label)}</a>` : '<button class="btn" type="button" id="ofStart">Start the Order Form</button>'}</p></section>
         <div class="card stack">${d.deals.length ? `<p>Closed: ${d.deals.map((x) => `Level ${x.level}, ${money(x.price_cents)}${x.price_is_draft ? ' (draft price)' : ''}, ${when(x.closed_at)}`).join('; ')}</p>` : ''}
-        ${['onboarding', 'live'].includes(a.stage) ? '<p class="muted">This account is signed. Next is the Onboarding tab.</p>' : `<details><summary>Close without an Order Form</summary><form id="df" class="stack"><label for="lv">What they bought</label><select id="lv" name="level">${levels.map((l) => `<option value="${l.level}">${esc(l.label)}: ${l.level === 1 ? 'from ' + money(l.amountCents) : l.amountCents != null ? money(l.amountCents) : 'priced by Christian'}</option>`).join('')}</select>
+        ${['onboarding', 'live'].includes(a.stage) ? '<p class="muted">This account is signed. Next is the Onboarding tab.</p>' : `<details><summary>Close without an Order Form</summary><form id="df" class="stack"><label for="lv">What they bought</label><select id="lv" name="level">${levels.map((l) => `<option value="${l.level}">${esc(l.label)}: ${l.amountCents != null ? money(l.amountCents) + ' a month' : 'over $1,000 a month'}</option>`).join('')}</select>
           <div id="pbox" hidden><label for="pc" id="plbl">Agreed price in dollars (admin)</label><input id="pc" name="price" inputmode="decimal"><p class="note" id="psplit"></p>
             <div class="mix" id="mixbox" hidden><h3>Usage mix</h3><p class="note">Slide to trade calls for texts inside the same allowance. Price, allowance and your pay stay exactly as they are.</p>
               <dl class="mixfixed"><div><dt>Price</dt><dd id="mxPrice"></dd></div><div><dt>Allowance</dt><dd id="mxAllow"></dd></div><div><dt>You and the developer, each</dt><dd id="mxPay"></dd></div></dl>
@@ -498,36 +498,37 @@ const screens = {
     $('#nt').onsubmit = (e) => { e.preventDefault(); api(`/accounts/${a.id}/notes`, { method: 'POST', body: form(e.target) }).then(() => { toast('Added'); route(); }, fail); };
     const df = $('#df');
     if (df) {
-      const sync = () => { const l = levels.find((x) => x.level === Number($('#lv').value)), pilot = l.level === 1;
-        $('#pbox').hidden = !(pilot || (l.amountCents == null && ME.role === 'admin'));
-        $('#plbl').textContent = pilot ? 'Pilot price in dollars, $499 minimum' : 'Agreed price in dollars (admin)';
-        if (pilot && !$('#pc').value) $('#pc').value = String(K.pilot.minCents / 100); split(); };
-      const split = () => { const c = Math.round(parseFloat($('#pc').value) * 100), pilot = Number($('#lv').value) === 1;
-        if (!pilot || !(c >= K.pilot.minCents)) { $('#psplit').textContent = pilot ? 'The pilot starts at $499.' : ''; FIX = null; mixFor = 0; $('#mixbox').hidden = true; return; }
-        const r35 = Math.round((c * K.pilot.allowanceRate) / 500) * 500, al = c >= K.pilot.plusFromCents ? Math.max(r35, K.pilot.plusAllowanceCents) : r35, each = Math.round((c - c * K.pilot.feeRate - al) / 2);
-        $('#psplit').textContent = `Allowance ${money(al)}. You and the developer, about ${money(Math.round(each / 100) * 100)} each (draft).`;
-        FIX = { price: c, allow: al, pay: Math.round(each / 100) * 100 }; loadMix(c); };
+      const sync = () => { const l = levels.find((x) => x.level === Number($('#lv').value)), agency = l.label === 'Agency';
+        $('#pbox').hidden = !agency;
+        $('#plbl').textContent = agency ? 'Agreed price in dollars (over $1,000)' : 'Plan price in dollars';
+        if (!agency) $('#pc').value = String(l.amountCents / 100); split(); };
+      const split = () => { const l = levels.find((x) => x.level === Number($('#lv').value)), agency = l.label === 'Agency';
+        const c = agency ? Math.round(parseFloat($('#pc').value) * 100) : l.amountCents;
+        if (agency && !(c > 100000)) { $('#psplit').textContent = 'Agency starts over $1,000.'; FIX = null; mixFor = 0; $('#mixbox').hidden = true; return; }
+        const payRow = (K.pay.table || []).find((r) => r.plan.startsWith(l.label));
+        $('#psplit').textContent = payRow ? `Allowance ${payRow.allowance} a month. You and the developer, ${payRow.each} (draft).` : '';
+        FIX = { price: c, allow: payRow ? payRow.allowance : '', plan: l.label }; loadMix(l.label); };
       // The slider: steps come from the server (one copy of the math). Left is more calls, so the control value runs against position.
       let FIX = null, MX = null, pos = null, mixFor = 0; const num = (v) => v.toLocaleString();
-      const loadMix = (c) => { if (mixFor === c) return paint(); mixFor = c;
-        api('/mix?priceCents=' + c).then((m) => { if (mixFor !== c) return; const keep = MX && MX.allowanceCents === m.allowanceCents && pos != null && pos >= m.lo && pos <= m.hi; MX = { ...m, forPrice: c }; if (!keep) pos = m.defaultPosition; paint(); }, () => { MX = null; $('#mixbox').hidden = true; }); };
+      const loadMix = (planLabel) => { if (mixFor === planLabel) return paint(); mixFor = planLabel;
+        api('/mix?plan=' + encodeURIComponent(planLabel)).then((m) => { if (mixFor !== planLabel) return; const keep = MX && MX.allowanceCents === m.allowanceCents && pos != null && pos >= m.lo && pos <= m.hi; MX = { ...m, forPlan: planLabel }; if (!keep) pos = m.defaultPosition; paint(); }, () => { MX = null; $('#mixbox').hidden = true; }); };
       const cur = () => MX.steps.find((s) => s.p === pos);
-      function paint() { if (!MX || !FIX || !FIX.price || MX.forPrice !== FIX.price) return; // never show one price's mix beside another price's allowance
+      function paint() { if (!MX || !FIX || !FIX.price || MX.forPlan !== FIX.plan) return; // never show one plan's mix beside another plan's allowance
         const r = $('#mx'), n = MX.steps.length, s = cur();
         $('#mixbox').hidden = false; r.max = String(n - 1); r.value = String(n - 1 - MX.steps.indexOf(s));
         r.setAttribute('aria-valuetext', `${num(s.minutes)} minutes, ${num(s.texts)} texts`);
-        $('#mxPrice').textContent = money(FIX.price) + ' plus tax'; $('#mxAllow').textContent = money(FIX.allow); $('#mxPay').textContent = 'about ' + money(FIX.pay);
+        $('#mxPrice').textContent = money(FIX.price) + ' plus tax'; $('#mxAllow').textContent = FIX.allow + ' a month'; $('#mxPay').textContent = '';
         $('#mxMin').textContent = num(s.minutes); $('#mxTxt').textContent = num(s.texts); $('#mxThr').textContent = num(s.threads);
         $('#mxTrade').textContent = `10 minutes is about ${MX.tradeTexts} texts.` + (s.p === MX.defaultPosition ? ' This is the plan default.' : '');
-        $('#qsheet').textContent = ['OmniSDR pilot quote (draft)', `Price: ${money(FIX.price)} plus tax`, `Credit allowance: ${money(FIX.allow)} a month`,
+        $('#qsheet').textContent = ['OmniSDR quote (draft)', `Plan: ${FIX.plan}`, `Price: ${money(FIX.price)} plus tax`, `Credit allowance: ${FIX.allow} a month`,
           `Usage mix: ${num(s.minutes)} voice minutes, ${num(s.texts)} texts, ${num(s.threads)} AI conversations a month`,
           `Overage: $${(K.mix.overage.minuteCents / 100).toFixed(2)} a minute, $${(K.mix.overage.textCents / 100).toFixed(2)} a text`].join('\n'); }
       $('#mx').oninput = () => { if (!MX) return; pos = MX.steps[MX.steps.length - 1 - Number($('#mx').value)].p; paint(); };
       $('#mxReset').onclick = () => { if (MX) { pos = MX.defaultPosition; paint(); } };
       $('#pc').oninput = split;
       $('#lv').onchange = sync; sync();
-      df.onsubmit = (e) => { e.preventDefault(); const f = form(df), cents = f.price ? Math.round(parseFloat(f.price) * 100) : undefined;
-        api('/deals', { method: 'POST', body: { accountId: a.id, level: Number(f.level), notes: f.notes, priceCents: cents, ...(Number(f.level) === 1 && MX && pos != null ? { mixPosition: pos } : {}) } }).then(() => { toast('Sale closed. Fill in onboarding next.'); route(); }, fail); };
+      df.onsubmit = (e) => { e.preventDefault(); const f = form(df), l = levels.find((x) => x.level === Number(f.level)), cents = l.label === 'Agency' ? Math.round(parseFloat(f.price) * 100) : l.amountCents;
+        api('/deals', { method: 'POST', body: { accountId: a.id, level: Number(f.level), notes: f.notes, priceCents: cents, ...(MX && pos != null ? { mixPosition: pos } : {}) } }).then(() => { toast('Sale closed. Fill in onboarding next.'); route(); }, fail); };
     }
   },
 
@@ -589,7 +590,7 @@ const screens = {
     function pkgStep() {
       const p = F.data.package || {};
       return `<form class="card" id="ofForm" novalidate><fieldset class="plain stack"${fieldsetOpen()}><h2>Package</h2>
-        <p class="sub">${admin ? 'The plan and the agreed price.' : "Reps quote the pilot. Plans, custom builds and agency deals are priced by Christian: send him the owner's needs."}</p>
+        <p class="sub">${admin ? 'The plan and the agreed price.' : "Reps quote Lite, Standard, Plus and Agency.: send him the owner's needs."}</p>
         <div class="fields"><div><label for="ofPlan">Plan</label><select id="ofPlan">${K.orderForm.plans.map((x) => `<option value="${x}"${x === p.plan ? ' selected' : ''}${admin || K.orderForm.repPlans.includes(x) ? '' : ' disabled'}>${esc(planName(x))}</option>`).join('')}</select></div>
           <div><label for="ofPrice" id="ofPriceL">Price in dollars</label><input id="ofPrice" inputmode="decimal" value="${p.priceCents != null ? p.priceCents / 100 : ''}"></div>
           ${admin ? `<div><label for="ofDisc">Discount (admin)</label><input id="ofDisc" maxlength="200" value="${esc(p.discount)}"></div><div><label for="ofBuild">Build fee (admin)</label><input id="ofBuild" maxlength="200" value="${esc(p.buildFee)}"></div>` : ''}</div>
@@ -609,7 +610,7 @@ const screens = {
       <div class="row noprint ofnav"><span class="row"><button class="btn ghost" type="button" id="ofPrint">Print or save as PDF</button>${voidBtn()}</span>${isOpen() ? '<button class="btn" type="button" id="ofFile">File the Order Form</button>' : ''}</div>`;
     function handoffStep() {
       if (F.status !== 'filed') return `<section class="card stack"><h2>Hand-off</h2><p class="sub">${F.status === 'void' ? 'This Order Form is void.' : 'File the Order Form on the Review step first. Then this step records the sale, takes the onboarding details and gets the invoice file ready.'}</p></section>`;
-      const p = F.data.package || {}, signed = ['onboarding', 'live'].includes(D.account.stage), canSale = p.plan === 'Pilot' || admin;
+      const p = F.data.package || {}, signed = ['onboarding', 'live'].includes(D.account.stage), canSale = !!p.plan && (admin || K.orderForm.repPlans.includes(p.plan));
       return `<section class="card stack"><h2>1. Record the sale</h2>${signed ? '<p class="muted">Done. This account is signed.</p>' : canSale ? `<p class="sub">Closes the deal at ${esc(planName(p.plan))}, ${money(p.priceCents)} plus tax, and moves the account to onboarding.</p><p><button class="btn" type="button" id="ofSale">Record the sale</button></p>` : '<p class="muted">An admin records this sale.</p>'}</section>
         <form class="card" id="ofOnb"><h2>2. Onboarding details</h2><p class="sub">Fill these in with the owner. The developer starts from them.</p><div class="fields">${K.onboarding.map((f) => `<div class="full"><label for="ob_${f.key}">${esc(f.label)}</label><textarea id="ob_${f.key}" name="${f.key}" rows="2" maxlength="1000">${esc(D.account.onboarding[f.key])}</textarea></div>`).join('')}</div><button class="btn">Save onboarding</button></form>
         <section class="card stack"><h2>3. Invoice</h2><p class="sub">This file holds what omni-invoice reads from the Order Form. Give it to omni-invoice in Claude, confirm it in the Omni invoices pane, then review and send the invoice in Stripe. The portal sends nothing.</p>
@@ -661,19 +662,18 @@ const screens = {
       $('#ofDl').onclick = async () => { try { const url = URL.createObjectURL(await (await file()).blob()); const a = Object.assign(document.createElement('a'), { href: url, download: `${F.label}-for-invoicing.json` }); a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); } catch (e) { fail(e); } };
       $('#ofOnb').onsubmit = (e) => { e.preventDefault(); act(() => api('/accounts/' + D.account.id, { method: 'PATCH', body: { onboarding: form(e.target) } }), 'Onboarding saved'); };
       if ($('#ofSale')) $('#ofSale').onclick = () => { const p = F.data.package;
-        act(() => api('/deals', { method: 'POST', body: { accountId: D.account.id, level: PLAN_LEVEL[p.plan], priceCents: p.priceCents, notes: `Order Form ${F.label}`, ...(p.plan === 'Pilot' && p.mixPosition != null ? { mixPosition: p.mixPosition } : {}) } }), 'Sale recorded. The account is in onboarding.'); };
+        act(() => api('/deals', { method: 'POST', body: { accountId: D.account.id, level: PLAN_LEVEL[p.plan], priceCents: p.priceCents, notes: `Order Form ${F.label}`, ...(p.mixPosition != null ? { mixPosition: p.mixPosition } : {}) } }), 'Sale recorded. The account is in onboarding.'); };
     }
     // The package: the plan, the price and the mix. Slider steps come from the server (one copy of the math).
     function wirePkg(el) {
       const plan = $('#ofPlan'), price = $('#ofPrice');
       async function loadMix() {
-        const pl = plan.value, pilot = pl === 'Pilot', c = dollars(price.value), me = ++mixReq;
-        $('#ofPriceL').textContent = pilot ? 'Pilot price in dollars, $499 minimum' : 'Agreed price in dollars'; $('#ofPilotFee').hidden = !pilot;
-        price.disabled = !isOpen() || (!pilot && !admin); // the server refuses it anyway
+        const pl = plan.value, c = dollars(price.value), me = ++mixReq;
+        $('#ofPriceL').textContent = pl === 'Agency' ? 'Agreed price in dollars (over $1,000)' : 'Agreed price in dollars'; $('#ofPilotFee').hidden = false;
+        price.disabled = !isOpen(); // reps quote all four plans; the server refuses bad prices anyway
         let m = null;
         try {
-          if (pilot && c >= K.pilot.minCents && c <= K.pilot.maxCents) m = await api('/mix?priceCents=' + c, { noView: true });
-          else if (!pilot && K.orderForm.mixPlans.includes(pl)) m = await api('/mix?plan=' + encodeURIComponent(pl), { noView: true });
+          if (K.orderForm.mixPlans.includes(pl)) m = await api('/mix?plan=' + encodeURIComponent(pl), { noView: true });
         } catch { m = null; }
         if (me !== mixReq) return false; // a newer price is on its way
         MXS = m; if (MXS && !MXS.steps.some((x) => x.p === POS)) POS = MXS.defaultPosition;
@@ -681,9 +681,9 @@ const screens = {
       }
       function paintMix() {
         const pl = plan.value, c = dollars(price.value), note = $('#ofPriceNote');
-        const warn = pl === 'Pilot' ? (!(c >= K.pilot.minCents) ? 'The pilot starts at $499.' : c > K.pilot.maxCents ? 'That is above a pilot. Send it to Christian as a custom quote.' : '') : admin && !(c > 0) ? 'Enter the agreed price.' : '';
+        const warn = pl === 'Agency' && !(c > 100000) ? 'Agency starts over $1,000.' : !(c > 0) ? 'Enter the agreed price.' : '';
         note.className = warn ? 'note' : 'muted';
-        note.textContent = warn || (!admin && pl !== 'Pilot' ? 'Christian prices this plan.' : MXS ? `Credit allowance ${money(MXS.allowanceCents)}${pl === 'Pilot' ? '' : ' a month'}.` : pl === 'Pilot' ? '' : 'The allowance is built per quote.');
+        note.textContent = warn || (MXS ? `Credit allowance ${money(MXS.allowanceCents)} a month.` : 'The allowance is built per quote.');
         $('#ofMix').hidden = !MXS; if (!MXS) return;
         const r = $('#ofMx'), n = MXS.steps.length, s = MXS.steps.find((x) => x.p === POS) || MXS.steps[0];
         r.max = String(n - 1); r.value = String(n - 1 - MXS.steps.indexOf(s)); r.setAttribute('aria-valuetext', `${s.minutes.toLocaleString()} minutes, ${s.texts.toLocaleString()} texts`);
@@ -692,7 +692,7 @@ const screens = {
       }
       const body = () => {
         const pl = plan.value, c = dollars(price.value);
-        if (Number.isNaN(c) || (pl === 'Pilot' && c != null && (c < K.pilot.minCents || c > K.pilot.maxCents))) return null; // the note says why; nothing to save
+        if (Number.isNaN(c)) return null; // the note says why; nothing to save
         return { package: { plan: pl, priceCents: c, mixPosition: MXS ? POS : null, ...(admin ? { discount: $('#ofDisc').value, buildFee: $('#ofBuild').value } : {}) } };
       };
       const save = (ms) => queue(async () => ((await loadMix()) ? body() : null), ms);
@@ -731,7 +731,7 @@ const screens = {
     const pay = (x) => x.level === 1 && x.eachCents != null ? 'about ' + money(Math.round(x.eachCents / 100) * 100) : 'Set when Christian prices it';
     view.innerHTML = `<h1>My deals</h1><p class="sub">Every sale you closed, newest first. Pay figures are draft until prices are final.</p>
       <div class="stats"><div class="card stat"><b>${deals.length}</b><span>Closed</span></div><div class="card stat"><b>${deals.filter((x) => x.stage === 'live').length}</b><span>Live</span></div><div class="card stat"><b>${money(deals.reduce((n, x) => n + x.price_cents, 0))}</b><span>Sold, before tax</span></div></div>
-      <section class="card"><div class="tbl"><table><thead><tr><th>Business</th><th>Level</th><th>Price</th><th>Closed</th><th>Stage</th><th>Usage mix</th><th>Your pay, each (draft)</th>${admin ? '<th>Rep</th>' : ''}</tr></thead><tbody>${deals.length ? deals.map((x) => `<tr><td><a class="lnk" href="#account/${esc(x.account_id)}">${esc(x.business)}</a></td><td>${x.level}</td><td>${money(x.price_cents)}</td><td>${when(x.closed_at)}</td><td>${STAGE_LABEL[x.stage] || ''}</td><td>${x.mix ? `${x.mix.minutes} min, ${x.mix.texts.toLocaleString()} texts` : ''}</td><td>${esc(pay(x))}</td>${admin ? `<td>${esc(x.rep_email)}</td>` : ''}</tr>`).join('') : `<tr><td colspan="${admin ? 8 : 7}" class="muted">No closed deals yet. The pilot is the first yes.</td></tr>`}</tbody></table></div>
+      <section class="card"><div class="tbl"><table><thead><tr><th>Business</th><th>Level</th><th>Price</th><th>Closed</th><th>Stage</th><th>Usage mix</th><th>Your pay, each (draft)</th>${admin ? '<th>Rep</th>' : ''}</tr></thead><tbody>${deals.length ? deals.map((x) => `<tr><td><a class="lnk" href="#account/${esc(x.account_id)}">${esc(x.business)}</a></td><td>${x.level}</td><td>${money(x.price_cents)}</td><td>${when(x.closed_at)}</td><td>${STAGE_LABEL[x.stage] || ''}</td><td>${x.mix ? `${x.mix.minutes} min, ${x.mix.texts.toLocaleString()} texts` : ''}</td><td>${esc(pay(x))}</td>${admin ? `<td>${esc(x.rep_email)}</td>` : ''}</tr>`).join('') : `<tr><td colspan="${admin ? 8 : 7}" class="muted">No closed deals yet. The first plan is the first yes.</td></tr>`}</tbody></table></div>
       <p class="note">${esc(K.pay.note)}</p></section>`;
   },
 
@@ -758,7 +758,7 @@ const screens = {
       <section class="card stack"><h2>The path to a yes</h2><ol class="path">${K.path.map((s) => `<li><b>${esc(s.title)}</b><span class="muted">${esc(s.body)}</span></li>`).join('')}</ol><p class="note">${esc(K.pathGate)}</p></section>
       <div class="grid two">
       <section class="card stack"><h2>Pricing guide</h2><p class="note">${esc(G.lede)}</p>
-        <div class="tbl"><table><thead><tr><th>Level</th><th>What</th><th>Price (draft)</th><th>Can you quote it?</th></tr></thead><tbody>${K.prices.levels.map((l) => `<tr><td>${l.level}. ${esc(l.label)}</td><td>${esc(l.what)}</td><td>${l.amountCents === 0 ? 'Free' : l.amountCents != null ? (l.level === 1 ? 'From ' : '') + money(l.amountCents) + (l.unit === 'one_time' ? ' plus tax' : '') : l.level === 4 ? '$999 a month and up' : 'Not quoted yet'}</td><td>${esc(quoteRule(l.level))}</td></tr>`).join('')}</tbody></table></div>
+        <div class="tbl"><table><thead><tr><th>Level</th><th>What</th><th>Price (draft)</th><th>Can you quote it?</th></tr></thead><tbody>${K.prices.levels.map((l) => `<tr><td>${l.level}. ${esc(l.label)}</td><td>${esc(l.what)}</td><td>${l.amountCents === 0 ? 'Free' : l.amountCents != null ? money(l.amountCents) + ' a month plus tax' : 'Over $1,000 a month'}</td><td>${esc(quoteRule(l.level))}</td></tr>`).join('')}</tbody></table></div>
         <p><b>The rule.</b> ${esc(G.rule)}</p><p><b>Say this.</b> ${esc(G.say)}</p><p class="muted">${esc(K.taxNote)}</p></section>
       <section class="card stack"><h2>Opener</h2><p class="script">${esc(K.opener)}</p><h2>Objections</h2><p class="muted">${esc(K.method)}</p><div>${K.objections.map((o) => `<details><summary>${esc(o.heard)}</summary><p>${esc(o.answer)}</p></details>`).join('')}</div></section>
       <section class="card stack"><h2>Never say</h2><ul>${K.never.map((n) => `<li>${esc(n)}</li>`).join('')}</ul><div class="tbl"><table><thead><tr><th>Instead of</th><th>Say</th></tr></thead><tbody>${K.swaps.map((s) => `<tr><td>${esc(s.instead)}</td><td>${esc(s.say)}</td></tr>`).join('')}</tbody></table></div></section>

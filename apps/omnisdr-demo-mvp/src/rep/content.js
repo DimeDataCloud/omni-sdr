@@ -5,15 +5,14 @@
 export const PRICES = {
   isFinal: false,
   effectiveDate: null,
-  // SALES-DECK-COPY slide 13 and CREDIT-ALLOWANCE-MODEL (2026-10-27). A rep quotes and closes Level 1 only until Christian
-  // marks prices final; Levels 2 to 4 carry no closable amount here, so only an admin can record them.
-  // Level 1: amountCents is the floor. Christian 2026-10-27: the rep may set any pilot price at or above it (see PILOT).
+  // Christian 2026-10-29: reps quote all four plans. A pilot is the first 30 days of a plan, not a separate product.
+  // There is no Custom Build. Levels are stable ids for the deals API; the Order Form (orderform.js) is the quoting tool.
   levels: [
     { level: 0, label: 'Free proof', what: 'Missed-call audit and response-time test, then a 20-minute results call', amountCents: 0, unit: 'free', quotable: true },
-    { level: 1, label: 'Pilot', what: 'One system, 30 days, results report at day 14. No setup fee. $499 is the minimum; a bigger pilot carries a bigger allowance', amountCents: 49900, unit: 'one_time', quotable: true },
-    { level: 2, label: 'Usage plan', what: 'Lite, Standard or Plus, chosen from the pilot numbers. Internal: $299, $499 or $899 a month. Do not quote', amountCents: null, unit: 'per_month', quotable: false },
-    { level: 3, label: 'Outcome pricing', what: 'Remodelers first. A fee per kept appointment plus a monthly floor. Do not quote', amountCents: null, unit: 'per_kept_appointment', quotable: false },
-    { level: 4, label: 'Agency and custom', what: "Multi-location or larger jobs, $999 a month and up, ACH only. Christian quotes it; send him the owner's needs", amountCents: null, unit: 'per_month', quotable: false },
+    { level: 1, label: 'Lite', what: 'One location. $299 a month, plus tax. The first 30 days are the pilot period.', amountCents: 29900, unit: 'per_month', quotable: true },
+    { level: 2, label: 'Standard', what: 'One location. $499 a month, plus tax. The first 30 days are the pilot period.', amountCents: 49900, unit: 'per_month', quotable: true },
+    { level: 3, label: 'Plus', what: 'One location. $899 a month, plus tax. The first 30 days are the pilot period.', amountCents: 89900, unit: 'per_month', quotable: true },
+    { level: 4, label: 'Agency', what: 'Single or multi-location, over $1,000 a month, ACH only. Each location takes a plan or an over-$1,000 custom package.', amountCents: null, unit: 'per_month', quotable: true },
   ],
 };
 
