@@ -590,7 +590,7 @@ const screens = {
     function pkgStep() {
       const p = F.data.package || {};
       return `<form class="card" id="ofForm" novalidate><fieldset class="plain stack"${fieldsetOpen()}><h2>Package</h2>
-        <p class="sub">${admin ? 'The plan and the agreed price.' : "Reps quote Lite, Standard, Plus and Agency.: send him the owner's needs."}</p>
+        <p class="sub">${admin ? 'The plan and the agreed price.' : "Reps quote Lite, Standard, Plus and Agency."}</p>
         <div class="fields"><div><label for="ofPlan">Plan</label><select id="ofPlan">${K.orderForm.plans.map((x) => `<option value="${x}"${x === p.plan ? ' selected' : ''}${admin || K.orderForm.repPlans.includes(x) ? '' : ' disabled'}>${esc(planName(x))}</option>`).join('')}</select></div>
           <div><label for="ofPrice" id="ofPriceL">Price in dollars</label><input id="ofPrice" inputmode="decimal" value="${p.priceCents != null ? p.priceCents / 100 : ''}"></div>
           ${admin ? `<div><label for="ofDisc">Discount (admin)</label><input id="ofDisc" maxlength="200" value="${esc(p.discount)}"></div><div><label for="ofBuild">Build fee (admin)</label><input id="ofBuild" maxlength="200" value="${esc(p.buildFee)}"></div>` : ''}</div>
