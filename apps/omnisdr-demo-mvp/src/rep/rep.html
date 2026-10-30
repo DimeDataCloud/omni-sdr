@@ -320,7 +320,7 @@ const screens = {
     view.innerHTML = `<h1>Pipeline</h1><p class="sub">Drag cards between stages to move them. Onboarding and Live are set by Christian.</p><div class="board" id="board">${stages.map((st) => {
       const list = accounts.filter((a) => a.stage === st);
       return `<section class="col" data-stage="${st}"><h2>${STAGE_LABEL[st]}<span>${list.length}</span></h2><div class="coldrop">${list.map((a) => `<div class="mini" draggable="true" data-id="${esc(a.id)}"><a class="lnk" href="#account/${esc(a.id)}">${esc(a.business)}</a>
-        <small class="muted">${esc(a.next_step || a.niche || '')}</small>${['results_call', 'proposed'].includes(a.stage) ? `<a class="lnk" href="#account/${esc(a.id)}/close">Close the sale</a>` : ''}</div>`).join('')}</div></section>`;
+        <small class="muted">${esc(a.next_step || a.niche || '')}</small><div class="row"><select data-move="${esc(a.id)}" aria-label="Move ${esc(a.business)} to stage" class="move-sel">${stages.map((s) => `<option value="${s}"${s === a.stage ? ' selected' : ''}>${STAGE_LABEL[s]}</option>`).join('')}</select>${['results_call', 'proposed'].includes(a.stage) ? `<a class="lnk" href="#account/${esc(a.id)}/close">Close the sale</a>` : ''}</div></div>`).join('')}</div></section>`;
     }).join('')}</div>`;
     // Drag and drop
     const board = $('#board');
@@ -328,6 +328,7 @@ const screens = {
     board.addEventListener('dragstart', (e) => { const m = e.target.closest('.mini'); if (!m) return; dragId = m.dataset.id; m.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
     board.addEventListener('dragend', (e) => { const m = e.target.closest('.mini'); if (m) m.classList.remove('dragging'); document.querySelectorAll('.col.dragover').forEach((c) => c.classList.remove('dragover')); });
     board.addEventListener('dragover', (e) => { e.preventDefault(); const col = e.target.closest('.col'); if (col) { document.querySelectorAll('.col.dragover').forEach((c) => c.classList.remove('dragover')); col.classList.add('dragover'); } e.dataTransfer.dropEffect = 'move'; });
+    board.addEventListener('change', (e) => { const s = e.target.closest('select[data-move]'); if (s) api('/accounts/' + s.dataset.move, { method: 'PATCH', body: { stage: s.value } }).then(() => { toast('Moved'); route(); }, fail); });
     board.addEventListener('drop', (e) => {
       e.preventDefault();
       const col = e.target.closest('.col');
@@ -778,13 +779,24 @@ const screens = {
       plan.onchange = () => save(0);
       // Plan cards: click to select
       const cards = el.querySelectorAll('#ofPlanCards .pcard');
-      cards.forEach((c) => c.addEventListener('click', () => {
+      const selectCard = (c) => {
         if (c.disabled) return;
         cards.forEach((x) => { x.classList.remove('sel'); x.setAttribute('aria-checked', 'false'); });
         c.classList.add('sel'); c.setAttribute('aria-checked', 'true');
         plan.value = c.dataset.plan;
         save(0);
-      }));
+      };
+      cards.forEach((c) => c.addEventListener('click', () => selectCard(c)));
+      // Arrow key navigation for radiogroup
+      const cardNav = (e) => {
+        const idx = Array.from(cards).indexOf(document.activeElement);
+        if (idx < 0) return;
+        let next = null;
+        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = cards[(idx + 1) % cards.length];
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = cards[(idx - 1 + cards.length) % cards.length];
+        if (next && !next.disabled) { e.preventDefault(); next.focus(); selectCard(next); }
+      };
+      el.querySelector('#ofPlanCards').addEventListener('keydown', cardNav);
       price.oninput = () => save(800);
       el.querySelectorAll('#ofDisc,#ofBuild').forEach((x) => (x.oninput = () => queue(async () => body())));
       $('#ofMx').oninput = () => { if (!MXS) return; POS = MXS.steps[MXS.steps.length - 1 - Number($('#ofMx').value)].p; paintMix(); queue(async () => body()); };

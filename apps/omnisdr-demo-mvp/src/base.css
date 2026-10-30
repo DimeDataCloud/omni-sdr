@@ -1,4 +1,4 @@
-:root{--bg:#F7F5F0;--surface:#fff;--text:#1A1A1A;--muted:#5C6459;--line:#E8E4D9;--control:#8F8878;--fill:#A3FFB4;--fill-h:#7BFF93;--ink:#166534;--danger:#B42318;--danger-soft:#FDE8E6;--ok-soft:#DCFCE7;--warn:#8A5A00;--warn-soft:#FFF1D6;--info:#0891B2;--info-soft:#CFFAFE;color-scheme:light;
+:root{--bg:#F7F5F0;--surface:#fff;--text:#1A1A1A;--muted:#5C6459;--line:#E8E4D9;--control:#8F8878;--fill:#A3FFB4;--fill-h:#7BFF93;--ink:#166534;--danger:#B42318;--danger-soft:#FDE8E6;--ok-soft:#DCFCE7;--warn:#8A5A00;--warn-soft:#FFF1D6;--info:#0E7490;--info-soft:#CFFAFE;color-scheme:light;
 --t-press:.12s cubic-bezier(0.16,1,0.3,1);--t-hover:.2s cubic-bezier(0.16,1,0.3,1);--t-enter:.25s cubic-bezier(0.16,1,0.3,1);--sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:20px;--sp-6:24px}
 @media (prefers-color-scheme:dark){:root{--bg:#0F100E;--surface:#1A1B19;--text:#F2F0EA;--muted:#A8AFA4;--line:#2A2C28;--control:#6B7568;--fill:#7BFF93;--fill-h:#A3FFB4;--ink:#7BFF93;--danger:#F87171;--danger-soft:#3B1414;--ok-soft:#133A20;--warn:#F0B24A;--warn-soft:#35280F;--info:#22D3EE;--info-soft:#164E63;color-scheme:dark}}
 *{box-sizing:border-box}html,body{margin:0;min-height:100%}
@@ -70,8 +70,8 @@ a.info{color:var(--info)}
 @keyframes vt-in{from{opacity:0;transform:translateX(24px)}}
 /* Phase 2b: sibling-index() stagger for lists */
 @supports (top:calc(1px * sibling-index())){
-.list>li,.mini,.pcard{animation:pop .4s cubic-bezier(0.16,1,0.3,1) both;animation-delay:calc((sibling-index() - 1) * 50ms)}
-tbody tr:nth-child(-n+20){animation:pop .35s cubic-bezier(0.16,1,0.3,1) both;animation-delay:calc((sibling-index() - 1) * 30ms)}
+.list>li,.mini,.pcard{animation:pop .4s cubic-bezier(0.16,1,0.3,1) both;animation-delay:calc((sibling-index() - 1) * 40ms)}
+tbody tr:nth-child(-n+20){animation:pop .35s cubic-bezier(0.16,1,0.3,1) both;animation-delay:calc((sibling-index() - 1) * 25ms)}
 }
 /* Phase 2c: @starting-style for toast exit */
 .toast{transition:opacity .3s cubic-bezier(0.16,1,0.3,1),transform .3s cubic-bezier(0.16,1,0.3,1),display .3s allow-discrete}
@@ -116,4 +116,7 @@ a.info{color:var(--info);text-decoration:underline}
 .note.info{background:var(--info-soft);color:var(--info);border:1px solid var(--info)}
 .muted a{color:var(--info)}
 .sub a{color:var(--info)}
+
+/* Pipeline keyboard fallback */
+.move-sel{font-size:12px;min-height:32px;padding:4px 8px;margin-top:6px;width:auto}
 }
