@@ -1,15 +1,16 @@
 // Order Forms for the guided deal flow (Christian 2026-10-29, via Halo). One record holds what the filed Order Form says,
 // typed once: the package (quote), client details, services and setup, term and payment, and the signing date. Field labels
-// follow the Order Form template's own layout; this file writes no legal wording. Prices and the usage mix come from
-// content.js and mix.js only, so a price change lands in one place. The record also carries exactly what omni-invoice's
+// follow the Order Form template's own layout; this file writes no legal wording. The usage mix comes from
+// mix.js only, so an allowance change lands in one place. The record also carries exactly what omni-invoice's
 // record_order_form needs, so invoicing reads it instead of a PDF.
-import * as C from './content.js';
 import * as M from './mix.js';
 
-export const PLANS = ['Pilot', 'Lite', 'Standard', 'Plus', 'Custom', 'Agency'];
-// Reps quote the Pilot only (PRICES level 1). The plans, custom work and agency deals are priced by Christian (levels 2 to 4
-// carry no quotable amount), so only an admin may put them on an Order Form, with the agreed price.
-export const REP_PLANS = ['Pilot'];
+export const PLANS = ['Lite', 'Standard', 'Plus', 'Agency'];
+// Plans and prices (Christian 2026-10-29): Lite $299, Standard $499, Plus $899 a month; Agency over $1,000,
+// quoted per deal (single or multi-location; each location takes a plan or an over-$1,000 custom package).
+// Reps quote all four plans. A pilot is the first 30-day period of a plan (the initial term), not a separate
+// product. There is no Custom Build product.
+export const REP_PLANS = ['Lite', 'Standard', 'Plus', 'Agency'];
 const PLAN_ALLOWANCE = Object.fromEntries(M.MIX.plans.map((p) => [p.label, p.allowanceCents]));
 
 const choice = (options) => ({ kind: 'choice', options });
@@ -20,7 +21,8 @@ export const NOTES = {
   summary: 'This is a summary of the details entered in the portal. It is not the Order Form. The signed OmniSDR Order Form controls.',
   numbers: 'You authorize OmniSDR to receive and answer calls forwarded from these numbers, and to place calls and send texts from them or from numbers OmniSDR obtains for you, as configured under the Agreement.',
   requests: 'Questions or requests for OmniSDR (not part of the Agreement unless OmniSDR writes it into the signed Order Form)',
-  pilotFee: 'Pilot fee, plus tax, paid at signing.',
+  pilotFee: 'First-period payment, plus tax, paid at signing.',
+  surcharge: 'No surcharge is added for card payments.',
   intro: 'Describe only what the Order Form and Agreement say. Do not promise results or terms that are not written in it.',
 };
 // `help` shows under a field on both pages.
@@ -54,7 +56,7 @@ export const SECTIONS = {
   term: [
     // Stripe's own mandate on the payment page is the card or ACH authorization; nothing here stands in for it.
     // ACH is preferred, so it is listed first; card is optional (legal, PR 195). The label carries the MSA sentence once.
-    { key: 'paymentMethod', label: 'Payment method (on file and charged automatically under MSA Section 5.3)', ...choice({ ach: 'ACH (bank), preferred', card: 'Card' }), req: true },
+    { key: 'paymentMethod', label: 'Payment method (on file and charged automatically under MSA Section 5.3)', ...choice({ ach: 'ACH (bank), preferred', card: 'Card' }), req: true, help: NOTES.surcharge },
     // Choices, not free text, so no one can write in a term the Agreement does not have. The start is shown as NOTES.term.
     { key: 'initialTerm', label: 'Initial term', ...choice({ pilot: 'The Pilot Period (30 days from go-live)', one_month: 'One month (no pilot)' }), req: true },
     { key: 'renewal', label: 'Renewal', ...choice({ month_to_month: 'Month to month' }), req: true },
@@ -120,8 +122,10 @@ export function signedOn(data) {
 const optionLabel = (sec, key, v) => (SECTIONS[sec].find((f) => f.key === key).options || {})[v] || '';
 
 /**
- * The package (the quote) from untrusted input, priced only from config. A rep may put the Pilot on the form at any price
- * from the floor up, with any position on the mix slider; everything else, and any discount or build fee, is an admin's.
+ * The package (the quote) from untrusted input, priced only from config. A rep may put any of the four plans
+ * on the form at the agreed price; a discount or build fee note is an admin's. Agency must be over $1,000.
+ * For multi-location agency, each location's plan (a plan or an over-$1,000 custom package) goes in the
+ * locations field as written selections.
  */
 export function cleanPackage(input, isAdmin) {
   if (input == null) return {};
@@ -134,15 +138,14 @@ export function cleanPackage(input, isAdmin) {
   const out = { plan };
   for (const k of extra) { const s = String(input[k]).trim(); if (s.length > 200) fail('A discount or build fee note is limited to 200 characters'); out[k] = s; }
   let price = input.priceCents;
-  if (plan === 'Pilot') {
-    price = price == null || price === '' ? C.PILOT.minCents : price;
-    if (!Number.isInteger(price) || price < C.PILOT.minCents) fail('The pilot starts at $499');
-    if (price > C.PILOT.maxCents) fail('That is above a pilot. Send it to Christian as a custom quote');
+  if (plan === 'Agency') {
+    if (!Number.isInteger(price) || price <= 100000) fail('Agency starts over $1,000');
+    if (price > 10_000_000) fail('Enter the agreed price in cents');
   } else if (price != null && price !== '') {
     if (!Number.isInteger(price) || price <= 0 || price > 10_000_000) fail('Enter the agreed price in cents');
   } else price = null;
   out.priceCents = price;
-  const allowance = plan === 'Pilot' ? C.pilotSplit(price).allowanceCents : PLAN_ALLOWANCE[plan] ?? null;
+  const allowance = PLAN_ALLOWANCE[plan] ?? null;
   if (allowance != null) {
     const mix = M.resolveMix(allowance, input.mixPosition ?? null);
     if (mix === undefined) fail('That is not a position on the mix slider');
@@ -159,7 +162,6 @@ export function missing(data) {
   else if (p.priceCents == null) out.push('Agreed price');
   for (const name of ['client', 'term', 'signing']) for (const f of SECTIONS[name]) if (f.req && (data[name] || {})[f.key] == null) out.push(f.label);
   if (p.plan === 'Agency' && (data.term || {}).paymentMethod && data.term.paymentMethod !== 'ach') out.push('Payment method: Agency is ACH only');
-  if (p.plan === 'Pilot' && (data.term || {}).initialTerm === 'one_month') out.push('Initial term: a Pilot package takes The Pilot Period');
   return out;
 }
 
@@ -168,7 +170,7 @@ export function prefill(account, contacts = []) {
   const primary = contacts.find((c) => c.is_primary) || contacts[0] || {};
   const pick = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v != null && v !== ''));
   return {
-    package: cleanPackage({ plan: 'Pilot' }, false),
+    package: cleanPackage({ plan: 'Standard', priceCents: 49900 }, false),
     client: pick({ legalName: account.business, tradingName: account.business, address: account.address, city: account.city,
       state: /^[A-Za-z]{2}$/.test(account.state || '') ? account.state.toUpperCase() : undefined, zip: account.zip,
       signerName: primary.name, signerTitle: primary.role, noticeEmail: primary.email || account.email, billingName: primary.name, billingEmail: account.email || primary.email }),
@@ -182,7 +184,7 @@ export function prefill(account, contacts = []) {
 export function invoiceRecord(form) {
   const d = form.data, p = d.package || {}, c = d.client || {}, t = d.term || {}, signed = signedOn(d);
   return {
-    clientName: c.legalName || '', customerEmail: c.billingEmail || '', plan: p.plan === 'Custom' ? 'Custom Build' : p.plan || '',
+    clientName: c.legalName || '', customerEmail: c.billingEmail || '', plan: p.plan || '',
     orderFormDate: signed, isSigned: !!signed, state: c.state || '', paymentMethod: t.paymentMethod || 'unknown',
     orderFormNumber: formNumber(form.number), addressLine1: c.address || '', city: c.city || '', postalCode: c.zip || '',
     // The slider's own default reads as the default mix; any other point on it is an adjusted one (both are slider points).
