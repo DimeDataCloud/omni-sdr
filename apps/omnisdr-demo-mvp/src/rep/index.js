@@ -10,6 +10,7 @@ import { afterCall, RULES, STAGES, OUTCOMES, addDays } from './rules.js';
 import * as C from './content.js';
 import * as K from './toolkit.js';
 import * as M from './mix.js';
+import * as O from './orderform.js';
 import { engineApi } from './engine.js';
 
 const json = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'content-type': 'application/json', 'cache-control': 'no-store', 'x-robots-tag': 'noindex', 'x-content-type-options': 'nosniff' } });
@@ -96,6 +97,9 @@ function dialStatus(a, t = now()) {
   if (a.scrubbed_at < addDays(t, -SCRUB_DAYS)) return { ok: false, reason: 'scrub_expired' };
   return { ok: true, reason: null };
 }
+const shapeForm = (f) => f && ({ ...f, data: obj(f.data), label: O.formNumber(f.number) });
+// Order Form field checks speak FieldError; a plan or price a rep may not set is a 403 like any other role check.
+const fieldCheck = (fn) => { try { return fn(); } catch (e) { if (e instanceof O.FieldError) throw e.message === 'FORBIDDEN' ? forbidden() : bad(e.message); throw e; } };
 const shape = (a) => a && ({ ...a, onboarding: obj(a.onboarding), audit: obj(a.audit), archived: !!a.archived, dnc: !!a.dnc, dial: dialStatus(a) });
 // A rep always sees only their own rows. An admin sees everyone, or one rep when the page passes ?owner= (the Viewing switch).
 const who = (me, col, view = null) => !isAdmin(me) ? { sql: `${col} = ?`, args: [me.email] } : view ? { sql: `${col} = ?`, args: [view] } : { sql: '1 = 1', args: [] };
@@ -174,6 +178,7 @@ async function api(req, env, me, path, m) {
 
   if (m === 'GET' && path === '/me') return { email: me.email, name: me.name, role: me.role };
   if (m === 'GET' && path === '/content') return { prices: C.PRICES, pay: C.PAY, taxNote: C.TAX_NOTE, pricingGuide: C.PRICING_GUIDE, path: C.PATH, pathGate: C.PATH_GATE, how: C.HOW, objections: C.OBJECTIONS, method: C.OBJECTION_METHOD, never: C.NEVER_SAY, swaps: C.SWAPS, opener: C.OPENER, demoSteps: C.DEMO_STEPS, demoLimits: C.DEMO_LIMITS, onboarding: C.ONBOARDING_FIELDS, stages: STAGES, outcomes: OUTCOMES, pilot: C.PILOT, mix: { overage: M.MIX.overage, minMinutes: M.MIX.minMinutes, minTexts: M.MIX.minTexts },
+    orderForm: { sections: O.SECTIONS, plans: O.PLANS, repPlans: O.REP_PLANS, clientSections: O.CLIENT_SECTIONS, mixPlans: M.MIX.plans.map((p) => p.label), linkDays: O.LINK_DAYS, notes: O.NOTES },
     templates: K.TEMPLATES, qualify: K.QUALIFY, discovery: K.DISCOVERY, auditSteps: K.AUDIT_STEPS, auditFields: K.AUDIT_FIELDS, resultsCall: K.RESULTS_CALL, resultsSay: K.RESULTS_SAY, resultsDont: K.RESULTS_DONT,
     afterYes: K.AFTER_YES, safety: K.SAFETY, daily: K.DAILY, glossary: K.GLOSSARY, brand: K.BRAND, resources: K.RESOURCES };
 
@@ -214,6 +219,25 @@ async function api(req, env, me, path, m) {
     }
     if (m === 'POST' && seg.length === 1) { const b = await body(req); const { id, stmts } = await createAccount(env, me, b); await D.batch(stmts); return { account: shape(await account(env, me, id)) }; }
     const a = await account(env, me, seg[1]);
+    // The account's Order Forms. POST resumes the open one (draft or waiting on the client) before it starts another, so the
+    // wizard saves as you go and picks up where it stopped; a new one takes the next number in the same batch.
+    if (seg[2] === 'order-forms' && seg.length === 3) {
+      if (m === 'GET') return { forms: (await D.prepare('SELECT * FROM order_forms WHERE account_id = ? ORDER BY created_at DESC').bind(a.id).all()).results.map(shapeForm) };
+      if (m === 'POST') {
+        const open = await D.prepare("SELECT * FROM order_forms WHERE account_id = ? AND status IN ('draft', 'client_review') ORDER BY created_at DESC LIMIT 1").bind(a.id).first();
+        if (open) return { form: shapeForm(open), missing: O.missing(obj(open.data)), resumed: true };
+        const contacts = (await D.prepare('SELECT * FROM contacts WHERE account_id = ?').bind(a.id).all()).results;
+        const id = uid(), t = now(), data = O.prefill(a, contacts);
+        await D.batch([
+          D.prepare('UPDATE order_form_counter SET next = next + 1 WHERE id = 1'),
+          D.prepare("INSERT INTO order_forms (id, number, account_id, owner_email, status, data, created_at, updated_at) VALUES (?, (SELECT next - 1 FROM order_form_counter WHERE id = 1), ?, ?, 'draft', ?, ?, ?)").bind(id, a.id, a.owner_email, JSON.stringify(data), t, t),
+          D.prepare("INSERT INTO activities (id, account_id, rep_email, kind, body, created_at) VALUES (?, ?, ?, 'note', 'Order Form started', ?)").bind(uid(), a.id, me.email, t),
+          audit(env, me.email, 'create', 'order_form', id, null, { account_id: a.id }),
+        ]);
+        const f = await D.prepare('SELECT * FROM order_forms WHERE id = ?').bind(id).first();
+        return { form: shapeForm(f), missing: O.missing(data), resumed: false };
+      }
+    }
     if (m === 'GET' && seg.length === 2) {
       const [contacts, acts, tasks, calls, deals] = await D.batch([
         D.prepare('SELECT * FROM contacts WHERE account_id = ? ORDER BY is_primary DESC, created_at').bind(a.id),
@@ -340,6 +364,12 @@ async function api(req, env, me, path, m) {
 
   // The slider's steps for a pilot price. The price only picks the allowance; nothing on this route can change either.
   if (m === 'GET' && path === '/mix') {
+    const plan = new URL(req.url).searchParams.get('plan');
+    if (plan) {
+      const allowanceCents = M.MIX.plans.find((p) => p.label === plan)?.allowanceCents;
+      if (!allowanceCents) throw bad('That plan has no mix slider');
+      return { allowanceCents, ...M.mixSteps(allowanceCents) };
+    }
     const price = Number(new URL(req.url).searchParams.get('priceCents'));
     if (!Number.isInteger(price) || price < C.PILOT.minCents || price > C.PILOT.maxCents) throw bad('Pick a pilot price first');
     const steps = M.mixSteps(C.pilotSplit(price).allowanceCents);
@@ -382,6 +412,102 @@ async function api(req, env, me, path, m) {
       ]);
       return { ok: true, id };
     }
+  }
+
+  // One Order Form. Scoped through its account: a rep reaches only their own accounts' forms; any other id is not found.
+  if (seg[0] === 'order-forms' && seg[1]) {
+    if (m === 'GET' && seg.length === 2) await D.batch(O.purgeAnswers(D, now())); // before the read, so the status shown is current
+    const f = await D.prepare('SELECT * FROM order_forms WHERE id = ?').bind(seg[1]).first();
+    if (!f) throw notFound('Order Form');
+    const a = await account(env, me, f.account_id), data = obj(f.data), isOpen = ['draft', 'client_review'].includes(f.status), t = now();
+    const label = O.formNumber(f.number);
+    const note = (body) => D.prepare("INSERT INTO activities (id, account_id, rep_email, kind, body, created_at) VALUES (?, ?, ?, 'note', ?, ?)").bind(uid(), a.id, me.email, body, t);
+    const links = async () => (await D.prepare('SELECT * FROM client_links WHERE order_form_id = ? ORDER BY created_at DESC').bind(f.id).all()).results;
+    const reread = async () => shapeForm(await D.prepare('SELECT * FROM order_forms WHERE id = ?').bind(f.id).first());
+    if (m === 'GET' && seg.length === 2) {
+      const all = await links(), live = all.find((l) => !l.revoked_at && l.expires_at > t), waiting = all.find((l) => l.submitted_at && !l.reviewed_at);
+      return { form: shapeForm(f), missing: O.missing(data), account: { id: a.id, business: a.business, onboarding: obj(a.onboarding), stage: a.stage },
+        link: live ? { createdAt: live.created_at, expiresAt: live.expires_at, submittedAt: live.submitted_at } : null,
+        clientAnswers: waiting ? { submittedAt: waiting.submitted_at, data: obj(waiting.submission) } : null };
+    }
+    if (m === 'PATCH' && seg.length === 2) {
+      if (!isOpen) throw new Bad(409, 'This Order Form is filed. Start a new one to change it');
+      const b = await body(req), next = { ...data };
+      if ('package' in b) next.package = fieldCheck(() => O.cleanPackage(b.package, isAdmin(me)));
+      for (const name of ['client', 'services', 'term', 'signing']) if (name in b) next[name] = fieldCheck(() => O.saveSection(name, data[name], b[name], isAdmin(me)));
+      await D.batch([D.prepare('UPDATE order_forms SET data = ?, signed_at = ?, filed_location = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify(next), O.signedOn(next) || null, next.signing?.filedLocation ?? null, t, f.id),
+        audit(env, me.email, 'update', 'order_form', f.id, null, { sections: Object.keys(b).filter((k) => k in O.SECTIONS || k === 'package') })]);
+      return { form: await reread(), missing: O.missing(next) };
+    }
+    if (m === 'POST' && seg[2] === 'file') {
+      if (!isOpen) throw new Bad(409, 'This Order Form is already ' + f.status);
+      const gaps = O.missing(data);
+      if (gaps.length) return json({ ok: false, message: 'Still missing: ' + gaps.join(', '), missing: gaps }, 422);
+      await D.batch([D.prepare("UPDATE order_forms SET status = 'filed', updated_at = ? WHERE id = ?").bind(t, f.id),
+        D.prepare('UPDATE client_links SET revoked_at = ? WHERE order_form_id = ? AND revoked_at IS NULL').bind(t, f.id),
+        note(`Order Form ${label} filed (signed ${O.signedOn(data)})`), audit(env, me.email, 'file', 'order_form', f.id, { status: f.status }, { status: 'filed' })]);
+      return { form: await reread() };
+    }
+    if (m === 'POST' && seg[2] === 'void') {
+      if (f.status === 'void') return { form: shapeForm(f) };
+      if (f.status === 'filed' && !isAdmin(me)) throw forbidden(); // a filed form is an admin's to void
+      await D.batch([D.prepare("UPDATE order_forms SET status = 'void', updated_at = ? WHERE id = ?").bind(t, f.id),
+        D.prepare('UPDATE client_links SET revoked_at = ? WHERE order_form_id = ? AND revoked_at IS NULL').bind(t, f.id),
+        note(`Order Form ${label} voided`), audit(env, me.email, 'void', 'order_form', f.id, { status: f.status }, { status: 'void' })]);
+      return { form: await reread() };
+    }
+    // The client fill-in link. A new link replaces any live one. The token appears in this answer only; the database keeps
+    // its hash. The portal sends nothing: the rep copies the link into their own email or text.
+    if (seg[2] === 'link' && seg.length === 3) {
+      if (m === 'POST') {
+        if (!isOpen) throw new Bad(409, 'Only an open Order Form can go to the client');
+        const token = O.newToken(), expires = addDays(t, O.LINK_DAYS);
+        await D.batch([D.prepare('UPDATE client_links SET revoked_at = ? WHERE order_form_id = ? AND revoked_at IS NULL').bind(t, f.id),
+          D.prepare('INSERT INTO client_links (token_hash, order_form_id, created_by, created_at, expires_at) VALUES (?, ?, ?, ?, ?)').bind(await O.tokenHash(token), f.id, me.email, t, expires),
+          note(`Client link made for ${label}, good until ${expires.slice(0, 10)}`), audit(env, me.email, 'link', 'order_form', f.id, null, { expires_at: expires })]);
+        return { url: new URL(req.url).origin + '/of/' + token, expiresAt: expires };
+      }
+      if (m === 'DELETE') {
+        await D.batch([D.prepare('UPDATE client_links SET revoked_at = ? WHERE order_form_id = ? AND revoked_at IS NULL').bind(t, f.id),
+          note(`Client link for ${label} turned off`), audit(env, me.email, 'unlink', 'order_form', f.id, null, null)]);
+        return { ok: true };
+      }
+    }
+    // What the client filled in waits here until the rep takes it into the form (and the onboarding details) or drops it.
+    // Either way the answers' text is then removed. Their questions or requests are never copied into the form; they go
+    // on the account timeline so the rep still has them.
+    if (m === 'POST' && seg[2] === 'client') {
+      const b = await body(req), waiting = (await links()).find((l) => l.submitted_at && !l.reviewed_at);
+      if (!waiting) throw notFound('client answers');
+      const asked = typeof obj(waiting.submission).requests === 'string' && obj(waiting.submission).requests.trim();
+      const done = [D.prepare('UPDATE client_links SET reviewed_at = ?, submission = NULL WHERE token_hash = ?').bind(t, waiting.token_hash),
+        ...(asked ? [note(`Client questions or requests on ${label}: ${asked}`)] : [])];
+      if (b.action === 'accept') {
+        if (!isOpen) throw new Bad(409, 'This Order Form is already ' + f.status);
+        const sub = obj(waiting.submission), next = { ...data };
+        for (const name of O.CLIENT_SECTIONS) next[name] = { ...(data[name] || {}), ...fieldCheck(() => O.cleanSection(name, sub[name], 'client')) };
+        const ob = { ...obj(a.onboarding) };
+        for (const fld of C.ONBOARDING_FIELDS) { const v = str((sub.onboarding || {})[fld.key], 1000, fld.label); if (v) ob[fld.key] = v; }
+        await D.batch([D.prepare("UPDATE order_forms SET data = ?, status = 'draft', updated_at = ? WHERE id = ?").bind(JSON.stringify(next), t, f.id), ...done,
+          D.prepare('UPDATE accounts SET onboarding = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify(ob), t, a.id),
+          note(`Client answers taken into ${label}`), audit(env, me.email, 'client_accept', 'order_form', f.id, null, { sections: O.CLIENT_SECTIONS })]);
+        return { form: await reread(), missing: O.missing(next) };
+      }
+      if (b.action === 'reject') {
+        await D.batch([...done,
+          ...(f.status === 'client_review' ? [D.prepare("UPDATE order_forms SET status = 'draft', updated_at = ? WHERE id = ?").bind(t, f.id)] : []),
+          note(`Client answers for ${label} set aside`), audit(env, me.email, 'client_reject', 'order_form', f.id, null, null)]);
+        return { form: await reread() };
+      }
+      throw bad('Accept or reject');
+    }
+    // omni-invoice reads this instead of a PDF: exactly record_order_form's fields.
+    if (m === 'GET' && seg[2] === 'invoice.json') {
+      if (f.status !== 'filed') throw new Bad(409, 'File the Order Form first');
+      return new Response(JSON.stringify(O.invoiceRecord(shapeForm(f)), null, 2) + '\n', { headers: { 'content-type': 'application/json; charset=utf-8',
+        'content-disposition': `attachment; filename="${label}-for-invoicing.json"`, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' } });
+    }
+    throw notFound('route');
   }
 
   if (m === 'GET' && path === '/export.csv') {

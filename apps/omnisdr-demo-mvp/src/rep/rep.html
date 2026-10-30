@@ -60,6 +60,43 @@ dialog[open]{animation:rise var(--t-enter) ease}dialog[open]::backdrop{animation
 .chip{transition:border-color var(--t-hover) ease,background-color var(--t-hover) ease}
 .acts{margin:4px 0 16px}.acts label{margin:0}.acts select{width:auto;min-width:180px}
 .show-sm{display:none}@media (max-width:640px){.hide-sm{display:none}.show-sm{display:inline}}
+/* omnisdr.com language (Christian 2026-10-29, via Halo): sand page, white cards on a hairline, pill controls, tight headings,
+   mint only as a fill. Scoped to the rep portal; the demo pages keep base.css as it is. */
+@media (prefers-color-scheme:light){:root{--bg:#F5F3EF}}
+h1{font-size:26px;line-height:32px;letter-spacing:-.025em}@media(min-width:700px){h1{font-size:30px;line-height:36px}}
+.card{border-radius:20px;box-shadow:0 2px 8px -2px rgba(17,17,17,.04),0 1px 2px -1px rgba(17,17,17,.02)}
+.btn{border-radius:999px}.btn.sm{padding:0 14px}
+header.top .brand b{font-size:17px;letter-spacing:-.01em}header.top .brand svg{width:26px;height:26px}
+#who{padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface);font-size:13px}#who:empty{display:none}
+nav.main{gap:4px;width:max-content;max-width:100%;padding:4px;border:1px solid var(--line);border-radius:999px;background:color-mix(in srgb,var(--surface) 72%,transparent);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+nav.main a{min-height:40px;padding:0 16px;border-bottom:0;border-radius:999px;transition:background-color var(--t-hover) ease,color var(--t-hover) ease}
+nav.main a[aria-current=page]{background:var(--fill);color:#1A1A1A}
+@media (hover:hover){nav.main a:not([aria-current]):hover{color:var(--text);background:color-mix(in srgb,var(--fill) 25%,transparent)}}
+nav.tier2{margin-top:-8px;padding:0;border:0;background:none;-webkit-backdrop-filter:none;backdrop-filter:none}nav.tier2 a{min-height:36px;padding:0 14px}
+nav.tier2 a[aria-current=page]{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--control)}
+@media (pointer:coarse){nav.main a{min-height:44px}nav.tier2 a{min-height:44px}}
+/* Guided deal flow: one Order Form, step by step. */
+.ofhead{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between}.ofhead h1,.ofhead h2{margin:0}
+ol.steps{list-style:none;margin:0 0 16px;padding:0;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;counter-reset:st;-webkit-overflow-scrolling:touch}ol.steps::-webkit-scrollbar{display:none}
+ol.steps li{flex:0 0 auto;counter-increment:st}
+ol.steps button{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 14px 0 6px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--muted);font-weight:600;cursor:pointer;transition:border-color var(--t-hover) ease,color var(--t-hover) ease}
+ol.steps button::before{content:counter(st);display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--bg);color:var(--text);font-size:13px;font-variant-numeric:tabular-nums}
+ol.steps button[data-done]::before{content:'\2713';background:var(--ok-soft);color:var(--ink)}
+ol.steps button[aria-current=step]{color:var(--text);border-color:var(--text)}ol.steps button[aria-current=step]::before{background:var(--fill);color:#1A1A1A}
+fieldset.plain{border:0;margin:0;padding:0;min-width:0}fieldset.plain[disabled]{opacity:.75}
+.ofnav{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center;margin:16px 0 0}
+.check{display:flex;gap:10px;align-items:flex-start;margin:12px 0 0;font-weight:500;font-size:14px}.check input{margin-top:1px}
+.radiogroup{border:0;margin:12px 0 0;padding:0;min-width:0}.radiogroup legend{font-weight:500;font-size:13px;margin:0 0 6px;padding:0}
+.radios{display:flex;flex-wrap:wrap;gap:8px}.radios label{display:inline-flex;gap:8px;align-items:center;min-height:44px;margin:0;padding:0 14px;border:1px solid var(--control);border-radius:999px;font-weight:500;font-size:14px;cursor:pointer}
+.radios input{width:20px;height:20px;min-height:0;margin:0;accent-color:var(--ink)}.radios label:has(input:checked){border-color:var(--ink);background:var(--ok-soft)}
+.sheet{display:grid;gap:12px}.sheet .kv{grid-template-columns:minmax(110px,36%) 1fr}.miss{margin:0;padding-left:20px}
+.attn{border-color:var(--warn);background:color-mix(in srgb,var(--warn-soft) 55%,var(--surface))}
+.help{margin:6px 0 0;color:var(--muted);font-size:13px;line-height:18px}.legal{margin:4px 0 0;color:var(--muted);font-size:13px;line-height:18px}
+.lbl{display:block;font-weight:500;font-size:13px;margin:12px 0 6px}.fixed{margin:0;min-height:22px}.errtext{color:var(--danger)}#ofSaved{font-size:13px}.ofpre{margin:16px 0}.ofpre:empty{display:none}.card>details:only-child{border-top:0;padding:0}
+details.card{padding-top:var(--sp-3);padding-bottom:var(--sp-3)}details.card>summary{min-height:44px;list-style:none;gap:12px}details.card>summary::-webkit-details-marker{display:none}
+details.card>summary::after{content:'';margin-left:auto;width:8px;height:8px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:translateY(-2px) rotate(45deg);transition:transform var(--t-hover) ease}details.card[open]>summary::after{transform:translateY(2px) rotate(-135deg)}details.card>.stack{margin-top:8px}
+@media print{header.top,nav.main,.viewbar,.noprint,.toast,ol.steps{display:none!important}body{background:#fff!important;color:#000}
+  .wrap{max-width:none;padding:0}.card{box-shadow:none;border:1px solid #bbb;break-inside:avoid}.sheet{gap:8px}#view.enter{animation:none}}
 </style></head>
 <body><div class="wrap">
 <header class="top"><div class="brand">__LOGO__<b>OmniSDR · Rep</b></div><span class="muted" id="who"></span></header>
@@ -142,6 +179,48 @@ function isHot(a, now = Date.now()) {
   // Christian 2026-10-27: money on the table (demo booked, proposal) is always hot; a new lead reached in the last 48 hours is warm.
   if (!['results_call', 'proposed'].includes(a.stage)) return a.stage === 'new' && Date.parse(a.last_touch_at) > now - 2 * 864e5;
   return true;
+}
+
+// ── Guided deal flow (Christian 2026-10-29, via Halo) ───────────────────────────────────────────────────────────────────
+// One Order Form per deal, typed once and saved as you go: package (the quote), client, services, term, review and sign,
+// hand-off. Field lists come from /content (src/rep/orderform.js), prices from content.js and the mix from mix.js; the
+// server checks every value again, so nothing here decides a price or who may quote what.
+const OF_STEPS = [['package', 'Package'], ['client', 'Client'], ['services', 'Services'], ['term', 'Term and payment'], ['review', 'Review and sign'], ['handoff', 'Hand-off']];
+const OF_STATUS = { draft: ['Draft', ''], client_review: ['Client filled in, review', 'warn'], filed: ['Filed', ''], void: ['Void', 'bad'] };
+const OF_TITLE = { client: 'Client details', services: 'Services and setup', term: 'Term and payment', signing: 'Signing' };
+const PLAN_LEVEL = { Pilot: 1, Lite: 2, Standard: 2, Plus: 2, Custom: 4, Agency: 4 }; // the price level a filed plan closes at
+const planName = (p) => (p === 'Custom' ? 'Custom Build' : p || '');
+const ofPill = (s) => `<span class="pill ${OF_STATUS[s][1]}">${OF_STATUS[s][0]}</span>`;
+const dollars = (v) => { const s = String(v ?? '').replace(/[$,\s]/g, ''); if (!s) return null; const n = Number(s); return Number.isFinite(n) ? Math.round(n * 100) : NaN; };
+// One field. Names are "<section>.<key>", so a section reads back with ofRead.
+function ofField(sec, f, v) {
+  const id = `of_${sec}_${f.key}`, name = `${sec}.${f.key}`, req = f.req ? ' *' : '';
+  const help = f.help ? `<p class="help" id="${id}_h">${esc(f.help)}</p>` : '', desc = f.help ? ` aria-describedby="${id}_h"` : '';
+  if (f.kind === 'bool') return `<label class="check full"><input type="checkbox" id="${id}" name="${name}"${v ? ' checked' : ''}> ${esc(f.label)}</label>`;
+  if (f.kind === 'choice') return `<fieldset class="full radiogroup"${desc}><legend>${esc(f.label)}${req}</legend><div class="radios">${Object.entries(f.options).map(([k, l]) => `<label><input type="radio" name="${name}" value="${esc(k)}"${v === k ? ' checked' : ''}> ${esc(l)}</label>`).join('')}</div>${help}</fieldset>`;
+  const wide = (f.max || 0) > 120 || f.kind === 'email' ? 'full' : '', type = f.kind === 'email' ? 'email' : f.kind === 'date' ? 'date' : 'text';
+  const extra = f.kind === 'state' ? ' maxlength="2" autocapitalize="characters"' : f.max ? ` maxlength="${f.max}"` : '';
+  return `<div class="${f.help ? 'full' : wide}"><label for="${id}">${esc(f.label)}${req}</label>${(f.max || 0) > 300 ? `<textarea id="${id}" name="${name}" rows="3"${extra}${desc}>${esc(v)}</textarea>` : `<input id="${id}" name="${name}" type="${type}"${extra} value="${esc(v)}"${desc}>`}${help}</div>`;
+}
+// An admin-only field as a rep sees it: the value, never an input. The server refuses a rep's value and keeps the admin's.
+const ofFixed = (f, v) => `<div class="full"><span class="lbl">${esc(f.label)}</span><p class="fixed">${v != null && v !== '' ? esc(ofShow(f, v)) : '<span class="muted">Not recorded yet. An admin records it.</span>'}</p></div>`;
+const ofFields = (sec, data, admin) => K.orderForm.sections[sec].map((f) => (f.admin && !admin ? ofFixed(f, (data[sec] || {})[f.key]) : ofField(sec, f, (data[sec] || {})[f.key]))).join('');
+function ofRead(el, sec) {
+  const out = {};
+  for (const f of K.orderForm.sections[sec]) { const x = el.elements[`${sec}.${f.key}`]; if (x) out[f.key] = f.kind === 'bool' ? x.checked : x.value; }
+  return out;
+}
+const ofShow = (f, v) => (v == null || v === '' ? '' : f.kind === 'bool' ? (v ? 'Yes' : 'No') : f.kind === 'choice' ? f.options[v] || String(v) : String(v));
+const ofPackageRows = (p = {}) => [['Plan', planName(p.plan)], ['Price', p.priceCents != null ? money(p.priceCents) + ' plus tax' : ''],
+  ['Usage included', p.minutes != null ? `${p.minutes.toLocaleString()} voice minutes, ${p.texts.toLocaleString()} texts, ${p.threads.toLocaleString()} AI conversations` : ''],
+  ['Discount', p.discount], ['Build fee', p.buildFee]].filter(([, v]) => v);
+// The whole form as one sheet: the Review step, the print view, and what prints or saves as a PDF.
+function ofSheet(F, acct) {
+  const d = F.data, kv = (rows) => (rows.length ? `<dl class="kv">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>` : '<p class="muted">Nothing yet.</p>');
+  const sec = (n) => kv(K.orderForm.sections[n].map((f) => [f.label, ofShow(f, (d[n] || {})[f.key])]).filter(([, v]) => v));
+  return `<div class="sheet"><section class="card"><div class="ofhead"><h2>Order Form ${esc(F.label)}</h2>${ofPill(F.status)}</div>${acct ? `<p class="muted">${esc(acct.business)}</p>` : ''}</section>
+    <section class="card"><h2>Package</h2>${kv(ofPackageRows(d.package))}</section>${['client', 'services', 'term', 'signing'].map((n) => `<section class="card"><h2>${OF_TITLE[n]}</h2>${sec(n)}${n === 'term' ? `<p class="help">${esc(K.orderForm.notes.term)}</p>` : ''}</section>`).join('')}
+    <p class="legal">${esc(K.orderForm.notes.summary)}</p></div>`;
 }
 
 /* ---------- screens ---------- */
@@ -340,10 +419,12 @@ const screens = {
   },
 
   async account(id) {
-    const d = await api('/accounts/' + encodeURIComponent(id)), a = d.account;
+    // Order Forms load beside the account; before migration 0007 is applied the list is just empty.
+    const [d, { forms }] = await Promise.all([api('/accounts/' + encodeURIComponent(id)), api('/accounts/' + encodeURIComponent(id) + '/order-forms', { noView: true }).catch(() => ({ forms: [] }))]), a = d.account;
+    const openForm = forms.find((x) => ['draft', 'client_review'].includes(x.status));
     const levels = K.prices.levels.filter((l) => l.level > 0);
     // The one next step for this stage, as a tab to open. Live and Lost have none, so no button.
-    const NEXT = { new: ['audit', 'Next: run the free check'], results_call: ['close', 'Next: close the sale'], proposed: ['close', 'Next: close the sale'], onboarding: ['onboarding', 'Next: onboarding'] }, next = NEXT[a.stage];
+    const NEXT = { new: ['audit', 'Next: run the free check'], results_call: ['close', 'Next: the Order Form'], proposed: ['close', 'Next: the Order Form'], onboarding: ['onboarding', 'Next: onboarding'] }, next = NEXT[a.stage];
     view.innerHTML = `<p><a class="lnk" href="#accounts">All accounts</a></p><h1>${esc(a.business)}</h1><p class="sub">${esc([a.niche, a.city, a.state].filter(Boolean).join(' · '))}</p>
       <div class="row acts"><label for="stg" class="muted">Stage</label><select id="stg">${stageOptions(a.stage)}</select>${next ? `<button class="btn" type="button" id="nextGo" data-tab="${next[0]}">${next[1]}</button>` : ''}</div>
       <div class="tabs" role="tablist">${[['Details', 0], ['Audit', 4], ['Messages', 5], ['Timeline', 1], ['Onboarding', 2], ['Close', 3]].map(([t, k]) => `<button class="tab" role="tab" data-t="${k}" aria-selected="${k === 0}">${t}</button>`).join('')}</div>
@@ -370,8 +451,11 @@ const screens = {
         <div class="row"><button class="btn">Save audit</button>${a.stage === 'new' ? '<button class="btn ghost" type="button" id="aRun">Save and mark demo booked</button>' : ''}</div></form>
       <div data-p="5" hidden class="stack"><p class="sub">Starter wording with this account filled in. Adjust it, copy it, send it from your own phone or email, then log it.</p>${tpls({ business: a.business, name: ((d.contacts.find((c) => c.is_primary) || d.contacts[0] || {}).name || '').split(' ')[0] || 'there', rep: (ME.name || '').split(' ')[0], account: true })}</div>
       <form data-p="2" hidden class="card" id="of"><p class="sub">Fill this in with the owner on the call after the yes. The developer starts from it.</p><div class="fields">${K.onboarding.map((f) => `<div class="full"><label for="o_${f.key}">${esc(f.label)}</label><textarea id="o_${f.key}" name="${f.key}" rows="2" maxlength="1000">${esc(a.onboarding[f.key])}</textarea></div>`).join('')}</div><button class="btn">Save onboarding</button></form>
-      <div data-p="3" hidden class="card stack">${d.deals.length ? `<p>Closed: ${d.deals.map((x) => `Level ${x.level}, ${money(x.price_cents)}${x.price_is_draft ? ' (draft price)' : ''}, ${when(x.closed_at)}`).join('; ')}</p>` : ''}
-        ${['onboarding', 'live'].includes(a.stage) ? '<p class="muted">This account is signed. Next is the Onboarding tab.</p>' : `<form id="df" class="stack"><label for="lv">What they bought</label><select id="lv" name="level">${levels.map((l) => `<option value="${l.level}">${esc(l.label)}: ${l.level === 1 ? 'from ' + money(l.amountCents) : l.amountCents != null ? money(l.amountCents) : 'priced by Christian'}</option>`).join('')}</select>
+      <div data-p="3" hidden class="stack"><section class="card stack"><div class="ofhead"><h2>Order Form</h2>${openForm ? ofPill(openForm.status) : ''}</div><p class="sub">The guided deal: package, client, services, term, review and sign, then hand-off. Use it live on the call, or send the client a link for their part.</p>
+        ${forms.length ? `<ul class="list">${forms.map((x) => `<li><div class="t">${esc(x.label)} ${ofPill(x.status)}<small>${esc([planName(x.data.package?.plan), x.data.package?.priceCents != null ? money(x.data.package.priceCents) : '', when(x.updated_at)].filter(Boolean).join(' · '))}</small></div><a class="btn ghost sm" href="#deal/${esc(x.id)}">Open</a></li>`).join('')}</ul>` : ''}
+        <p>${openForm ? `<a class="btn" href="#deal/${esc(openForm.id)}">Resume ${esc(openForm.label)}</a>` : '<button class="btn" type="button" id="ofStart">Start the Order Form</button>'}</p></section>
+        <div class="card stack">${d.deals.length ? `<p>Closed: ${d.deals.map((x) => `Level ${x.level}, ${money(x.price_cents)}${x.price_is_draft ? ' (draft price)' : ''}, ${when(x.closed_at)}`).join('; ')}</p>` : ''}
+        ${['onboarding', 'live'].includes(a.stage) ? '<p class="muted">This account is signed. Next is the Onboarding tab.</p>' : `<details><summary>Close without an Order Form</summary><form id="df" class="stack"><label for="lv">What they bought</label><select id="lv" name="level">${levels.map((l) => `<option value="${l.level}">${esc(l.label)}: ${l.level === 1 ? 'from ' + money(l.amountCents) : l.amountCents != null ? money(l.amountCents) : 'priced by Christian'}</option>`).join('')}</select>
           <div id="pbox" hidden><label for="pc" id="plbl">Agreed price in dollars (admin)</label><input id="pc" name="price" inputmode="decimal"><p class="note" id="psplit"></p>
             <div class="mix" id="mixbox" hidden><h3>Usage mix</h3><p class="note">Slide to trade calls for texts inside the same allowance. Price, allowance and your pay stay exactly as they are.</p>
               <dl class="mixfixed"><div><dt>Price</dt><dd id="mxPrice"></dd></div><div><dt>Allowance</dt><dd id="mxAllow"></dd></div><div><dt>You and the developer, each</dt><dd id="mxPay"></dd></div></dl>
@@ -380,11 +464,12 @@ const screens = {
               <div class="mixread"><div><b id="mxMin"></b><span>voice minutes</span></div><div><b id="mxTxt"></b><span>texts</span></div><div><b id="mxThr"></b><span>AI conversations</span></div></div>
               <p class="note" id="mxTrade"></p><div class="row"><button class="btn ghost sm" type="button" id="mxReset">Reset to plan default</button><button class="btn ghost sm" type="button" data-copy="qsheet">Copy quote sheet</button></div>
               <pre class="qsheet card" id="qsheet"></pre></div></div>
-          <label for="dn">Notes</label><input id="dn" name="notes" maxlength="1000"><p class="note">${K.prices.isFinal ? '' : 'Prices are DRAFT until Christian sets them. '}${esc(K.taxNote)} No discounts.</p><button class="btn">Close the sale</button></form>`}</div>`;
+          <label for="dn">Notes</label><input id="dn" name="notes" maxlength="1000"><p class="note">${K.prices.isFinal ? '' : 'Prices are DRAFT until Christian sets them. '}${esc(K.taxNote)} No discounts.</p><button class="btn">Close the sale</button></form></details>`}</div></div>`;
     const tabs = $$('.tab'), show = (k) => { tabs.forEach((x) => x.setAttribute('aria-selected', String(x.dataset.t === k))); $$('[data-p]').forEach((p) => (p.hidden = p.dataset.p !== k)); const on = tabs.find((x) => x.dataset.t === k); if (on) on.scrollIntoView({ block: 'nearest', inline: 'nearest' }); };
     // The open tab lives in the hash via replaceState (no hashchange, no reload), so a save that re-renders lands back on it.
     tabs.forEach((t) => (t.onclick = () => { show(t.dataset.t); const n = Object.keys(ACCOUNT_TAB).find((k) => ACCOUNT_TAB[k] === t.dataset.t); history.replaceState(null, '', '#account/' + a.id + (n === 'details' ? '' : '/' + n)); }));
     const want = location.hash.split('/')[2]; if (Object.hasOwn(ACCOUNT_TAB, want)) show(ACCOUNT_TAB[want]);
+    if ($('#ofStart')) $('#ofStart').onclick = () => api(`/accounts/${a.id}/order-forms`, { method: 'POST', body: {} }).then((r) => { location.hash = 'deal/' + r.form.id; }, fail);
     if ($('#nextGo')) $('#nextGo').onclick = () => $(`.tab[data-t="${ACCOUNT_TAB[$('#nextGo').dataset.tab]}"]`).click();
     $('#stg').onchange = (e) => { const v = e.target.value;
       api('/accounts/' + a.id, { method: 'PATCH', body: { stage: v } }).then(() => { toast('Stage: ' + STAGE_LABEL[v]); route(); }, (er) => { e.target.value = a.stage; fail(er); }); };
@@ -436,6 +521,189 @@ const screens = {
       df.onsubmit = (e) => { e.preventDefault(); const f = form(df), cents = f.price ? Math.round(parseFloat(f.price) * 100) : undefined;
         api('/deals', { method: 'POST', body: { accountId: a.id, level: Number(f.level), notes: f.notes, priceCents: cents, ...(Number(f.level) === 1 && MX && pos != null ? { mixPosition: pos } : {}) } }).then(() => { toast('Sale closed. Fill in onboarding next.'); route(); }, fail); };
     }
+  },
+
+  // The guided deal: #deal/<orderFormId>/<step>. Each change saves after a short pause; moving between steps saves first.
+  async deal(id) {
+    let D = await api('/order-forms/' + encodeURIComponent(id), { noView: true }), F = D.form, MISSING = D.missing, newUrl = null;
+    const admin = ME.role === 'admin', isOpen = () => ['draft', 'client_review'].includes(F.status), want = location.hash.split('/')[2];
+    let step = OF_STEPS.some(([k]) => k === want) ? want : F.status === 'filed' ? 'handoff' : 'package';
+    let MXS = null, POS = F.data.package?.mixPosition ?? null, mixReq = 0, timer = null, pending = null, saving = Promise.resolve(), lastError = null;
+    const reload = async () => { D = await api('/order-forms/' + encodeURIComponent(F.id), { noView: true }); F = D.form; MISSING = D.missing; };
+    const status = (t, bad) => { const s = $('#ofSaved'); if (s) { s.textContent = t; s.classList.toggle('errtext', !!bad); } };
+    // Autosave: the latest change wins; saves run one at a time, in order.
+    const queue = (fn, ms = 700) => { clearTimeout(timer); pending = fn; status('Not saved yet'); timer = setTimeout(flush, ms); };
+    function flush() {
+      clearTimeout(timer); const fn = pending; pending = null; if (!fn) return saving;
+      return (saving = saving.then(async () => {
+        try { const body = await fn(); if (!body) return status('');
+          status('Saving…'); const r = await api('/order-forms/' + F.id, { method: 'PATCH', body }); F = r.form; MISSING = r.missing; lastError = null; status('Saved'); afterSave();
+        } catch (e) { lastError = e; status(e.message, true); }
+      }));
+    }
+    const leave = () => { if (pending) flush(); }; addEventListener('hashchange', leave, { once: true }); addEventListener('pagehide', leave, { once: true });
+    const done = (k) => { const d = F.data;
+      if (k === 'package') return !!(d.package?.plan && d.package.priceCents != null);
+      if (k === 'client') return K.orderForm.sections.client.every((f) => !f.req || (d.client || {})[f.key] != null);
+      if (k === 'services') return ['answer', 'followUp', 'chase'].some((x) => (d.services || {})[x]);
+      if (k === 'term') return K.orderForm.sections.term.every((f) => !f.req || (d.term || {})[f.key] != null);
+      return k === 'review' ? F.status === 'filed' : false; };
+    const stepsHtml = () => OF_STEPS.map(([k, l]) => `<li><button type="button" data-step="${k}"${k === step ? ' aria-current="step"' : ''}${done(k) ? ' data-done' : ''}>${l}</button></li>`).join('');
+    const missHtml = () => (MISSING.length && isOpen() ? `<div class="card stack"><h2>Still to fill in before filing</h2><ul class="miss">${MISSING.map((m) => `<li>${esc(m)}</li>`).join('')}</ul></div>` : '');
+    function afterSave() {
+      if (!$('#ofRoot')) return; // they left the flow before the save landed
+      $$('#ofSteps button').forEach((b) => b.toggleAttribute('data-done', done(b.dataset.step)));
+      if (step === 'review') { $('#ofSheet').innerHTML = ofSheet(F, D.account); $('#ofMiss').innerHTML = missHtml(); }
+    }
+
+    // What the client sent through their link, beside what the form holds now. Nothing counts until the rep takes it.
+    function answersCard() {
+      const A = D.clientAnswers; if (!A || !isOpen()) return '';
+      const rows = [];
+      for (const n of K.orderForm.clientSections) for (const f of K.orderForm.sections[n]) { const v = (o) => (f.kind === 'bool' ? !!(o[n] || {})[f.key] : (o[n] || {})[f.key]), now = ofShow(f, v(F.data)), them = ofShow(f, v(A.data)); if (them && them !== now) rows.push([f.label, now, them]); }
+      for (const f of K.onboarding) { const now = D.account.onboarding[f.key] || '', them = (A.data.onboarding || {})[f.key] || ''; if (them && them !== now) rows.push([f.label, now, them]); }
+      return `<section class="card stack attn noprint"><h2>The client filled this in</h2><p class="sub">Sent ${esc(when(A.submittedAt))}. Nothing counts until you take it, so go over each answer with them.</p>
+        ${rows.length ? `<div class="tbl"><table><thead><tr><th>Field</th><th>On the form now</th><th>Client's answer</th></tr></thead><tbody>${rows.map(([l, a, b]) => `<tr><td>${esc(l)}</td><td>${a ? esc(a) : '<span class="muted">empty</span>'}</td><td><b>${esc(b)}</b></td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">Their answers match what the form already holds.</p>'}
+        ${A.data.requests ? `<p class="lbl">${esc(K.orderForm.notes.requests)}</p><pre class="tpl">${esc(A.data.requests)}</pre><p class="muted">Not copied into the form. Taking or setting aside the answers puts this on the account timeline.</p>` : ''}
+        <div class="row"><button class="btn" type="button" data-ans="accept">Take their answers</button><button class="btn ghost" type="button" data-ans="reject">Set them aside</button></div></section>`;
+    }
+    function linkCard() {
+      if (!isOpen()) return '';
+      const L = D.link;
+      return `<details class="card noprint"${newUrl ? ' open' : ''}><summary>Send the client their part</summary><div class="stack">
+        <p class="muted">The client gets one page with their details, services and setup, term and payment, and the onboarding questions. Nothing else. Their answers wait here for you. The portal sends nothing: copy the link into your own email or text.</p>
+        ${newUrl ? `<pre class="tpl" id="ofUrl">${esc(newUrl)}</pre><div class="row"><button class="btn sm" type="button" data-copy="ofUrl">Copy link</button></div><p class="note">Copy it now. The portal keeps only a fingerprint of the link, so it cannot show it again.</p>` : ''}
+        <p>${L ? `A link is open until ${esc(day(L.expiresAt))}.${L.submittedAt ? ` The client sent answers ${esc(when(L.submittedAt))}.` : ''}` : `No open link. A new one lasts ${K.orderForm.linkDays} days.`}</p>
+        <div class="row"><button class="btn ghost sm" type="button" data-link="new">${L ? 'Make a new link (closes the old one)' : 'Make a link'}</button>${L ? '<button class="btn ghost sm" type="button" data-link="off">Close the link</button>' : ''}</div></div></details>`;
+    }
+    const fieldsetOpen = () => (isOpen() ? '' : ' disabled');
+    const lockNote = () => (F.status === 'filed' ? '<p class="note">Filed, so it is locked. To change it, an admin voids it and you start a new one.</p>' : F.status === 'void' ? '<p class="note">Void. The number stays used and is never given out again.</p>' : '');
+    function pkgStep() {
+      const p = F.data.package || {};
+      return `<form class="card" id="ofForm" novalidate><fieldset class="plain stack"${fieldsetOpen()}><h2>Package</h2>
+        <p class="sub">${admin ? 'The plan and the agreed price.' : "Reps quote the pilot. Plans, custom builds and agency deals are priced by Christian: send him the owner's needs."}</p>
+        <div class="fields"><div><label for="ofPlan">Plan</label><select id="ofPlan">${K.orderForm.plans.map((x) => `<option value="${x}"${x === p.plan ? ' selected' : ''}${admin || K.orderForm.repPlans.includes(x) ? '' : ' disabled'}>${esc(planName(x))}</option>`).join('')}</select></div>
+          <div><label for="ofPrice" id="ofPriceL">Price in dollars</label><input id="ofPrice" inputmode="decimal" value="${p.priceCents != null ? p.priceCents / 100 : ''}"></div>
+          ${admin ? `<div><label for="ofDisc">Discount (admin)</label><input id="ofDisc" maxlength="200" value="${esc(p.discount)}"></div><div><label for="ofBuild">Build fee (admin)</label><input id="ofBuild" maxlength="200" value="${esc(p.buildFee)}"></div>` : ''}</div>
+        <p class="note" id="ofPriceNote"></p><p class="muted" id="ofPilotFee" hidden>${esc(K.orderForm.notes.pilotFee)}</p>
+        <div class="mix" id="ofMix" hidden><h3>Usage mix</h3><p class="muted">Slide to trade calls for texts inside the same allowance. The price and the allowance stay as they are.</p>
+          <div class="mixends"><span id="ofMxL">More calls</span><span id="ofMxR">More texts</span></div><input type="range" id="ofMx" min="0" max="0" step="1" value="0" aria-labelledby="ofMxL ofMxR">
+          <div class="mixread"><div><b id="ofMin"></b><span>voice minutes</span></div><div><b id="ofTxt"></b><span>texts</span></div><div><b id="ofThr"></b><span>AI conversations</span></div></div>
+          <p class="muted" id="ofTrade"></p><div class="row"><button class="btn ghost sm" type="button" id="ofMxReset">Reset to the plan default</button></div></div>
+        <p class="muted">${esc(K.taxNote)}${admin ? '' : ' No discounts.'}</p></fieldset></form>`;
+    }
+    const INTRO = { client: 'Filled in from the account where the portal has it. Check the legal name and the billing email with the owner.', services: 'What the system does for them and how their calls reach it.', term: 'How they pay and the term as agreed.' };
+    const secStep = (sec) => `<form class="card" id="ofForm" novalidate><fieldset class="plain"${fieldsetOpen()}><h2>${OF_TITLE[sec]}</h2><p class="sub">${INTRO[sec]}</p><div class="fields">${ofFields(sec, F.data, admin)}</div>${sec === 'term' ? `<p class="help">${esc(K.orderForm.notes.term)}</p>` : ''}</fieldset></form>`;
+    const voidBtn = () => (F.status === 'void' || (F.status === 'filed' && !admin) ? '' : `<button class="btn ghost" type="button" id="ofVoid">${F.status === 'filed' ? 'Void this Order Form' : 'Drop this draft'}</button>`);
+    const reviewStep = () => `<div id="ofMiss">${missHtml()}</div>
+      <form class="card noprint" id="ofForm" novalidate><fieldset class="plain"${fieldsetOpen()}><h2>Signing</h2><p class="sub">${esc(K.orderForm.notes.signing)}</p><div class="fields">${ofFields('signing', F.data, admin)}</div></fieldset></form>
+      <div id="ofSheet">${ofSheet(F, D.account)}</div>
+      <div class="row noprint ofnav"><span class="row"><button class="btn ghost" type="button" id="ofPrint">Print or save as PDF</button>${voidBtn()}</span>${isOpen() ? '<button class="btn" type="button" id="ofFile">File the Order Form</button>' : ''}</div>`;
+    function handoffStep() {
+      if (F.status !== 'filed') return `<section class="card stack"><h2>Hand-off</h2><p class="sub">${F.status === 'void' ? 'This Order Form is void.' : 'File the Order Form on the Review step first. Then this step records the sale, takes the onboarding details and gets the invoice file ready.'}</p></section>`;
+      const p = F.data.package || {}, signed = ['onboarding', 'live'].includes(D.account.stage), canSale = p.plan === 'Pilot' || admin;
+      return `<section class="card stack"><h2>1. Record the sale</h2>${signed ? '<p class="muted">Done. This account is signed.</p>' : canSale ? `<p class="sub">Closes the deal at ${esc(planName(p.plan))}, ${money(p.priceCents)} plus tax, and moves the account to onboarding.</p><p><button class="btn" type="button" id="ofSale">Record the sale</button></p>` : '<p class="muted">An admin records this sale.</p>'}</section>
+        <form class="card" id="ofOnb"><h2>2. Onboarding details</h2><p class="sub">Fill these in with the owner. The developer starts from them.</p><div class="fields">${K.onboarding.map((f) => `<div class="full"><label for="ob_${f.key}">${esc(f.label)}</label><textarea id="ob_${f.key}" name="${f.key}" rows="2" maxlength="1000">${esc(D.account.onboarding[f.key])}</textarea></div>`).join('')}</div><button class="btn">Save onboarding</button></form>
+        <section class="card stack"><h2>3. Invoice</h2><p class="sub">This file holds what omni-invoice reads from the Order Form. Give it to omni-invoice in Claude, confirm it in the Omni invoices pane, then review and send the invoice in Stripe. The portal sends nothing.</p>
+          <pre class="tpl" id="ofInv">Loading…</pre><div class="row"><button class="btn" type="button" id="ofDl">Download for invoicing</button><button class="btn ghost" type="button" data-copy="ofInv">Copy</button></div></section>`;
+    }
+    const BODY = { package: pkgStep, client: () => secStep('client'), services: () => secStep('services'), term: () => secStep('term'), review: reviewStep, handoff: handoffStep };
+
+    function paint() {
+      const i = OF_STEPS.findIndex(([k]) => k === step), prev = OF_STEPS[i - 1], next = OF_STEPS[i + 1];
+      view.innerHTML = `<div id="ofRoot"><p class="noprint"><a class="lnk" href="#account/${esc(D.account.id)}/close">${esc(D.account.business)}</a></p>
+        <div class="ofhead noprint"><h1>Order Form ${esc(F.label)}</h1><span class="row">${ofPill(F.status)}<span class="muted" id="ofSaved" role="status"></span></span></div>
+        <p class="sub noprint">Use it live on the call, or send the client a link for their part. Every change saves as you go. ${esc(K.orderForm.notes.intro)}</p>
+        <div class="stack noprint ofpre">${answersCard()}${linkCard()}</div>
+        <ol class="steps" id="ofSteps" aria-label="Order Form steps">${stepsHtml()}</ol>${lockNote()}
+        <div class="stack" id="ofBody">${BODY[step]()}</div>
+        <div class="ofnav noprint">${prev ? `<button class="btn ghost" type="button" data-step="${prev[0]}">Back</button>` : '<span></span>'}${next && !(step === 'review' && isOpen()) ? `<button class="btn" type="button" data-step="${next[0]}">Next: ${next[1]}</button>` : next ? '' : `<a class="btn ghost" href="#account/${esc(D.account.id)}">Back to the account</a>`}</div></div>`;
+      wire();
+    }
+    async function go(k) {
+      await flush(); if (lastError) return toast('Fix this first: ' + lastError.message);
+      step = k; history.replaceState(null, '', '#deal/' + F.id + '/' + k); paint(); scrollTo(0, 0);
+    }
+    const act = async (fn, msg) => { try { await fn(); await reload(); if (msg) toast(msg); paint(); } catch (e) { fail(e); } };
+
+    function wire() {
+      $('#ofRoot').onclick = async (e) => {
+        const s = e.target.closest('[data-step]'), a = e.target.closest('[data-ans]'), l = e.target.closest('[data-link]');
+        if (s) return go(s.dataset.step);
+        if (a) { await flush(); return act(() => api(`/order-forms/${F.id}/client`, { method: 'POST', body: { action: a.dataset.ans } }), a.dataset.ans === 'accept' ? 'Their answers are on the form' : 'Set aside'); }
+        if (l && l.dataset.link === 'new') return act(async () => { newUrl = (await api(`/order-forms/${F.id}/link`, { method: 'POST', body: {} })).url; }, 'Link made. Copy it now.');
+        if (l && l.dataset.link === 'off') return act(async () => { newUrl = null; await api(`/order-forms/${F.id}/link`, { method: 'DELETE' }); }, 'Link closed');
+      };
+      const el = $('#ofForm');
+      if (step === 'package' && el) wirePkg(el);
+      else if (el && isOpen()) { const sec = step === 'review' ? 'signing' : step; el.oninput = el.onchange = () => queue(() => ({ [sec]: ofRead(el, sec) })); }
+      if ($('#ofPrint')) $('#ofPrint').onclick = () => print();
+      if ($('#ofVoid')) $('#ofVoid').onclick = () => { if (confirm(`Void Order Form ${F.label}? The number stays used and is never given out again.`)) act(() => api(`/order-forms/${F.id}/void`, { method: 'POST', body: {} }), 'Voided'); };
+      if ($('#ofFile')) $('#ofFile').onclick = async () => {
+        await flush(); if (lastError) return toast('Fix this first: ' + lastError.message);
+        if (MISSING.length) return toast('Still missing: ' + MISSING.join(', '));
+        if (!confirm(`File Order Form ${F.label}? It locks, and any client link closes.`)) return;
+        try { await api(`/order-forms/${F.id}/file`, { method: 'POST', body: {} }); await reload(); step = 'handoff'; history.replaceState(null, '', '#deal/' + F.id + '/handoff'); paint(); toast('Filed'); } catch (er) { fail(er); }
+      };
+      if (step === 'handoff' && F.status === 'filed') wireHandoff();
+    }
+    function wireHandoff() {
+      const file = () => api(`/order-forms/${F.id}/invoice.json`, { raw: true, noView: true });
+      file().then((r) => r.text()).then((t) => { if ($('#ofInv')) $('#ofInv').textContent = t; }, (e) => { if ($('#ofInv')) $('#ofInv').textContent = e.message; });
+      $('#ofDl').onclick = async () => { try { const url = URL.createObjectURL(await (await file()).blob()); const a = Object.assign(document.createElement('a'), { href: url, download: `${F.label}-for-invoicing.json` }); a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); } catch (e) { fail(e); } };
+      $('#ofOnb').onsubmit = (e) => { e.preventDefault(); act(() => api('/accounts/' + D.account.id, { method: 'PATCH', body: { onboarding: form(e.target) } }), 'Onboarding saved'); };
+      if ($('#ofSale')) $('#ofSale').onclick = () => { const p = F.data.package;
+        act(() => api('/deals', { method: 'POST', body: { accountId: D.account.id, level: PLAN_LEVEL[p.plan], priceCents: p.priceCents, notes: `Order Form ${F.label}`, ...(p.plan === 'Pilot' && p.mixPosition != null ? { mixPosition: p.mixPosition } : {}) } }), 'Sale recorded. The account is in onboarding.'); };
+    }
+    // The package: the plan, the price and the mix. Slider steps come from the server (one copy of the math).
+    function wirePkg(el) {
+      const plan = $('#ofPlan'), price = $('#ofPrice');
+      async function loadMix() {
+        const pl = plan.value, pilot = pl === 'Pilot', c = dollars(price.value), me = ++mixReq;
+        $('#ofPriceL').textContent = pilot ? 'Pilot price in dollars, $499 minimum' : 'Agreed price in dollars'; $('#ofPilotFee').hidden = !pilot;
+        price.disabled = !isOpen() || (!pilot && !admin); // the server refuses it anyway
+        let m = null;
+        try {
+          if (pilot && c >= K.pilot.minCents && c <= K.pilot.maxCents) m = await api('/mix?priceCents=' + c, { noView: true });
+          else if (!pilot && K.orderForm.mixPlans.includes(pl)) m = await api('/mix?plan=' + encodeURIComponent(pl), { noView: true });
+        } catch { m = null; }
+        if (me !== mixReq) return false; // a newer price is on its way
+        MXS = m; if (MXS && !MXS.steps.some((x) => x.p === POS)) POS = MXS.defaultPosition;
+        paintMix(); return true;
+      }
+      function paintMix() {
+        const pl = plan.value, c = dollars(price.value), note = $('#ofPriceNote');
+        const warn = pl === 'Pilot' ? (!(c >= K.pilot.minCents) ? 'The pilot starts at $499.' : c > K.pilot.maxCents ? 'That is above a pilot. Send it to Christian as a custom quote.' : '') : admin && !(c > 0) ? 'Enter the agreed price.' : '';
+        note.className = warn ? 'note' : 'muted';
+        note.textContent = warn || (!admin && pl !== 'Pilot' ? 'Christian prices this plan.' : MXS ? `Credit allowance ${money(MXS.allowanceCents)}${pl === 'Pilot' ? '' : ' a month'}.` : pl === 'Pilot' ? '' : 'The allowance is built per quote.');
+        $('#ofMix').hidden = !MXS; if (!MXS) return;
+        const r = $('#ofMx'), n = MXS.steps.length, s = MXS.steps.find((x) => x.p === POS) || MXS.steps[0];
+        r.max = String(n - 1); r.value = String(n - 1 - MXS.steps.indexOf(s)); r.setAttribute('aria-valuetext', `${s.minutes.toLocaleString()} minutes, ${s.texts.toLocaleString()} texts`);
+        $('#ofMin').textContent = s.minutes.toLocaleString(); $('#ofTxt').textContent = s.texts.toLocaleString(); $('#ofThr').textContent = s.threads.toLocaleString();
+        $('#ofTrade').textContent = `10 minutes is about ${MXS.tradeTexts} texts.` + (s.p === MXS.defaultPosition ? ' This is the plan default.' : '');
+      }
+      const body = () => {
+        const pl = plan.value, c = dollars(price.value);
+        if (Number.isNaN(c) || (pl === 'Pilot' && c != null && (c < K.pilot.minCents || c > K.pilot.maxCents))) return null; // the note says why; nothing to save
+        return { package: { plan: pl, priceCents: c, mixPosition: MXS ? POS : null, ...(admin ? { discount: $('#ofDisc').value, buildFee: $('#ofBuild').value } : {}) } };
+      };
+      const save = (ms) => queue(async () => ((await loadMix()) ? body() : null), ms);
+      loadMix();
+      if (!isOpen()) return;
+      plan.onchange = () => save(0);
+      price.oninput = () => save(800);
+      el.querySelectorAll('#ofDisc,#ofBuild').forEach((x) => (x.oninput = () => queue(async () => body())));
+      $('#ofMx').oninput = () => { if (!MXS) return; POS = MXS.steps[MXS.steps.length - 1 - Number($('#ofMx').value)].p; paintMix(); queue(async () => body()); };
+      $('#ofMxReset').onclick = () => { if (MXS) { POS = MXS.defaultPosition; paintMix(); queue(async () => body(), 0); } };
+    }
+    paint();
+  },
+
+  // The Order Form on its own, for printing or saving as a PDF.
+  async orderform(id) {
+    const D = await api('/order-forms/' + encodeURIComponent(id), { noView: true });
+    view.innerHTML = `<p class="noprint"><a class="lnk" href="#deal/${esc(D.form.id)}/review">Back to the Order Form</a></p>${ofSheet(D.form, D.account)}<p class="noprint ofnav"><button class="btn" type="button" id="pp">Print or save as PDF</button></p>`;
+    $('#pp').onclick = () => print();
   },
 
   async calendarPanel(host) {
@@ -579,7 +847,7 @@ async function route() {
   const [name, arg] = (location.hash.slice(1) || 'today').split('/');
   if (name !== 'calls') clearCallsKey();
   const fn = screens[name] && !name.endsWith('Panel') ? screens[name] : screens.today;
-  const tab = name === 'account' ? 'accounts' : name === 'calendar' ? 'today' : name, g = GROUPS.find((x) => x.tabs.some((t) => t[0] === tab));
+  const tab = ['account', 'deal', 'orderform'].includes(name) ? 'accounts' : name === 'calendar' ? 'today' : name, g = GROUPS.find((x) => x.tabs.some((t) => t[0] === tab));
   $$('#nav a').forEach((l) => { if (g && l.dataset.g === g.key) l.setAttribute('aria-current', 'page'); else l.removeAttribute('aria-current'); });
   const tabs = g ? g.tabs.filter((t) => !t[2] || ME.role === 'admin') : [];
   $('#subnav').hidden = tabs.length < 2;

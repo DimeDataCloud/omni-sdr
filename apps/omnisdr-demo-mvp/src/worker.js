@@ -9,6 +9,7 @@ import { TENANTS, DEFAULT_TENANT } from './tenant.js';
 import { buildInstruction, bookSlotTool } from './engine-instruction.js';
 import { handleRep } from './rep/index.js';
 import { handleIngest } from './rep/engine.js';
+import { handleClient } from './rep/client.js';
 import { planNextText, classifyInbound, textingAllowed } from './text-cadence.mjs';
 
 /* ---------- helpers ---------- */
@@ -411,6 +412,7 @@ export default {
       const u = new URL(req.url), p = u.pathname, m = req.method;
       if (p === '/engine/ingest') return handleIngest(req, env); // Lead Engine sweep results from GitHub Actions; shared-secret header, outside the Access-protected /rep
       if (p === '/rep' || p.startsWith('/rep/')) return handleRep(req, env); // rep portal: own auth (Access JWT + reps row), own CSP; see src/rep/index.js
+      if (p.startsWith('/of/')) return handleClient(req, env); // client fill-in link for one Order Form: the token is the key, outside Access; see src/rep/client.js
       if (m === 'GET' && p === '/tryme') return (!triedGated(env) || (await salesAuthed(req, env))) ? page(demoHtml, env) : toEntry();
       if (m === 'GET' && p === '/tryme/dev') return page(devHtml, env);
       if (m === 'GET' && p === '/dev') return new Response(null, { status: 302, headers: { location: '/tryme/dev' + u.search, 'cache-control': 'no-store', 'x-robots-tag': 'noindex' } });
