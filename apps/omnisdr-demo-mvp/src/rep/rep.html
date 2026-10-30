@@ -60,6 +60,14 @@ dialog[open]{animation:rise var(--t-enter) ease}dialog[open]::backdrop{animation
 .chip{transition:border-color var(--t-hover) ease,background-color var(--t-hover) ease}
 .acts{margin:4px 0 16px}.acts label{margin:0}.acts select{width:auto;min-width:180px}
 .show-sm{display:none}@media (max-width:640px){.hide-sm{display:none}.show-sm{display:inline}}
+/* Team on a phone: each rep is a card (name and View as on top, each number labelled below) instead of a table that
+   scrolls sideways. The roles on the table keep its cells announced as a table once display changes them. */
+@media (max-width:640px){
+  .tbl.cards{overflow:visible}.tbl.cards table,.tbl.cards tbody,.tbl.cards tr,.tbl.cards td{display:block}.tbl.cards thead{position:absolute;left:-9999px}
+  .tbl.cards tr{display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;padding:14px 0;border-bottom:1px solid var(--line)}.tbl.cards tr:first-child{padding-top:0}.tbl.cards tr:last-child{border-bottom:0;padding-bottom:0}
+  .tbl.cards td{display:flex;justify-content:space-between;gap:8px;padding:0;border:0;font-size:14px;font-variant-numeric:tabular-nums}.tbl.cards td::before{content:attr(data-label);color:var(--muted)}
+  .tbl.cards td.who{grid-column:1;align-self:center;font-weight:600;font-size:16px}.tbl.cards td.act{grid-column:2;grid-row:1;justify-content:flex-end}
+  .tbl.cards td.who::before,.tbl.cards td.act::before{content:none}}
 /* omnisdr.com language (Christian 2026-10-29, via Halo): sand page, white cards on a hairline, pill controls, tight headings,
    mint only as a fill. Scoped to the rep portal; the demo pages keep base.css as it is. */
 @media (prefers-color-scheme:light){:root{--bg:#F5F3EF}}
@@ -775,8 +783,11 @@ const screens = {
     if (ME.role !== 'admin') { location.hash = 'today'; return; }
     const { reps } = await api('/reps'); REPS = reps; fillView();
     const n = (r, k) => r.stats.stages[k] || 0;
+    // One list of columns: the table headings on a wide screen, and each number's label on a phone card.
+    const COLS = [['Leads', (r) => r.stats.leads], ['New', (r) => n(r, 'new')], ['Demo booked', (r) => n(r, 'results_call')], ['Proposed', (r) => n(r, 'proposed')],
+      ['Onboarding or live', (r) => n(r, 'onboarding') + n(r, 'live')], ['Open tasks', (r) => r.stats.openTasks], ['Calls, 7 days', (r) => r.stats.calls7d], ['Deals', (r) => r.stats.deals], ['Sold', (r) => money(r.stats.soldCents)]];
     view.innerHTML = `<h1>Team</h1><p class="sub">Each rep sees only their own leads. Hand leads out on the Accounts screen, and use Viewing to see one rep's screens.</p>
-      <section class="card"><div class="tbl"><table><thead><tr><th>Rep</th><th>Leads</th><th>New</th><th>Demo booked</th><th>Proposed</th><th>Onboarding or live</th><th>Open tasks</th><th>Calls, 7 days</th><th>Deals</th><th>Sold</th><th></th></tr></thead><tbody>${reps.filter((r) => r.active).map((r) => `<tr><td>${esc(r.name)}</td><td>${r.stats.leads}</td><td>${n(r, 'new')}</td><td>${n(r, 'results_call')}</td><td>${n(r, 'proposed')}</td><td>${n(r, 'onboarding') + n(r, 'live')}</td><td>${r.stats.openTasks}</td><td>${r.stats.calls7d}</td><td>${r.stats.deals}</td><td>${money(r.stats.soldCents)}</td><td><button class="btn ghost sm" data-view="${esc(r.email)}">View as</button></td></tr>`).join('')}</tbody></table></div></section>
+      <section class="card"><div class="tbl cards"><table role="table"><thead><tr role="row"><th role="columnheader">Rep</th>${COLS.map(([l]) => `<th role="columnheader">${l}</th>`).join('')}<th role="columnheader"><span class="sr">Actions</span></th></tr></thead><tbody>${reps.filter((r) => r.active).map((r) => `<tr role="row"><td role="cell" class="who">${esc(r.name)}</td>${COLS.map(([l, f]) => `<td role="cell" data-label="${l}">${f(r)}</td>`).join('')}<td role="cell" class="act"><button class="btn ghost sm" data-view="${esc(r.email)}">View as<span class="sr"> ${esc(r.name)}</span></button></td></tr>`).join('')}</tbody></table></div></section>
       <p class="note">New reps also need their email on the Cloudflare Access "Reps" policy before they can sign in.</p><div class="grid two">
       <section class="card"><ul class="list" id="reps">${reps.map((r) => `<li><div class="t">${esc(r.name)} <span class="pill${r.active ? '' : ' bad'}">${r.active ? esc(r.role) : 'off'}</span><small>${esc(r.email)}</small></div>${r.email === ME.email ? '' : `<button class="btn ghost sm" data-e="${esc(r.email)}" data-a="${r.active ? 0 : 1}">${r.active ? 'Turn off' : 'Turn on'}</button>`}</li>`).join('')}</ul></section>
       <form class="card" id="rf"><h2>Add a rep</h2><label for="r_n">Name</label><input id="r_n" name="name" required maxlength="80"><label for="r_e">Email they sign in with</label><input id="r_e" name="email" type="email" required>
