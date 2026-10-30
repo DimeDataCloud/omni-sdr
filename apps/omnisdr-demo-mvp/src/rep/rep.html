@@ -162,7 +162,7 @@ async function setFlag(id, kind) { await api('/accounts/' + encodeURIComponent(i
 // One stage picker for Pipeline cards and the account header. Onboarding and Live are admin moves; the server refuses them for reps too.
 const stageOptions = (cur) => K.stages.map((s) => `<option value="${s}"${s === cur ? ' selected' : ''}${['onboarding', 'live'].includes(s) && ME.role !== 'admin' ? ' disabled' : ''}>${STAGE_LABEL[s]}</option>`).join('');
 // Account tabs by name, for #account/<id>/<tab> links and for keeping the open tab across a save.
-const ACCOUNT_TAB = { details: '0', audit: '4', messages: '5', timeline: '1', onboarding: '2', close: '3' };
+const ACCOUNT_TAB = { details: '0', audit: '4', timeline: '1', onboarding: '2', close: '3' };
 const countUp = (el, to, fmt) => {
   const from = parseFloat(el.dataset.v || '0'), start = performance.now(), dur = 600;
   const step = (t) => {
@@ -591,7 +591,7 @@ const screens = {
     const NEXT = { new: ['audit', 'Next: run the free check'], results_call: ['close', 'Next: the Order Form'], proposed: ['close', 'Next: the Order Form'], onboarding: ['onboarding', 'Next: onboarding'] }, next = NEXT[a.stage];
     view.innerHTML = `<p><a class="lnk" href="#pipeline">All accounts</a></p><h1>${esc(a.business)}</h1><p class="sub">${esc([a.niche, a.city, a.state].filter(Boolean).join(' · '))}</p>
       <div class="row acts"><label for="stg" class="muted">Stage</label><select id="stg">${stageOptions(a.stage)}</select>${next ? `<button class="btn" type="button" id="nextGo" data-tab="${next[0]}">${next[1]}</button>` : ''}</div>
-      <div class="tabs" role="tablist">${[['Overview', 0], ['Qualify', 4], ['Message', 5], ['Activity', 1], ['Close', 3], ['Onboard', 2]].map(([t, k]) => `<button class="tab" role="tab" data-t="${k}" aria-selected="${k === 0}">${t}</button>`).join('')}</div>
+      <div class="tabs" role="tablist">${[['Overview', 0], ['Qualify', 4], ['Activity', 1], ['Close', 3], ['Onboard', 2]].map(([t, k]) => `<button class="tab" role="tab" data-t="${k}" aria-selected="${k === 0}">${t}</button>`).join('')}</div>
       <div data-p="0" class="grid two"><form class="card" id="ef"><div class="fields">
         ${[['business', 'Business name', 'full'], ['niche', 'Category'], ['phone', 'Phone'], ['email', 'Email'], ['website', 'Website', 'full'], ['address', 'Address', 'full'], ['city', 'City'], ['state', 'State'], ['signal', 'Why we are calling', 'full'], ['next_step', 'Next step', 'full']]
           .map(([k, l, c]) => `<div class="${c || ''}"><label for="f_${k}">${l}</label><input id="f_${k}" name="${k}" value="${esc(a[k])}"></div>`).join('')}
@@ -604,7 +604,7 @@ const screens = {
           <div class="full row"><label class="row"><input type="checkbox" name="isPrimary" class="cb"> Primary contact</label><button class="btn ghost">Add person</button></div></form></section>
         <section class="card stack"><h2>Calling</h2><p>${a.dial.ok ? 'Cleared to call.' : esc(DIAL_WHY[a.dial.reason] || 'Not cleared to call.')}</p><p class="muted">Line type: ${esc(a.line_type)} · Scrubbed: ${a.scrubbed_at ? when(a.scrubbed_at) : 'never'}${a.flag ? ' · ' + esc(label(a.flag)) : ''}</p><div class="row" id="afl">${flagBtns(a.id)}</div></section>
         <section class="card"><h2>Open tasks</h2><ul class="list">${d.tasks.map((k) => `<li><div class="t">${esc(k.title)}<small>${when(k.due_at)}</small></div></li>`).join('') || '<li class="muted">None.</li>'}</ul></section></div></div>
-      <div data-p="1" hidden class="card stack"><form id="nt" class="row"><select name="kind" aria-label="Kind" class="grow"><option value="note">Note</option><option value="email">Email sent</option><option value="text">Text sent</option><option value="demo">Demo given</option></select><input name="body" class="grow" required maxlength="2000" placeholder="What happened" aria-label="Note"><button class="btn">Add</button></form>
+      <div data-p="1" hidden class="stack"><details class="card"><summary><b>Message templates</b><span class="muted">Starter wording, filled in for this account</span></summary><div class="stack" style="margin-top:12px"><p class="sub">Adjust it, copy it, send it from your own phone or email, then log it.</p>${tpls({ business: a.business, name: ((d.contacts.find((c) => c.is_primary) || d.contacts[0] || {}).name || '').split(' ')[0] || 'there', rep: (ME.name || '').split(' ')[0], account: true })}</div></details><div class="card stack"><form id="nt" class="row"><select name="kind" aria-label="Kind" class="grow"><option value="note">Note</option><option value="email">Email sent</option><option value="text">Text sent</option><option value="demo">Demo given</option></select><input name="body" class="grow" required maxlength="2000" placeholder="What happened" aria-label="Note"><button class="btn">Add</button></form>
         <ul class="list timeline">${d.activities.map((v) => `<li><small>${when(v.created_at)} · ${esc(label(v.kind))}</small><div>${esc(v.body)}</div></li>`).join('')}</ul></div>
       <form data-p="4" hidden class="card stack" id="af"><p class="sub">Step 2 of the path: research the business and run the free check before the demo. Their numbers, not ours.</p>
         <details><summary>How to run the free check</summary>${ol(K.auditSteps)}</details>
@@ -613,8 +613,13 @@ const screens = {
           : `<div class="full"><label for="u_${x.key}">${esc(x.label)}</label><textarea id="u_${x.key}" name="${x.key}" rows="2" maxlength="1000">${esc(a.audit[x.key])}</textarea></div>`).join('')}</div>`).join('')}
         <p class="est" id="est"></p><p class="note">${esc(K.resultsDont)}</p>
         <div class="row"><button class="btn">Save audit</button>${a.stage === 'new' ? '<button class="btn ghost" type="button" id="aRun">Save and mark demo booked</button>' : ''}</div></form>
-      <div data-p="5" hidden class="stack"><p class="sub">Starter wording with this account filled in. Adjust it, copy it, send it from your own phone or email, then log it.</p>${tpls({ business: a.business, name: ((d.contacts.find((c) => c.is_primary) || d.contacts[0] || {}).name || '').split(' ')[0] || 'there', rep: (ME.name || '').split(' ')[0], account: true })}</div>
-      <form data-p="2" hidden class="card" id="of"><p class="sub">Fill this in with the owner on the call after the yes. The developer starts from it.</p><div class="fields">${K.onboarding.map((f) => `<div class="full"><label for="o_${f.key}">${esc(f.label)}</label><textarea id="o_${f.key}" name="${f.key}" rows="2" maxlength="1000">${esc(a.onboarding[f.key])}</textarea></div>`).join('')}</div><button class="btn">Save onboarding</button></form>
+
+      </div><form data-p="2" hidden class="card" id="of"><p class="sub">Fill this in with the owner on the call after the yes. The developer starts from it. Info from Overview is already filled in.</p><div class="fields">${K.onboarding.map((f) => {
+          let val = a.onboarding[f.key];
+          if (!val && f.key === 'alertPhone' && a.phone) val = a.phone;
+          if (!val && f.key === 'backupContact') { const pc = (d.contacts.find((c) => c.is_primary) || d.contacts[0] || {}); if (pc.name) val = pc.name + (pc.phone ? ' ' + pc.phone : ''); }
+          return `<div class="full"><label for="o_${f.key}">${esc(f.label)}${val && !a.onboarding[f.key] ? ' <span class="muted">(from Overview)</span>' : ''}</label><textarea id="o_${f.key}" name="${f.key}" rows="2" maxlength="1000">${esc(val || '')}</textarea></div>`;
+        }).join('')}</div><button class="btn">Save onboarding</button></form>
       <div data-p="3" hidden class="stack"><section class="card stack"><div class="ofhead"><h2>Order Form</h2>${openForm ? ofPill(openForm.status) : ''}</div><p class="sub">The guided deal: package, client, services, term, review and sign, then hand-off. Use it live on the call, or send the client a link for their part.</p>
         ${forms.length ? `<ul class="list">${forms.map((x) => `<li><div class="t">${esc(x.label)} ${ofPill(x.status)}<small>${esc([planName(x.data.package?.plan), x.data.package?.priceCents != null ? money(x.data.package.priceCents) : '', when(x.updated_at)].filter(Boolean).join(' · '))}</small></div><a class="btn ghost sm" href="#deal/${esc(x.id)}">Open</a></li>`).join('')}</ul>` : ''}
         <p>${openForm ? `<a class="btn" href="#deal/${esc(openForm.id)}">Resume ${esc(openForm.label)}</a>` : '<button class="btn" type="button" id="ofStart">Start the Order Form</button>'}</p></section>
@@ -651,8 +656,6 @@ const screens = {
     $('#af').oninput = est; est();
     $('#af').onsubmit = (e) => { e.preventDefault(); save({ audit: form(e.target) }, 'Audit saved'); };
     if ($('#aRun')) $('#aRun').onclick = () => save({ audit: form($('#af')), stage: 'results_call' }, 'Audit saved. Stage: demo booked');
-    $('[data-p="5"]').onclick = (e) => { const b = e.target.closest('[data-sent]'); if (!b) return; const t = K.templates.find((x) => x.id === b.dataset.sent);
-      api(`/accounts/${a.id}/notes`, { method: 'POST', body: { kind: t.kind === 'call' ? 'note' : t.kind, body: 'Sent: ' + t.label } }).then(() => toast('Logged on the timeline'), fail); };
     $('#cf').onsubmit = (e) => { e.preventDefault(); const f = form(e.target); api(`/accounts/${a.id}/contacts`, { method: 'POST', body: { ...f, isPrimary: !!f.isPrimary } }).then(() => { toast('Added'); route(); }, fail); };
     $('#ppl').onclick = (e) => { const b = e.target.closest('[data-del]'); if (b) api('/contacts/' + b.dataset.del, { method: 'DELETE' }).then(() => { toast('Removed'); route(); }, fail); };
     $('#nt').onsubmit = (e) => { e.preventDefault(); api(`/accounts/${a.id}/notes`, { method: 'POST', body: form(e.target) }).then(() => { toast('Added'); route(); }, fail); };
@@ -821,7 +824,11 @@ const screens = {
       if (F.status !== 'filed') return `<section class="card stack"><h2>Hand-off</h2><p class="sub">${F.status === 'void' ? 'This Order Form is void.' : 'File the Order Form on the Review step first. Then this step records the sale, takes the onboarding details and gets the invoice file ready.'}</p></section>`;
       const p = F.data.package || {}, signed = ['onboarding', 'live'].includes(D.account.stage), canSale = !!p.plan && (admin || K.orderForm.repPlans.includes(p.plan));
       return `<section class="card stack"><h2>1. Record the sale</h2>${signed ? '<p class="muted">Done. This account is signed.</p>' : canSale ? `<p class="sub">Closes the deal at ${esc(planName(p.plan))}, ${money(p.priceCents)} plus tax, and moves the account to onboarding.</p><p><button class="btn" type="button" id="ofSale">Record the sale</button></p>` : '<p class="muted">An admin records this sale.</p>'}</section>
-        <form class="card" id="ofOnb"><h2>2. Onboarding details</h2><p class="sub">Fill these in with the owner. The developer starts from them.</p><div class="fields">${K.onboarding.map((f) => `<div class="full"><label for="ob_${f.key}">${esc(f.label)}</label><textarea id="ob_${f.key}" name="${f.key}" rows="2" maxlength="1000">${esc(D.account.onboarding[f.key])}</textarea></div>`).join('')}</div><button class="btn">Save onboarding</button></form>
+        <form class="card" id="ofOnb"><h2>2. Onboarding details</h2><p class="sub">Fill these in with the owner. The developer starts from them. Info from the account is already filled in.</p><div class="fields">${K.onboarding.map((f) => {
+          let val = D.account.onboarding[f.key];
+          if (!val && f.key === 'alertPhone' && D.account.phone) val = D.account.phone;
+          return `<div class="full"><label for="ob_${f.key}">${esc(f.label)}${val && !D.account.onboarding[f.key] ? ' <span class="muted">(from account)</span>' : ''}</label><textarea id="ob_${f.key}" name="${f.key}" rows="2" maxlength="1000">${esc(val || '')}</textarea></div>`;
+        }).join('')}</div><button class="btn">Save onboarding</button></form>
         <section class="card stack"><h2>3. Invoice</h2><p class="sub">This file holds what omni-invoice reads from the Order Form. Give it to omni-invoice in Claude, confirm it in the Omni invoices pane, then review and send the invoice in Stripe. The portal sends nothing.</p>
           <pre class="tpl" id="ofInv">Loading…</pre><div class="row"><button class="btn" type="button" id="ofDl">Download for invoicing</button><button class="btn ghost" type="button" data-copy="ofInv">Copy</button></div></section>`;
     }
