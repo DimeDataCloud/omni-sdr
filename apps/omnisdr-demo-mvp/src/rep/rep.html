@@ -509,7 +509,11 @@ const screens = {
     // The open tab lives in the hash via replaceState (no hashchange, no reload), so a save that re-renders lands back on it.
     tabs.forEach((t) => (t.onclick = () => { show(t.dataset.t); const n = Object.keys(ACCOUNT_TAB).find((k) => ACCOUNT_TAB[k] === t.dataset.t); history.replaceState(null, '', '#account/' + a.id + (n === 'details' ? '' : '/' + n)); }));
     const want = location.hash.split('/')[2]; if (Object.hasOwn(ACCOUNT_TAB, want)) show(ACCOUNT_TAB[want]);
-    if ($('#ofStart')) $('#ofStart').onclick = () => api(`/accounts/${a.id}/order-forms`, { method: 'POST', body: {} }).then((r) => { location.hash = 'deal/' + r.form.id; }, fail);
+    if ($('#ofStart')) $('#ofStart').onclick = () => {
+      const m = location.hash.match(/\?plan=([^&]+)/), plan = m ? decodeURIComponent(m[1]) : null;
+      const body = plan && K.orderForm.plans.includes(plan) ? { package: { plan } } : {};
+      api(`/accounts/${a.id}/order-forms`, { method: 'POST', body }).then((r) => { location.hash = 'deal/' + r.form.id; }, fail);
+    };
     if ($('#nextGo')) $('#nextGo').onclick = () => $(`.tab[data-t="${ACCOUNT_TAB[$('#nextGo').dataset.tab]}"]`).click();
     $('#stg').onchange = (e) => { const v = e.target.value;
       api('/accounts/' + a.id, { method: 'PATCH', body: { stage: v } }).then(() => { toast('Stage: ' + STAGE_LABEL[v]); route(); }, (er) => { e.target.value = a.stage; fail(er); }); };
