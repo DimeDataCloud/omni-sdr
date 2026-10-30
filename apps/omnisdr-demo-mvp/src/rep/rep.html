@@ -588,7 +588,7 @@ const screens = {
       if (k === 'services') return ['answer', 'followUp', 'chase'].some((x) => (d.services || {})[x]);
       if (k === 'term') return K.orderForm.sections.term.every((f) => !f.req || (d.term || {})[f.key] != null);
       return k === 'review' ? F.status === 'filed' : false; };
-    const stepsHtml = () => OF_STEPS.map(([k, l]) => `<li><button type="button" data-step="${k}"${k === step ? ' aria-current="step"' : ''}${done(k) ? ' data-done' : ''}>${l}</button></li>`).join('');
+    const stepsHtml = () => activeSteps().map(([k, l]) => `<li><button type="button" data-step="${k}"${k === step ? ' aria-current="step"' : ''}${done(k) ? ' data-done' : ''}>${l}</button></li>`).join('');
     const missHtml = () => (MISSING.length && isOpen() ? `<div class="card stack"><h2>Still to fill in before filing</h2><ul class="miss">${MISSING.map((m) => `<li>${esc(m)}</li>`).join('')}</ul></div>` : '');
     function afterSave() {
       if (!$('#ofRoot')) return; // they left the flow before the save landed
@@ -654,11 +654,16 @@ const screens = {
           <pre class="tpl" id="ofInv">Loading…</pre><div class="row"><button class="btn" type="button" id="ofDl">Download for invoicing</button><button class="btn ghost" type="button" data-copy="ofInv">Copy</button></div></section>`;
     }
     const BODY = { package: pkgStep, client: () => secStep('client'), services: () => secStep('services'), term: () => secStep('term'), review: reviewStep, handoff: handoffStep };
+    // Live Mode: 3 steps for live calls (Package → Client → Review), Services/Term auto-filled
+    const LIVE_STEPS = [['package', 'Plan'], ['client', 'Details'], ['review', 'Confirm']];
+    let liveMode = sessionStorage.getItem('of-live') === '1';
+    const activeSteps = () => liveMode ? LIVE_STEPS : OF_STEPS;
+    const stepLabel = (k) => (activeSteps().find(([key]) => key === k) || [k, k])[1];
 
     function paint() {
-      const i = OF_STEPS.findIndex(([k]) => k === step), prev = OF_STEPS[i - 1], next = OF_STEPS[i + 1];
+      const i = activeSteps().findIndex(([k]) => k === step), prev = activeSteps()[i - 1], next = activeSteps()[i + 1];
       view.innerHTML = `<div id="ofRoot"><p class="noprint"><a class="lnk" href="#account/${esc(D.account.id)}/close">${esc(D.account.business)}</a></p>
-        <div class="ofhead noprint"><h1>Order Form ${esc(F.label)}</h1><span class="row">${ofPill(F.status)}<span class="muted" id="ofSaved" role="status"></span></span></div>
+        <div class="ofhead noprint"><h1>Order Form ${esc(F.label)}</h1><span class="row">${ofPill(F.status)}<span class="muted" id="ofSaved" role="status"></span><label class="live-toggle"><input type="checkbox" id="liveMode" ${liveMode ? 'checked' : ''}> Live call (3 steps)</label></span></div>
         <p class="sub noprint">Use it live on the call, or send the client a link for their part. Every change saves as you go. ${esc(K.orderForm.notes.intro)}</p>
         <div class="stack noprint ofpre">${answersCard()}${linkCard()}</div>
         <ol class="steps" id="ofSteps" aria-label="Order Form steps">${stepsHtml()}</ol>${lockNote()}
@@ -685,6 +690,11 @@ const screens = {
         if (l && l.dataset.link === 'new') return act(async () => { newUrl = (await api(`/order-forms/${F.id}/link`, { method: 'POST', body: {} })).url; }, 'Link made. Copy it now.');
         if (l && l.dataset.link === 'off') return act(async () => { newUrl = null; await api(`/order-forms/${F.id}/link`, { method: 'DELETE' }); }, 'Link closed');
       };
+      const lm = $('#liveMode');
+      if (lm) lm.onchange = () => { sessionStorage.setItem('of-live', lm.checked ? '1' : '0'); liveMode = lm.checked; 
+        // If switching to live mode mid-flow, jump to a valid step
+        if (liveMode && !LIVE_STEPS.some(([k]) => k === step)) step = 'package';
+        paint(); };
       const el = $('#ofForm');
       if (step === 'package' && el) wirePkg(el);
       else if (el && isOpen()) { const sec = step === 'review' ? 'signing' : step; el.oninput = el.onchange = () => queue(() => ({ [sec]: ofRead(el, sec) })); }

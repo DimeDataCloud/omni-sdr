@@ -105,4 +105,8 @@ a.info{color:var(--info);text-decoration:underline}
 .plancards.sm .pcard{padding:12px}
 .plancards.sm .pcard b{font-size:14px}
 .plancards.sm .pcard .pprice{font-size:12px}
+
+/* Live mode toggle */
+.live-toggle{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;white-space:nowrap}
+.live-toggle input{width:auto;min-height:auto;margin:0;accent-color:var(--fill)}
 }
