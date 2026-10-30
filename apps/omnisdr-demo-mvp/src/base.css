@@ -119,4 +119,17 @@ a.info{color:var(--info);text-decoration:underline}
 
 /* Pipeline keyboard fallback */
 .move-sel{font-size:12px;min-height:32px;padding:4px 8px;margin-top:6px;width:auto}
+
+/* Learn index dropdown cards */
+.learn-card{padding:0;overflow:hidden}
+.learn-card summary{display:flex;flex-direction:column;gap:2px;min-height:56px;padding:16px 20px;cursor:pointer;list-style:none;transition:background-color var(--t-hover)}
+.learn-card summary::-webkit-details-marker{display:none}
+.learn-card summary b{font-size:17px}
+.learn-card summary .muted{font-size:13px}
+@media (hover:hover){.learn-card summary:hover{background:color-mix(in srgb,var(--fill) 12%,transparent)}}
+.learn-card summary::after{content:'›';position:absolute;right:20px;font-size:22px;color:var(--muted);transform:rotate(90deg);transition:transform var(--t-enter)}
+.learn-card{position:relative}
+.learn-card[open] summary::after{transform:rotate(-90deg)}
+.learn-card > div.stack{padding:0 20px 20px}
+.learn-card summary:focus-visible{outline:2px solid var(--info);outline-offset:-2px}
 }

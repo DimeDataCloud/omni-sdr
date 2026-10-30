@@ -109,7 +109,7 @@ details.card>summary::after{content:'';margin-left:auto;width:8px;height:8px;bor
 <body><div class="wrap">
 <header class="top"><div class="brand">__LOGO__<b>OmniSDR · Rep</b></div><span class="muted" id="who"></span></header>
 <nav class="main" id="nav" aria-label="Rep portal">
-  <a href="#today" data-g="home">Home</a><a href="#calls" data-g="sales">Sales</a><a href="#playbook" data-g="learn">Learn</a><a href="#deals" data-g="deals">My deals</a><a href="#team" hidden id="navTeam" data-g="team">Team</a>
+  <a href="#today" data-g="home">Home</a><a href="#pipeline" data-g="sales">Sales</a><a href="#learn" data-g="learn">Learn</a><a href="#deals" data-g="deals">My deals</a><a href="#team" hidden id="navTeam" data-g="team">Team</a>
 </nav>
 <nav class="main tier2" id="subnav" aria-label="Section" hidden></nav>
 <div class="row viewbar" id="viewbar" hidden><label for="vw">Viewing</label><select id="vw"></select></div>
@@ -272,7 +272,7 @@ const screens = {
     let i = 0, outcome = null;
     const draw = () => {
       const a = accounts[i];
-      if (!a) { view.innerHTML = `<h1>Call Room</h1><div class="card"><p>The queue is empty. Add accounts or import a list on the Accounts screen.${held ? ` ${held} ${held === 1 ? 'lead is' : 'leads are'} held until ${held === 1 ? 'its' : 'their'} Do Not Call scrub is recorded.` : ''}</p><a class="btn" href="#accounts">Go to Accounts</a></div>`; return; }
+      if (!a) { view.innerHTML = `<h1>Call Room</h1><div class="card"><p>The queue is empty. Add accounts or import a list below.${held ? ` ${held} ${held === 1 ? 'lead is' : 'leads are'} held until ${held === 1 ? 'its' : 'their'} Do Not Call scrub is recorded.` : ''}</p><a class="btn" href="#pipeline">Go to Pipeline</a></div>`; return; }
       outcome = null;
       view.innerHTML = `<h1>Call Room</h1><p class="sub">${i + 1} of ${accounts.length} due. One at a time.</p>
       <div class="grid two"><section class="card stack">
@@ -314,6 +314,14 @@ const screens = {
   },
 
   async pipeline() {
+    // Accounts state (merged from the old Accounts view — one page now)
+    const admin = ME.role === 'admin', picked = new Set();
+    let rows = [], facets = { niche: [], state: [], owner: [], pool: 0, total: 0 };
+    const KEEP = 'rep.accounts', F = { q: '', st: '', ni: '', sa: '', pool: false, arch: false };
+    try { Object.assign(F, JSON.parse(sessionStorage.getItem(KEEP) || '{}')); } catch {}
+    if (!admin || VIEW) F.pool = false;
+    if (!admin) F.arch = false;
+    const keep = () => { try { sessionStorage.setItem(KEEP, JSON.stringify(F)); } catch {} };
     view.innerHTML = `<h1>Pipeline</h1><p class="sub">Drag cards between stages to move them.</p><div class="board"><section class="col"><h2>Loading<span></span></h2><div class="coldrop"><div class="mini"><div class="skeleton" style="height:60px"></div></div><div class="mini"><div class="skeleton" style="height:60px"></div></div></div></section><section class="col"><h2><span></span></h2><div class="coldrop"><div class="mini"><div class="skeleton" style="height:60px"></div></div></div></section></div>`;
     const { accounts } = await api('/accounts');
     const stages = K.stages.filter((s) => s !== 'lost');
@@ -321,39 +329,7 @@ const screens = {
       const list = accounts.filter((a) => a.stage === st);
       return `<section class="col" data-stage="${st}"><h2>${STAGE_LABEL[st]}<span>${list.length}</span></h2><div class="coldrop">${list.map((a) => `<div class="mini" draggable="true" data-id="${esc(a.id)}"><a class="lnk" href="#account/${esc(a.id)}">${esc(a.business)}</a>
         <small class="muted">${esc(a.next_step || a.niche || '')}</small><div class="row"><select data-move="${esc(a.id)}" aria-label="Move ${esc(a.business)} to stage" class="move-sel">${stages.map((s) => `<option value="${s}"${s === a.stage ? ' selected' : ''}>${STAGE_LABEL[s]}</option>`).join('')}</select>${['results_call', 'proposed'].includes(a.stage) ? `<a class="lnk" href="#account/${esc(a.id)}/close">Close the sale</a>` : ''}</div></div>`).join('')}</div></section>`;
-    }).join('')}</div>`;
-    // Drag and drop
-    const board = $('#board');
-    let dragId = null;
-    board.addEventListener('dragstart', (e) => { const m = e.target.closest('.mini'); if (!m) return; dragId = m.dataset.id; m.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
-    board.addEventListener('dragend', (e) => { const m = e.target.closest('.mini'); if (m) m.classList.remove('dragging'); document.querySelectorAll('.col.dragover').forEach((c) => c.classList.remove('dragover')); });
-    board.addEventListener('dragover', (e) => { e.preventDefault(); const col = e.target.closest('.col'); if (col) { document.querySelectorAll('.col.dragover').forEach((c) => c.classList.remove('dragover')); col.classList.add('dragover'); } e.dataTransfer.dropEffect = 'move'; });
-    board.addEventListener('change', (e) => { const s = e.target.closest('select[data-move]'); if (s) api('/accounts/' + s.dataset.move, { method: 'PATCH', body: { stage: s.value } }).then(() => { toast('Moved'); route(); }, fail); });
-    board.addEventListener('drop', (e) => {
-      e.preventDefault();
-      const col = e.target.closest('.col');
-      document.querySelectorAll('.col.dragover').forEach((c) => c.classList.remove('dragover'));
-      if (!col || !dragId) return;
-      const newStage = col.dataset.stage;
-      api('/accounts/' + dragId, { method: 'PATCH', body: { stage: newStage } }).then(() => { toast('Moved'); route(); }, fail);
-      dragId = null;
-    });
-    // Fallback: keep select for keyboard users (hidden, shown on focus)
-    
-  },
-
-  // Accounts and Leads in one list. Reps see their own rows; admins see everyone, or one rep through the Viewing switch,
-  // which the Rep filter drives. Reps can bulk-set the category on their own rows; assign, split, archive and Import for
-  // are admin only. Controls a role cannot use are not rendered, and the server refuses them anyway.
-  async accounts() {
-    const admin = ME.role === 'admin', picked = new Set();
-    let rows = [], facets = { niche: [], state: [], owner: [], pool: 0, total: 0 };
-    const KEEP = 'rep.accounts', F = { q: '', st: '', ni: '', sa: '', pool: false, arch: false };
-    try { Object.assign(F, JSON.parse(sessionStorage.getItem(KEEP) || '{}')); } catch {}
-    if (!admin || VIEW) F.pool = false;
-    if (!admin) F.arch = false;
-    const keep = () => { try { sessionStorage.setItem(KEEP, JSON.stringify(F)); } catch {} }; // this tab only, never sent anywhere
-    view.innerHTML = `<h1>Accounts</h1><p class="sub">${admin ? 'Every lead and account in the book. Filter, sort into categories and hand them out.' : 'Every business you are working, prospect to live.'}</p>
+    }).join('')}</div><hr class="sect"><section id="accountsSection"><h2>All accounts</h2><p class="sub">${admin ? 'Every lead and account in the book. Filter, sort into categories and hand them out.' : 'Every business you are working, prospect to live.'}</p>
       ${admin ? '<div class="stats" id="tiles"></div>' : ''}
       <section class="card stack"><div class="row"><input class="grow" id="q" type="search" placeholder="Search name, category, city or phone" aria-label="Search accounts">
         <select id="st" aria-label="Stage" class="grow"><option value="">All stages</option>${K.stages.map((s) => `<option value="${s}">${STAGE_LABEL[s]}</option>`).join('')}</select>
@@ -377,8 +353,27 @@ const screens = {
         <div><label for="ny">City</label><input id="ny" name="city" maxlength="80"></div>
         <div><label for="ns">State</label><input id="ns" name="state" maxlength="40"></div>
         <div class="full"><label for="ng">Why we are calling (the signal)</label><input id="ng" name="signal" maxlength="300" placeholder="Form went unanswered 6 hours on a Tuesday"></div>
-      </div><div class="row"><button class="btn">Save</button><button class="btn ghost" type="button" id="cx">Cancel</button></div></form></dialog>`;
-    // Counts describe active rows, so the Archived view shows the chips without numbers.
+      </div><div class="row"><button class="btn">Save</button><button class="btn ghost" type="button" id="cx">Cancel</button></div></form></dialog></section>`;
+    // Drag and drop
+    const board = $('#board');
+    let dragId = null;
+    board.addEventListener('dragstart', (e) => { const m = e.target.closest('.mini'); if (!m) return; dragId = m.dataset.id; m.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
+    board.addEventListener('dragend', (e) => { const m = e.target.closest('.mini'); if (m) m.classList.remove('dragging'); document.querySelectorAll('.col.dragover').forEach((c) => c.classList.remove('dragover')); });
+    board.addEventListener('dragover', (e) => { e.preventDefault(); const col = e.target.closest('.col'); if (col) { document.querySelectorAll('.col.dragover').forEach((c) => c.classList.remove('dragover')); col.classList.add('dragover'); } e.dataTransfer.dropEffect = 'move'; });
+    board.addEventListener('change', (e) => { const s = e.target.closest('select[data-move]'); if (s) api('/accounts/' + s.dataset.move, { method: 'PATCH', body: { stage: s.value } }).then(() => { toast('Moved'); route(); }, fail); });
+    board.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const col = e.target.closest('.col');
+      document.querySelectorAll('.col.dragover').forEach((c) => c.classList.remove('dragover'));
+      if (!col || !dragId) return;
+      const newStage = col.dataset.stage;
+      api('/accounts/' + dragId, { method: 'PATCH', body: { stage: newStage } }).then(() => { toast('Moved'); route(); }, fail);
+      dragId = null;
+    });
+    // Fallback: keep select for keyboard users (hidden, shown on focus)
+
+    // === Accounts section wiring (merged from old Accounts view) ===
+// Counts describe active rows, so the Archived view shows the chips without numbers.
     const chip = (key, text, n, on) => `<button class="chip" type="button" data-k="${esc(key)}" aria-pressed="${on}">${esc(text)}${F.arch ? '' : ` <b>${n}</b>`}</button>`;
     // The server counts: every lead for an admin, the rep's own rows for a rep.
     const loadFacets = async () => { facets = await api('/leads/facets', { noView: true }); };
@@ -459,6 +454,14 @@ const screens = {
     await refresh();
   },
 
+  // Accounts and Leads in one list. Reps see their own rows; admins see everyone, or one rep through the Viewing switch,
+  // which the Rep filter drives. Reps can bulk-set the category on their own rows; assign, split, archive and Import for
+  // are admin only. Controls a role cannot use are not rendered, and the server refuses them anyway.
+  async accounts() {
+    // Merged into Pipeline — old links land on the consolidated page.
+    if (location.hash !== '#pipeline') location.hash = '#pipeline'; else await screens.pipeline();
+  },
+
   async account(id) {
     // Order Forms load beside the account; before migration 0007 is applied the list is just empty.
     const [d, { forms }] = await Promise.all([api('/accounts/' + encodeURIComponent(id)), api('/accounts/' + encodeURIComponent(id) + '/order-forms', { noView: true }).catch(() => ({ forms: [] }))]), a = d.account;
@@ -466,7 +469,7 @@ const screens = {
     const levels = K.prices.levels.filter((l) => l.level > 0);
     // The one next step for this stage, as a tab to open. Live and Lost have none, so no button.
     const NEXT = { new: ['audit', 'Next: run the free check'], results_call: ['close', 'Next: the Order Form'], proposed: ['close', 'Next: the Order Form'], onboarding: ['onboarding', 'Next: onboarding'] }, next = NEXT[a.stage];
-    view.innerHTML = `<p><a class="lnk" href="#accounts">All accounts</a></p><h1>${esc(a.business)}</h1><p class="sub">${esc([a.niche, a.city, a.state].filter(Boolean).join(' · '))}</p>
+    view.innerHTML = `<p><a class="lnk" href="#pipeline">All accounts</a></p><h1>${esc(a.business)}</h1><p class="sub">${esc([a.niche, a.city, a.state].filter(Boolean).join(' · '))}</p>
       <div class="row acts"><label for="stg" class="muted">Stage</label><select id="stg">${stageOptions(a.stage)}</select>${next ? `<button class="btn" type="button" id="nextGo" data-tab="${next[0]}">${next[1]}</button>` : ''}</div>
       <div class="tabs" role="tablist">${[['Overview', 0], ['Qualify', 4], ['Message', 5], ['Activity', 1], ['Close', 3], ['Onboard', 2]].map(([t, k]) => `<button class="tab" role="tab" data-t="${k}" aria-selected="${k === 0}">${t}</button>`).join('')}</div>
       <div data-p="0" class="grid two"><form class="card" id="ef"><div class="fields">
@@ -841,10 +844,23 @@ const screens = {
     if (soldEl) countUp(soldEl, deals.reduce((n, x) => n + x.price_cents, 0) / 100, (v) => money(Math.round(v * 100)));
   },
 
-  async kit() {
+  async learn() {
     const Q = K.qualify, D = K.discovery, Y = K.afterYes, W = K.daily;
-    view.innerHTML = `<h1>Toolkit</h1><p class="sub">Messages, who to sell to, discovery, the free check, after the yes, and your day.</p>
-      <section class="card stack"><h2>Who we sell to</h2><div class="tbl"><table><thead><tr><th>Niche</th><th>The outcome to sell</th></tr></thead><tbody>${Q.niches.map((n) => `<tr><td>${esc(n.niche)}</td><td>${esc(n.line)}</td></tr>`).join('')}</tbody></table></div>
+    const G = K.pricingGuide, quoteRule = (lv) => (G.quote.find((q) => q.level === lv) || {}).rule || '';
+    const H = K.how, card = (t, b) => `<section class="card stack"><h2>${esc(t)}</h2><p class="muted">${esc(b)}</p></section>`;
+    view.innerHTML = `<h1>Learn</h1><p class="sub">Everything in one place. Open a section to dig in.</p>
+    <div class="stack">
+      <details class="card learn-card" open><summary><b>Playbook</b><span class="muted">The path to a yes, pricing, what to say</span></summary><div class="stack"><section class="card stack"><h2>The path to a yes</h2><ol class="path">${K.path.map((s) => `<li><b>${esc(s.title)}</b><span class="muted">${esc(s.body)}</span></li>`).join('')}</ol><p class="note">${esc(K.pathGate)}</p></section>
+      <div class="grid two">
+      <section class="card stack"><h2>Pricing guide</h2><p class="note">${esc(G.lede)}</p>
+        <div class="tbl"><table><thead><tr><th>Level</th><th>What</th><th>Price</th><th>Can you quote it?</th></tr></thead><tbody>${K.prices.levels.map((l) => `<tr><td>${l.level}. ${esc(l.label)}</td><td>${esc(l.what)}</td><td>${l.amountCents === 0 ? 'Free' : l.amountCents != null ? money(l.amountCents) + ' a month plus tax' : 'Over $1,000 a month'}</td><td>${esc(quoteRule(l.level))}</td></tr>`).join('')}</tbody></table></div>
+        <p><b>The rule.</b> ${esc(G.rule)}</p><p><b>Say this.</b> ${esc(G.say)}</p><p class="muted">${esc(K.taxNote)}</p></section>
+      <section class="card stack"><h2>Opener</h2><p class="script">${esc(K.opener)}</p><h2>Objections</h2><p class="muted">${esc(K.method)}</p><div>${K.objections.map((o) => `<details><summary>${esc(o.heard)}</summary><p>${esc(o.answer)}</p></details>`).join('')}</div></section>
+      <section class="card stack"><h2>Never say</h2><ul>${K.never.map((n) => `<li>${esc(n)}</li>`).join('')}</ul><div class="tbl"><table><thead><tr><th>Instead of</th><th>Say</th></tr></thead><tbody>${K.swaps.map((s) => `<tr><td>${esc(s.instead)}</td><td>${esc(s.say)}</td></tr>`).join('')}</tbody></table></div></section>
+      <section class="card stack"><h2>Demo</h2><ol>${K.demoSteps.map((s) => `<li>${esc(s)}</li>`).join('')}</ol><p class="note">${esc(K.demoLimits)}</p><a class="btn" href="/tryme" target="_blank" rel="noopener">Open the live demo</a>
+        <h2>Your pay</h2><p>${esc(K.pay.note)}</p>
+        <div class="tbl"><table><thead><tr><th>Plan</th><th>Allowance</th><th>You and the developer, each</th></tr></thead><tbody>${(K.pay.table || []).map((r) => `<tr><td>${esc(r.plan)}</td><td>${esc(r.allowance)}</td><td>${esc(r.each)}</td></tr>`).join('')}</tbody></table></div></section></div></div></details>
+      <details class="card learn-card"><summary><b>Toolkit</b><span class="muted">Messages, who to sell to, discovery questions</span></summary><div class="stack"><section class="card stack"><h2>Who we sell to</h2><div class="tbl"><table><thead><tr><th>Niche</th><th>The outcome to sell</th></tr></thead><tbody>${Q.niches.map((n) => `<tr><td>${esc(n.niche)}</td><td>${esc(n.line)}</td></tr>`).join('')}</tbody></table></div>
         <div class="grid two"><div><h2>Signals to look for</h2>${ul(Q.signals)}</div><div><h2>Skip</h2>${ul(Q.skip)}</div><div><h2>Green flags</h2>${ul(Q.green)}</div><div><h2>Red flags</h2>${ul(Q.red)}<p class="note">${esc(Q.redRule)}</p></div></div></section>
       <h2>Message templates</h2><p class="muted">Open an account and use its Messages tab to get these with the name and business filled in.</p>
       <div class="grid two">${tpls({ rep: (ME.name || '').split(' ')[0] })}</div>
@@ -855,34 +871,30 @@ const screens = {
         <section class="card stack"><h2>After the yes</h2><p class="muted">What the owner provides</p>${ul(Y.owner)}<p class="muted">Go-live checklist</p>${ul(Y.golive)}<p>${esc(Y.timeline)}</p><p class="note">${esc(Y.rule)}</p></section>
         <section class="card stack"><h2>Your day</h2><p>${esc(W.day)}</p><p class="muted">Log every day</p>${ul(W.log)}<div class="tbl"><table><thead><tr><th>For</th><th>Ask</th></tr></thead><tbody>${W.who.map((x) => `<tr><td>${esc(x.what)}</td><td>${esc(x.who)}</td></tr>`).join('')}</tbody></table></div></section>
         <section class="card stack"><h2>Brand</h2>${ul(K.brand)}<h2>Links</h2><div class="row">${K.resources.map((r) => `<a class="btn ghost sm" href="${esc(r.href)}" target="_blank" rel="noopener">${esc(r.label)}</a>`).join('')}</div></section></div>
-      <section class="card"><h2>Words you will hear</h2><div class="tbl"><table><tbody>${K.glossary.map(([t, d]) => `<tr><td><b>${esc(t)}</b></td><td>${esc(d)}</td></tr>`).join('')}</tbody></table></div></section>`;
-  },
-
-  async playbook() {
-    const G = K.pricingGuide, quoteRule = (lv) => (G.quote.find((q) => q.level === lv) || {}).rule || '';
-    view.innerHTML = `<h1>Playbook</h1><p class="sub">The path to a yes, the pricing guide, what to say, and what never to say.</p>
-      <section class="card stack"><h2>The path to a yes</h2><ol class="path">${K.path.map((s) => `<li><b>${esc(s.title)}</b><span class="muted">${esc(s.body)}</span></li>`).join('')}</ol><p class="note">${esc(K.pathGate)}</p></section>
-      <div class="grid two">
-      <section class="card stack"><h2>Pricing guide</h2><p class="note">${esc(G.lede)}</p>
-        <div class="tbl"><table><thead><tr><th>Level</th><th>What</th><th>Price</th><th>Can you quote it?</th></tr></thead><tbody>${K.prices.levels.map((l) => `<tr><td>${l.level}. ${esc(l.label)}</td><td>${esc(l.what)}</td><td>${l.amountCents === 0 ? 'Free' : l.amountCents != null ? money(l.amountCents) + ' a month plus tax' : 'Over $1,000 a month'}</td><td>${esc(quoteRule(l.level))}</td></tr>`).join('')}</tbody></table></div>
-        <p><b>The rule.</b> ${esc(G.rule)}</p><p><b>Say this.</b> ${esc(G.say)}</p><p class="muted">${esc(K.taxNote)}</p></section>
-      <section class="card stack"><h2>Opener</h2><p class="script">${esc(K.opener)}</p><h2>Objections</h2><p class="muted">${esc(K.method)}</p><div>${K.objections.map((o) => `<details><summary>${esc(o.heard)}</summary><p>${esc(o.answer)}</p></details>`).join('')}</div></section>
-      <section class="card stack"><h2>Never say</h2><ul>${K.never.map((n) => `<li>${esc(n)}</li>`).join('')}</ul><div class="tbl"><table><thead><tr><th>Instead of</th><th>Say</th></tr></thead><tbody>${K.swaps.map((s) => `<tr><td>${esc(s.instead)}</td><td>${esc(s.say)}</td></tr>`).join('')}</tbody></table></div></section>
-      <section class="card stack"><h2>Demo</h2><ol>${K.demoSteps.map((s) => `<li>${esc(s)}</li>`).join('')}</ol><p class="note">${esc(K.demoLimits)}</p><a class="btn" href="/tryme" target="_blank" rel="noopener">Open the live demo</a>
-        <h2>Your pay</h2><p>${esc(K.pay.note)}</p>
-        <div class="tbl"><table><thead><tr><th>Plan</th><th>Allowance</th><th>You and the developer, each</th></tr></thead><tbody>${(K.pay.table || []).map((r) => `<tr><td>${esc(r.plan)}</td><td>${esc(r.allowance)}</td><td>${esc(r.each)}</td></tr>`).join('')}</tbody></table></div></section></div>`;
-  },
-
-  async how() {
-    const H = K.how, card = (t, b) => `<section class="card stack"><h2>${esc(t)}</h2><p class="muted">${esc(b)}</p></section>`;
-    view.innerHTML = `<h1>How it works</h1><p class="sub">${esc(H.lede)}</p>
-      <div class="flow">${H.flow.map((n, k) => `<section class="card stack${k === 2 ? ' core' : ''}"><h2>${esc(n.title)}</h2><ul>${n.items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul></section>`).join('')}</div>
+      <section class="card"><h2>Words you will hear</h2><div class="tbl"><table><tbody>${K.glossary.map(([t, d]) => `<tr><td><b>${esc(t)}</b></td><td>${esc(d)}</td></tr>`).join('')}</tbody></table></div></section></div></details>
+      <details class="card learn-card"><summary><b>How it works</b><span class="muted">The OmniSDR flow, end to end</span></summary><div class="stack"><div class="flow">${H.flow.map((n, k) => `<section class="card stack${k === 2 ? ' core' : ''}"><h2>${esc(n.title)}</h2><ul>${n.items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul></section>`).join('')}</div>
       <section class="card"><h2>The ways we answer</h2><div class="tbl"><table><thead><tr><th>Channel</th><th>What happens</th><th>Status</th></tr></thead><tbody>${H.channels.map((c) => `<tr><td>${esc(c.name)}</td><td>${esc(c.what)}</td><td><span class="pill ${c.tone}">${esc(c.status)}</span></td></tr>`).join('')}</tbody></table></div>
         <p class="note">Sell what is ready. Promise no start date and no channel that is not live.</p></section>
       <div class="grid two">${H.examples.map((e) => card(e.title, e.body)).join('')}</div>
       <div class="grid two">${H.sections.map((x) => card(x.title, x.body)).join('')}
         <section class="card stack"><h2>Every lead ends in one of these</h2><p class="row">${H.ends.map((e) => `<span class="pill">${esc(e)}</span>`).join('')}</p><p class="muted">${esc(H.endsNote)}</p></section></div>
-      <section class="card stack"><h2>Say this</h2><p>${esc(H.say)}</p><a class="btn" href="/tryme" target="_blank" rel="noopener">Open the live demo</a></section>`;
+      <section class="card stack"><h2>Say this</h2><p>${esc(H.say)}</p><a class="btn" href="/tryme" target="_blank" rel="noopener">Open the live demo</a></section></div></details>
+    </div>`;
+  },
+
+  async kit() {
+    // Merged into Learn index — old links land on the consolidated page.
+    if (location.hash !== '#learn') location.hash = '#learn'; else await screens.learn();
+  },
+
+  async playbook() {
+    // Merged into Learn index — old links land on the consolidated page.
+    if (location.hash !== '#learn') location.hash = '#learn'; else await screens.learn();
+  },
+
+  async how() {
+    // Merged into Learn index — old links land on the consolidated page.
+    if (location.hash !== '#learn') location.hash = '#learn'; else await screens.learn();
   },
 
   async team() {
@@ -953,14 +965,14 @@ function clearCallsKey() { if (callsKeyHandler) { document.removeEventListener('
 // Top-level groups. Hash routes are unchanged; a tab's third value marks it admin only.
 const GROUPS = [
   { key: 'home', tabs: [['today', 'Today']] },
-  { key: 'sales', tabs: [['calls', 'Call Room'], ['pipeline', 'Pipeline'], ['accounts', 'Accounts']] },
-  { key: 'learn', tabs: [['playbook', 'Playbook'], ['kit', 'Toolkit'], ['how', 'How it works']] },
+  { key: 'sales', tabs: [['pipeline', 'Pipeline'], ['calls', 'Call Room']] },
+  { key: 'learn', tabs: [['learn', 'Learn']] },
   { key: 'deals', tabs: [['deals', 'My deals']] },
   { key: 'team', tabs: [['team', 'Team'], ['engine', 'Lead Engine', true]] },
 ];
 async function route() {
   // Leads now lives in Accounts; old #leads links land there.
-  if (location.hash === '#leads') history.replaceState(null, '', '#accounts');
+  if (location.hash === '#leads') history.replaceState(null, '', '#pipeline');
   const [name, arg] = (location.hash.slice(1) || 'today').split('/');
   if (name !== 'calls') clearCallsKey();
   const fn = screens[name] && !name.endsWith('Panel') ? screens[name] : screens.today;
