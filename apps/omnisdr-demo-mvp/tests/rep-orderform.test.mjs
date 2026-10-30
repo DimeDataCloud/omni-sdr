@@ -245,6 +245,10 @@ test('special terms are an admin\'s: a rep is refused, a rep\'s save keeps them,
   assert.ok(!page.sections.term.some((f) => f.key === 'specialTerms')); assert.ok(!JSON.stringify(page).includes('first month free'));
   assert.ok(page.sections.term.every((f) => f.kind === 'choice')); // the client picks terms, never writes them
   assert.equal(page.wording.term, O.NOTES.term);
+  // Legal: ACH first and preferred, card optional, and the MSA sentence shown once (in the label only).
+  const pay = page.sections.term.find((f) => f.key === 'paymentMethod');
+  assert.deepEqual(Object.entries(pay.options), [['ach', 'ACH (bank), preferred'], ['card', 'Card']]);
+  assert.equal(pay.help, undefined); assert.equal(pay.clientHelp, undefined);
 });
 
 test('client answers left unreviewed when the link runs out are set aside and their text removed', async () => {

@@ -19,12 +19,11 @@ export const NOTES = {
   signing: 'No e-signature here. The client and Christian each sign the Order Form. Record the date each signed and where the fully signed copy is filed. Do not file until both signatures are on it.',
   summary: 'This is a summary of the details entered in the portal. It is not the Order Form. The signed OmniSDR Order Form controls.',
   numbers: 'You authorize OmniSDR to receive and answer calls forwarded from these numbers, and to place calls and send texts from them or from numbers OmniSDR obtains for you, as configured under the Agreement.',
-  payment: 'On file and charged automatically under MSA Section 5.3.',
   requests: 'Questions or requests for OmniSDR (not part of the Agreement unless OmniSDR writes it into the signed Order Form)',
   pilotFee: 'Pilot fee, plus tax, paid at signing.',
   intro: 'Describe only what the Order Form and Agreement say. Do not promise results or terms that are not written in it.',
 };
-// `help` shows under a field on both pages, `clientHelp` on the client page only.
+// `help` shows under a field on both pages.
 // `admin: true` fields are set by an admin only: a rep is refused, the client never sees them, and a rep's save keeps them.
 export const SECTIONS = {
   client: [
@@ -54,7 +53,8 @@ export const SECTIONS = {
   ],
   term: [
     // Stripe's own mandate on the payment page is the card or ACH authorization; nothing here stands in for it.
-    { key: 'paymentMethod', label: 'Payment method (on file and charged automatically under MSA Section 5.3)', ...choice({ card: 'Card', ach: 'ACH (bank)' }), req: true, clientHelp: NOTES.payment }, // the label carries it in the portal
+    // ACH is preferred, so it is listed first; card is optional (legal, PR 195). The label carries the MSA sentence once.
+    { key: 'paymentMethod', label: 'Payment method (on file and charged automatically under MSA Section 5.3)', ...choice({ ach: 'ACH (bank), preferred', card: 'Card' }), req: true },
     // Choices, not free text, so no one can write in a term the Agreement does not have. The start is shown as NOTES.term.
     { key: 'initialTerm', label: 'Initial term', ...choice({ pilot: 'The Pilot Period (30 days from go-live)', one_month: 'One month (no pilot)' }), req: true },
     { key: 'renewal', label: 'Renewal', ...choice({ month_to_month: 'Month to month' }), req: true },

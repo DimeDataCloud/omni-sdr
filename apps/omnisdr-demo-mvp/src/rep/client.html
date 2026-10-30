@@ -31,7 +31,7 @@ const money = (c) => '$' + (c / 100).toLocaleString(undefined, { minimumFraction
 const num = (n) => Number(n).toLocaleString();
 
 function field(sec, f, v) {
-  const id = `${sec}_${f.key}`, name = `${sec}.${f.key}`, note = f.help || f.clientHelp, help = note ? `<p class="help" id="${id}_h">${esc(note)}</p>` : '', desc = note ? ` aria-describedby="${id}_h"` : '';
+  const id = `${sec}_${f.key}`, name = `${sec}.${f.key}`, note = f.help, help = note ? `<p class="help" id="${id}_h">${esc(note)}</p>` : '', desc = note ? ` aria-describedby="${id}_h"` : '';
   if (f.kind === 'bool') return `<label class="check full"><input type="checkbox" id="${id}" name="${name}"${v ? ' checked' : ''}> ${esc(f.label)}</label>`;
   if (f.kind === 'choice') return `<fieldset class="full radiogroup"${desc}><legend>${esc(f.label)}${f.req ? ' *' : ''}</legend><div class="radios">${Object.entries(f.options).map(([k, l]) => `<label><input type="radio" name="${name}" value="${esc(k)}"${v === k ? ' checked' : ''}> ${esc(l)}</label>`).join('')}</div>${help}</fieldset>`;
   const wide = (f.max || 0) > 120 || f.kind === 'email' ? 'full' : '';
