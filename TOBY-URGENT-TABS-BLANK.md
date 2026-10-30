@@ -45,3 +45,14 @@ Worker `omnisdr-demo-mvp` contains: `qInject`, `/rep/fresh` route, null-safe `ol
 6. Do NOT send back until verified fixed
 
 Dime's directive: "He doesn't need to ask Joe, just start working when he sees it."
+
+## Update requirement (from Dime, 2026-10-30 ~08:14 CDT)
+Keep us updated when you:
+- START working on this
+- PAUSE (and why)
+- RESUME
+- Find the root cause
+- Deploy a fix
+- VERIFY the fix (with screenshot or browser confirmation)
+
+Post updates as comments on your PR, or update this file. Omni checks every 10 minutes.
