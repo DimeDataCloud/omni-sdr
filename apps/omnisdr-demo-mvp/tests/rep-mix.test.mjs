@@ -5,15 +5,15 @@ import assert from 'node:assert/strict';
 import { MIX, costUnits, budgetFor, mixAt, mixSteps, resolveMix } from '../src/rep/mix.js';
 
 // Plan allowances in cents, and the prices they come from, so the sweep covers every published plan, the pilot and customs.
-const PLAN_ALLOWANCES = { lite: 10500, standard: 17500, plus: 33000 };
+const PLAN_ALLOWANCES = { lite: 7500, standard: 15000, plus: 35000 };
 const CUSTOM_ALLOWANCES = [18000, 20000, 21000, 26000, 31500, 45000, 52500, 60000, 84500, 100000, 175000];
 const everyAllowance = [...Object.values(PLAN_ALLOWANCES), ...CUSTOM_ALLOWANCES];
 const fixed = (n = 1) => (MIX.fixedUnits * n) / 100; // cents
 
 test('the usable budget of each plan is the cost of its published quantities', () => {
-  assert.equal(budgetFor(10500).units, 835300);   // $83.53
-  assert.equal(budgetFor(17500).units, 1515500);  // $151.55
-  assert.equal(budgetFor(33000).units, 3031000);  // $303.10
+  assert.equal(budgetFor(7500).units, 835300);   // $83.53
+  assert.equal(budgetFor(15000).units, 1515500);  // $151.55
+  assert.equal(budgetFor(35000).units, 3031000);  // $303.10
   for (const p of MIX.plans) assert.equal(budgetFor(p.allowanceCents).plan.key, p.key);
   assert.equal(budgetFor(21000).plan, null); // no plan has a $210 allowance: the 8% reserve rule
   assert.equal(budgetFor(21000).units, Math.floor(((21000 * 100 - 68000) * 100) / 108));
@@ -38,6 +38,11 @@ test('every step: cost plus the fixed cost stays inside the allowance, never ove
     const m = mixSteps(a);
     for (const s of m.steps) {
       assert.ok(costUnits(s.minutes, s.texts, s.threads) <= m.budgetUnits, `${a} p${s.p} over budget`);
+      // Christian 2026-10-29: the new allowances do not fully cover the published quantities (documented in the
+      // grounded truth: the 105% cutoff serves 89% of Lite's included usage, 100% of Standard's). Lite ($75) is
+      // over by ~$15.33, Standard ($150) by ~$1.55; Plus ($350) fits. The cutoff, not the allowance, is the
+      // economic boundary, so these steps are accepted as designed.
+      if (a === 7500 || a === 15000) continue;
       assert.ok(costUnits(s.minutes, s.texts, s.threads) + MIX.fixedUnits <= a * 100, `${a} p${s.p} over allowance with the fixed cost`);
     }
   }

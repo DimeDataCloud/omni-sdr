@@ -18,9 +18,9 @@ export const MIX = {
   customDefaultPosition: 51, // custom and larger pilots start where Standard sits
   // Published plans (CREDIT-ALLOWANCE-MODEL section 6). A plan is matched by its allowance, and its quantities are the default.
   plans: [
-    { key: 'lite', label: 'Lite', allowanceCents: 10500, minutes: 180, texts: 1500, threads: 500 },
-    { key: 'standard', label: 'Standard', allowanceCents: 17500, minutes: 300, texts: 3000, threads: 1000 },
-    { key: 'plus', label: 'Plus', allowanceCents: 33000, minutes: 600, texts: 6000, threads: 2000 },
+    { key: 'lite', label: 'Lite', allowanceCents: 7500, minutes: 180, texts: 1500, threads: 500 },
+    { key: 'standard', label: 'Standard', allowanceCents: 15000, minutes: 300, texts: 3000, threads: 1000 },
+    { key: 'plus', label: 'Plus', allowanceCents: 35000, minutes: 600, texts: 6000, threads: 2000 },
   ],
 };
 
