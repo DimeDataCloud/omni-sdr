@@ -177,6 +177,9 @@ async function api(req, env, me, path, m) {
   const s = scope(me, '', view);
 
   if (m === 'GET' && path === '/me') return { email: me.email, name: me.name, role: me.role };
+  if (m === 'GET' && path === '/test-tabs') {
+    return new Response('TEST OK', { headers: { 'content-type': 'text/plain', 'cache-control': 'no-store' } });
+  }
   if (m === 'GET' && path === '/content') return { prices: C.PRICES, pay: C.PAY, taxNote: C.TAX_NOTE, pricingGuide: C.PRICING_GUIDE, path: C.PATH, pathGate: C.PATH_GATE, how: C.HOW, objections: C.OBJECTIONS, method: C.OBJECTION_METHOD, never: C.NEVER_SAY, swaps: C.SWAPS, opener: C.OPENER, demoSteps: C.DEMO_STEPS, demoLimits: C.DEMO_LIMITS, onboarding: C.ONBOARDING_FIELDS, stages: STAGES, outcomes: OUTCOMES, pilot: C.PILOT, mix: { overage: M.MIX.overage, minMinutes: M.MIX.minMinutes, minTexts: M.MIX.minTexts },
     orderForm: { sections: O.SECTIONS, plans: O.PLANS, repPlans: O.REP_PLANS, clientSections: O.CLIENT_SECTIONS, mixPlans: M.MIX.plans.map((p) => p.label), linkDays: O.LINK_DAYS, notes: O.NOTES },
     templates: K.TEMPLATES, qualify: K.QUALIFY, discovery: K.DISCOVERY, auditSteps: K.AUDIT_STEPS, auditFields: K.AUDIT_FIELDS, resultsCall: K.RESULTS_CALL, resultsSay: K.RESULTS_SAY, resultsDont: K.RESULTS_DONT,
