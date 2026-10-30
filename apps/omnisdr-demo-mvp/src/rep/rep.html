@@ -628,6 +628,7 @@ const screens = {
         <ul class="list timeline">${d.activities.map((v) => `<li><small>${when(v.created_at)} · ${esc(label(v.kind))}</small><div>${esc(v.body)}</div></li>`).join('')}</ul></div>
       <div data-p="4" class="stack" id="qualifyTab">
         <div class="card">
+          <div style="background:#22D3EE;color:#000;padding:4px 8px;border-radius:6px;font-size:12px;font-weight:700;margin-bottom:8px">DEBUG: Qualify tab HTML is rendering</div>
           <h2 style="margin:0 0 4px">Qualify</h2>
           <p class="sub" style="margin:0">Step 2 of the path: research the business and run the free check before the demo. Their numbers, not ours.</p>
         </div>
