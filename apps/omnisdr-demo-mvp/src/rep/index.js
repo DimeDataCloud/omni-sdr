@@ -677,7 +677,7 @@ export async function handleRep(req, env) {
     if (!env.REP_DB) throw new AccessError(503, 'The rep portal is not set up on this server');
     const me = await repFor(env, await identity(req, env));
     if (!isApi) {
-      if (m === 'GET' && (p === '/rep' || p === '/rep/')) return page();
+      if (m === 'GET' && (p === '/rep' || p === '/rep/' || p === '/rep/fresh')) return page();
       return json({ ok: false, message: 'Not found' }, 404);
     }
     // Writes must come from our own page: a custom header no cross-site form can set, and a same-origin Origin when present.
