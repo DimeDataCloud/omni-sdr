@@ -150,4 +150,15 @@ a.info{color:var(--info);text-decoration:underline}
 .outcome-btn[aria-pressed="true"] .okey,.outcome-btn.sel .okey{background:var(--fill);color:#fff}
 .outcome-btn:active{transform:scale(.97)}
 .outcome-btn:focus-visible{outline:2px solid var(--info);outline-offset:2px}
+
+/* Collapsible filter card */
+.filter-card{padding:0;overflow:hidden}
+.filter-card summary{display:flex;align-items:baseline;gap:8px;min-height:52px;padding:14px 18px;cursor:pointer;list-style:none;border-radius:12px;transition:background-color var(--t-hover)}
+.filter-card summary::-webkit-details-marker{display:none}
+.filter-card summary b{font-size:15px}
+.filter-card summary .muted{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (hover:hover){.filter-card summary:hover{background:color-mix(in srgb,var(--fill) 8%,transparent)}}
+.filter-card summary::after{content:'›';margin-left:auto;font-size:20px;color:var(--muted);transform:rotate(90deg);transition:transform var(--t-enter);flex-shrink:0}
+.filter-card[open] summary::after{transform:rotate(-90deg)}
+.filter-card summary:focus-visible{outline:2px solid var(--info);outline-offset:-2px}
 }
