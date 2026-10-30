@@ -292,13 +292,13 @@ const screens = {
         <div><h2>How did it go?</h2><div class="outcomes" id="oc" role="radiogroup" aria-label="Call outcome">${K.outcomes.map((o, i) => `<button type="button" role="radio" aria-checked="false" class="btn ghost outcome-btn" data-o="${o}"><span class="okey">${i + 1}</span>${OUTCOME_LABEL[o] || label(o)}</button>`).join('')}</div><p class="muted">Press 1 to ${K.outcomes.length} to pick, Enter to log.</p></div>
         <div><h2>Quick quote</h2><p class="muted">Pick a plan, slide to adjust the talk/text mix, then start the Order Form.</p>
           <div class="qq-plans" id="callPlans" role="radiogroup" aria-label="Quote plan">${(K.prices.levels || []).filter((l) => l.level >= 1 && l.level <= 4).map((l) => `<button type="button" role="radio" aria-checked="false" class="qq-plan" data-quote="${esc(l.label)}"><b>${esc(l.label)}</b><span class="qq-price">${l.amountCents ? money(l.amountCents) + ' /mo' : 'Over $1,000'}</span><span class="qq-detail">${esc(l.what ? l.what.split('.')[0] : '')}</span></button>`).join('')}</div>
-          <div id="qqAgencyBox" hidden class="stack" style="margin-top:12px"><label for="qqPrice"><b>Agreed price</b> <span class="muted">Over $1,000 a month</span></label><div class="row"><input id="qqPrice" type="number" inputmode="decimal" min="1001" placeholder="1500" style="max-width:160px"><span class="muted">a month</span></div></div>
-          <div id="qqMixBox" hidden class="mix" style="margin-top:12px"><h3>Usage mix</h3><p class="note">Slide to trade talk minutes for texts inside the same allowance.</p>
+          <div id="qqAgencyBox" hidden class="stack mt12"><label for="qqPrice"><b>Agreed price</b> <span class="muted">Over $1,000 a month</span></label><div class="row"><input id="qqPrice" type="number" inputmode="decimal" min="1001" placeholder="1500" style="max-width:160px"><span class="muted">a month</span></div></div>
+          <div id="qqMixBox" hidden class="mix mt12"><h3>Usage mix</h3><p class="note">Slide to trade talk minutes for texts inside the same allowance.</p>
             <div class="mixends"><span>More talk</span><span>More text</span></div>
             <input type="range" id="qqMix" min="0" max="100" step="1" value="50" aria-label="Talk versus text mix">
             <div class="mixread"><div><b id="qqMin">–</b><span>talk minutes</span></div><div><b id="qqTxt">–</b><span>texts</span></div><div><b id="qqThr">–</b><span>AI chats</span></div></div>
             <p class="note" id="qqTrade"></p></div>
-          <div class="row" style="margin-top:12px"><button class="btn" type="button" id="qqStart" disabled>Start Order Form</button><button class="btn ghost" type="button" id="qqReset" hidden>Reset</button></div>
+          <div class="row mt12"><button class="btn" type="button" id="qqStart" disabled>Start Order Form</button><button class="btn ghost" type="button" id="qqReset" hidden>Reset</button></div>
           <p class="muted" id="quoteHint">Select a plan above to see the mix.</p></div>
         <div id="cbBox" hidden><label for="cb">Callback time</label><input type="datetime-local" id="cb"></div>
         <div><label for="cn">Note</label><textarea id="cn" rows="3" maxlength="1000" placeholder="What they said, who to ask for, best time"></textarea></div>
@@ -430,7 +430,7 @@ const screens = {
     const stages = K.stages.filter((s) => s !== 'lost');
     const PVIEW = sessionStorage.getItem('rep.pipelineView') || 'list';
     const setPView = (v) => { try { sessionStorage.setItem('rep.pipelineView', v); } catch {} route(); };
-    view.innerHTML = `<h1>Pipeline</h1><div class="row" role="tablist" aria-label="Pipeline view" style="margin-bottom:12px">
+    view.innerHTML = `<h1>Pipeline</h1><div class="row mb12" role="tablist" aria-label="Pipeline view">
       <button type="button" role="tab" aria-selected="${PVIEW === 'board'}" class="btn ${PVIEW === 'board' ? '' : 'ghost'} sm" data-pview="board">Board</button>
       <button type="button" role="tab" aria-selected="${PVIEW === 'list'}" class="btn ${PVIEW === 'list' ? '' : 'ghost'} sm" data-pview="list">List</button>
     </div><div id="pBoardWrap"${PVIEW !== 'board' ? ' hidden' : ''}><p class="sub">Drag cards between stages to move them. Onboarding and Live are set by Christian.</p><div class="board" id="board">${stages.map((st) => {
@@ -438,7 +438,7 @@ const screens = {
       return `<section class="col" data-stage="${st}"><h2>${STAGE_LABEL[st]}<span>${list.length}</span></h2><div class="coldrop">${list.map((a) => `<div class="mini" draggable="true" data-id="${esc(a.id)}"><a class="lnk" href="#account/${esc(a.id)}">${esc(a.business)}</a>
         <small class="muted">${esc(a.next_step || a.niche || '')}</small><div class="row"><select data-move="${esc(a.id)}" aria-label="Move ${esc(a.business)} to stage" class="move-sel">${stages.map((s) => `<option value="${s}"${s === a.stage ? ' selected' : ''}>${STAGE_LABEL[s]}</option>`).join('')}</select>${['results_call', 'proposed'].includes(a.stage) ? `<a class="lnk" href="#account/${esc(a.id)}/close">Close the sale</a>` : ''}</div></div>`).join('')}</div></section>`;
     }).join('')}</div></div><div id="pListWrap"${PVIEW !== 'list' ? ' hidden' : ''}><section id="accountsSection"><h2>All accounts</h2><p class="sub">${admin ? 'Every lead and account in the book. Filter, sort into categories and hand them out.' : 'Every business you are working, prospect to live.'}</p>
-      <details class="card filter-card" id="filterCard"><summary><b>Search & filters</b><span class="muted" id="filterState"></span></summary><div class="stack" style="margin-top:12px"><div class="row"><input class="grow" id="q" type="search" placeholder="Search company, contact, category, city or phone" aria-label="Search accounts">
+      <details class="card filter-card" id="filterCard"><summary><b>Search & filters</b><span class="muted" id="filterState"></span></summary><div class="stack mt12"><div class="row"><input class="grow" id="q" type="search" placeholder="Search company, contact, category, city or phone" aria-label="Search accounts">
         <select id="st" aria-label="Stage" class="grow"><option value="">All stages</option>${K.stages.map((s) => `<option value="${s}">${STAGE_LABEL[s]}</option>`).join('')}</select>
         <select id="sa" aria-label="State" class="grow"><option value="">All states</option></select></div>
         <div><p class="muted">Category</p><div class="chips" id="fNiche"></div></div>
@@ -1067,7 +1067,7 @@ const screens = {
     // One list of columns: the table headings on a wide screen, and each number's label on a phone card.
     const COLS = [['Leads', (r) => r.stats.leads], ['New', (r) => n(r, 'new')], ['Demo booked', (r) => n(r, 'results_call')], ['Proposed', (r) => n(r, 'proposed')],
       ['Onboarding or live', (r) => n(r, 'onboarding') + n(r, 'live')], ['Open tasks', (r) => r.stats.openTasks], ['Calls, 7 days', (r) => r.stats.calls7d], ['Deals', (r) => r.stats.deals], ['Sold', (r) => money(r.stats.soldCents)]];
-    view.innerHTML = `<h1>Team</h1><p class="sub">Each rep sees only their own leads. Hand leads out on the Accounts screen, and use Viewing to see one rep's screens.</p>
+    view.innerHTML = `<h1>Team</h1><p class="sub">Each rep sees only their own leads. Hand leads out on the Pipeline page, and use Viewing to see one rep's screens.</p>
       <section class="card"><div class="tbl cards"><table role="table"><thead><tr role="row"><th role="columnheader">Rep</th>${COLS.map(([l]) => `<th role="columnheader">${l}</th>`).join('')}<th role="columnheader"><span class="sr">Actions</span></th></tr></thead><tbody>${reps.filter((r) => r.active).map((r) => `<tr role="row"><td role="cell" class="who">${esc(r.name)}</td>${COLS.map(([l, f]) => `<td role="cell" data-label="${l}">${f(r)}</td>`).join('')}<td role="cell" class="act"><button class="btn ghost sm" data-view="${esc(r.email)}">View as<span class="sr"> ${esc(r.name)}</span></button></td></tr>`).join('')}</tbody></table></div></section>
       <p class="note">New reps also need their email on the Cloudflare Access "Reps" policy before they can sign in.</p><div class="grid two">
       <section class="card"><ul class="list" id="reps">${reps.map((r) => `<li><div class="t">${esc(r.name)} <span class="pill${r.active ? '' : ' bad'}">${r.active ? esc(r.role) : 'off'}</span><small>${esc(r.email)}</small></div>${r.email === ME.email ? '' : `<button class="btn ghost sm" data-e="${esc(r.email)}" data-a="${r.active ? 0 : 1}">${r.active ? 'Turn off' : 'Turn on'}</button>`}</li>`).join('')}</ul></section>

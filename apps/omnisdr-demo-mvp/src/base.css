@@ -9,7 +9,7 @@ background-image:radial-gradient(600px 600px at -10% -20%,color-mix(in srgb,var(
 .brand{display:flex;align-items:center;gap:10px}.brand svg{width:32px;height:32px}.brand b{font-size:18px}
 header.top{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-3);padding:var(--sp-2) 0 var(--sp-4)}
 h1{font-size:22px;line-height:30px;margin:0 0 var(--sp-1);font-weight:600;letter-spacing:-.012em}h2{font-size:15px;line-height:22px;margin:0 0 var(--sp-2);font-weight:600}
-p.sub{margin:0;color:var(--muted)}
+p.sub{margin:0 0 var(--sp-4);color:var(--muted)}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:var(--sp-5);box-shadow:0 16px 48px rgba(0,0,0,.06)}
 .grid{display:grid;gap:var(--sp-4)}@media(min-width:860px){.grid.two{grid-template-columns:1.25fr 1fr}.grid.three{grid-template-columns:repeat(3,1fr)}}
 button,input,textarea,select{font:inherit;color:inherit}
@@ -36,7 +36,6 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 /* Chat (entry and try me). Scoped to role=log: the rep Call Room has a button with id="log". */
 #log[role=log]{height:min(52vh,420px);overflow:auto;padding:var(--sp-1) 2px;display:flex;flex-direction:column}
 #log[role=log]>:first-child{margin-top:auto} /* messages sit just above the input; unlike justify-content:flex-end this still scrolls */
-.bubble{max-width:88%;padding:10px 12px;border-radius:12px;margin:0 0 var(--sp-2);white-space:pre-wrap;align-self:flex-start}
 .bubble.a{background:var(--ok-soft);color:var(--text);border-bottom-left-radius:4px}
 .bubble.u{background:var(--bg);border:1px solid var(--line);align-self:flex-end;border-bottom-right-radius:4px}
 .bubble.t{display:flex;gap:5px;align-items:center;min-height:42px}.bubble.t i{width:7px;height:7px;border-radius:50%;background:var(--control);animation:hop .5s ease infinite alternate}.bubble.t i:nth-child(2){animation-delay:.12s}.bubble.t i:nth-child(3){animation-delay:.24s}
@@ -60,9 +59,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 .pbadge{position:absolute;top:-10px;left:12px;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;background:var(--fill);color:#1A1A1A}
 .pcard.pop{border-color:var(--fill)}
 /* Cyan info accents */
-.info-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--info)}
-a.info{color:var(--info)}
-
+a
 /* Phase 2a: View Transitions for Order Form steps */
 ::view-transition-old(root){animation:vt-out .28s cubic-bezier(0.16,1,0.3,1)}
 ::view-transition-new(root){animation:vt-in .28s cubic-bezier(0.16,1,0.3,1)}
@@ -89,10 +86,8 @@ tr.skel td{padding:12px 6px}
 @keyframes shake{25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
 .field-error{animation:shake .3s cubic-bezier(0.16,1,0.3,1);border-color:var(--danger)!important}
 /* Phase 4: Cyan info application */
-.pill.info{background:var(--info-soft);color:var(--info)}
-.help{border-left:3px solid var(--info);padding-left:12px}
-a.info{color:var(--info);text-decoration:underline}
-
+.pill.help{border-left:3px solid var(--info);padding-left:12px}
+a
 /* Pipeline drag-and-drop */
 .mini{cursor:grab;transition:transform var(--t-hover),box-shadow var(--t-hover),opacity var(--t-hover)}
 .mini:active{cursor:grabbing}
@@ -121,9 +116,7 @@ a.info{color:var(--info);text-decoration:underline}
 
 /* Full cyan application */
 .timeline{border-left:2px solid var(--info-soft)}
-.timeline .entry{border-left:3px solid var(--info)}
-.note.info{background:var(--info-soft);color:var(--info);border:1px solid var(--info)}
-.muted a{color:var(--info)}
+.timeline .note.muted a{color:var(--info)}
 .sub a{color:var(--info)}
 
 /* Pipeline keyboard fallback */
@@ -161,4 +154,8 @@ a.info{color:var(--info);text-decoration:underline}
 .filter-card summary::after{content:'›';margin-left:auto;font-size:20px;color:var(--muted);transform:rotate(90deg);transition:transform var(--t-enter);flex-shrink:0}
 .filter-card[open] summary::after{transform:rotate(-90deg)}
 .filter-card summary:focus-visible{outline:2px solid var(--info);outline-offset:-2px}
+
+/* Spacing utilities */
+.mt12{margin-top:12px}
+.mb12{margin-bottom:12px}
 }
