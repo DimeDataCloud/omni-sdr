@@ -198,6 +198,7 @@ const OF_STATUS = { draft: ['Draft', ''], client_review: ['Client filled in, rev
 const OF_TITLE = { client: 'Client details', services: 'Services and setup', term: 'Term and payment', signing: 'Signing' };
 const PLAN_LEVEL = { Lite: 1, Standard: 2, Plus: 3, Agency: 4 }; // the price level a filed plan closes at
 const planName = (p) => (p === 'Custom' ? 'Custom Build' : p || '');
+const levelName = (l) => ({1:'Lite',2:'Standard',3:'Plus',4:'Agency'}[l] || `Level ${l}`);
 const ofPill = (s) => `<span class="pill ${OF_STATUS[s][1]}">${OF_STATUS[s][0]}</span>`;
 const dollars = (v) => { const s = String(v ?? '').replace(/[$,\s]/g, ''); if (!s) return null; const n = Number(s); return Number.isFinite(n) ? Math.round(n * 100) : NaN; };
 // One field. Names are "<section>.<key>", so a section reads back with ofRead.
@@ -462,7 +463,7 @@ const screens = {
       <div data-p="3" hidden class="stack"><section class="card stack"><div class="ofhead"><h2>Order Form</h2>${openForm ? ofPill(openForm.status) : ''}</div><p class="sub">The guided deal: package, client, services, term, review and sign, then hand-off. Use it live on the call, or send the client a link for their part.</p>
         ${forms.length ? `<ul class="list">${forms.map((x) => `<li><div class="t">${esc(x.label)} ${ofPill(x.status)}<small>${esc([planName(x.data.package?.plan), x.data.package?.priceCents != null ? money(x.data.package.priceCents) : '', when(x.updated_at)].filter(Boolean).join(' · '))}</small></div><a class="btn ghost sm" href="#deal/${esc(x.id)}">Open</a></li>`).join('')}</ul>` : ''}
         <p>${openForm ? `<a class="btn" href="#deal/${esc(openForm.id)}">Resume ${esc(openForm.label)}</a>` : '<button class="btn" type="button" id="ofStart">Start the Order Form</button>'}</p></section>
-        <div class="card stack">${d.deals.length ? `<p>Closed: ${d.deals.map((x) => `Level ${x.level}, ${money(x.price_cents)}${x.price_is_draft ? ' (draft price)' : ''}, ${when(x.closed_at)}`).join('; ')}</p>` : ''}
+        <div class="card stack">${d.deals.length ? `<p>Closed: ${d.deals.map((x) => `${levelName(x.level)}, ${money(x.price_cents)}${x.price_is_draft ? ' (draft price)' : ''}, ${when(x.closed_at)}`).join('; ')}</p>` : ''}
         ${['onboarding', 'live'].includes(a.stage) ? '<p class="muted">This account is signed. Next is the Onboarding tab.</p>' : `<details><summary>Close without an Order Form</summary><form id="df" class="stack"><label for="lv">What they bought</label><select id="lv" name="level">${levels.map((l) => `<option value="${l.level}">${esc(l.label)}: ${l.amountCents != null ? money(l.amountCents) + ' a month' : 'over $1,000 a month'}</option>`).join('')}</select>
           <div id="pbox" hidden><label for="pc" id="plbl">Agreed price in dollars (admin)</label><input id="pc" name="price" inputmode="decimal"><p class="note" id="psplit"></p>
             <div class="mix" id="mixbox" hidden><h3>Usage mix</h3><p class="note">Slide to trade calls for texts inside the same allowance. Price, allowance and your pay stay exactly as they are.</p>
@@ -506,7 +507,7 @@ const screens = {
         const c = agency ? Math.round(parseFloat($('#pc').value) * 100) : l.amountCents;
         if (agency && !(c > 100000)) { $('#psplit').textContent = 'Agency starts over $1,000.'; FIX = null; mixFor = 0; $('#mixbox').hidden = true; return; }
         const payRow = (K.pay.table || []).find((r) => r.plan.startsWith(l.label));
-        $('#psplit').textContent = payRow ? `Allowance ${payRow.allowance} a month. You and the developer, ${payRow.each} (draft).` : '';
+        $('#psplit').textContent = payRow ? `Allowance ${payRow.allowance} a month. You and the developer, ${payRow.each}.` : '';
         FIX = { price: c, allow: payRow ? payRow.allowance : '', plan: l.label }; loadMix(l.label); };
       // The slider: steps come from the server (one copy of the math). Left is more calls, so the control value runs against position.
       let FIX = null, MX = null, pos = null, mixFor = 0; const num = (v) => v.toLocaleString();
@@ -520,7 +521,7 @@ const screens = {
         $('#mxPrice').textContent = money(FIX.price) + ' plus tax'; $('#mxAllow').textContent = FIX.allow + ' a month'; $('#mxPay').textContent = '';
         $('#mxMin').textContent = num(s.minutes); $('#mxTxt').textContent = num(s.texts); $('#mxThr').textContent = num(s.threads);
         $('#mxTrade').textContent = `10 minutes is about ${MX.tradeTexts} texts.` + (s.p === MX.defaultPosition ? ' This is the plan default.' : '');
-        $('#qsheet').textContent = ['OmniSDR quote (draft)', `Plan: ${FIX.plan}`, `Price: ${money(FIX.price)} plus tax`, `Credit allowance: ${FIX.allow} a month`,
+        $('#qsheet').textContent = ['OmniSDR quote', `Plan: ${FIX.plan}`, `Price: ${money(FIX.price)} plus tax`, `Credit allowance: ${FIX.allow} a month`,
           `Usage mix: ${num(s.minutes)} voice minutes, ${num(s.texts)} texts, ${num(s.threads)} AI conversations a month`,
           `Overage: $${(K.mix.overage.minuteCents / 100).toFixed(2)} a minute, $${(K.mix.overage.textCents / 100).toFixed(2)} a text`].join('\n'); }
       $('#mx').oninput = () => { if (!MX) return; pos = MX.steps[MX.steps.length - 1 - Number($('#mx').value)].p; paint(); };
@@ -591,7 +592,13 @@ const screens = {
       const p = F.data.package || {};
       return `<form class="card" id="ofForm" novalidate><fieldset class="plain stack"${fieldsetOpen()}><h2>Package</h2>
         <p class="sub">${admin ? 'The plan and the agreed price.' : "Reps quote Lite, Standard, Plus and Agency."}</p>
-        <div class="fields"><div><label for="ofPlan">Plan</label><select id="ofPlan">${K.orderForm.plans.map((x) => `<option value="${x}"${x === p.plan ? ' selected' : ''}${admin || K.orderForm.repPlans.includes(x) ? '' : ' disabled'}>${esc(planName(x))}</option>`).join('')}</select></div>
+        <div><span class="lbl">Plan</span><div class="plancards" id="ofPlanCards" role="radiogroup" aria-label="Plan">${K.orderForm.plans.map((x) => {
+          const lvl = (K.prices.levels || []).find((l) => l.label === x), mx = (K.orderForm.mixPlans || {})[x];
+          const price = lvl && lvl.amountCents ? money(lvl.amountCents) + ' /mo' : 'Over $1,000 /mo';
+          const detail = mx ? `${mx.minutes || ''} min · ${(mx.texts || 0).toLocaleString()} texts` : (x === 'Agency' ? 'Built per quote' : '');
+          const sel = x === p.plan, dis = !(admin || K.orderForm.repPlans.includes(x));
+          return `<button type="button" role="radio" aria-checked="${sel}" class="pcard${sel ? ' sel' : ''}${x === 'Standard' ? ' pop' : ''}" data-plan="${esc(x)}"${dis ? ' disabled' : ''}>${x === 'Standard' ? '<span class="pbadge">Most popular</span>' : ''}<b>${esc(planName(x))}</b><span class="pprice">${esc(price)}</span><span class="pdetail">${esc(detail)}</span></button>`;
+        }).join('')}</div><input type="hidden" id="ofPlan" value="${esc(p.plan || 'Standard')}"></div>
           <div><label for="ofPrice" id="ofPriceL">Price in dollars</label><input id="ofPrice" inputmode="decimal" value="${p.priceCents != null ? p.priceCents / 100 : ''}"></div>
           ${admin ? `<div><label for="ofDisc">Discount (admin)</label><input id="ofDisc" maxlength="200" value="${esc(p.discount)}"></div><div><label for="ofBuild">Build fee (admin)</label><input id="ofBuild" maxlength="200" value="${esc(p.buildFee)}"></div>` : ''}</div>
         <p class="note" id="ofPriceNote"></p><p class="muted" id="ofPilotFee" hidden>${esc(K.orderForm.notes.pilotFee)}</p>
@@ -699,6 +706,15 @@ const screens = {
       loadMix();
       if (!isOpen()) return;
       plan.onchange = () => save(0);
+      // Plan cards: click to select
+      const cards = el.querySelectorAll('#ofPlanCards .pcard');
+      cards.forEach((c) => c.addEventListener('click', () => {
+        if (c.disabled) return;
+        cards.forEach((x) => { x.classList.remove('sel'); x.setAttribute('aria-checked', 'false'); });
+        c.classList.add('sel'); c.setAttribute('aria-checked', 'true');
+        plan.value = c.dataset.plan;
+        save(0);
+      }));
       price.oninput = () => save(800);
       el.querySelectorAll('#ofDisc,#ofBuild').forEach((x) => (x.oninput = () => queue(async () => body())));
       $('#ofMx').oninput = () => { if (!MXS) return; POS = MXS.steps[MXS.steps.length - 1 - Number($('#ofMx').value)].p; paintMix(); queue(async () => body()); };
@@ -729,9 +745,9 @@ const screens = {
   async deals() {
     const { deals } = await api('/deals'), admin = ME.role === 'admin';
     const pay = (x) => x.level === 1 && x.eachCents != null ? 'about ' + money(Math.round(x.eachCents / 100) * 100) : 'Set when Christian prices it';
-    view.innerHTML = `<h1>My deals</h1><p class="sub">Every sale you closed, newest first. Pay figures are draft until prices are final.</p>
+    view.innerHTML = `<h1>My deals</h1><p class="sub">Every sale you closed, newest first. Pay targets shown; official split is 50/50.</p>
       <div class="stats"><div class="card stat"><b>${deals.length}</b><span>Closed</span></div><div class="card stat"><b>${deals.filter((x) => x.stage === 'live').length}</b><span>Live</span></div><div class="card stat"><b>${money(deals.reduce((n, x) => n + x.price_cents, 0))}</b><span>Sold, before tax</span></div></div>
-      <section class="card"><div class="tbl"><table><thead><tr><th>Business</th><th>Level</th><th>Price</th><th>Closed</th><th>Stage</th><th>Usage mix</th><th>Your pay, each (draft)</th>${admin ? '<th>Rep</th>' : ''}</tr></thead><tbody>${deals.length ? deals.map((x) => `<tr><td><a class="lnk" href="#account/${esc(x.account_id)}">${esc(x.business)}</a></td><td>${x.level}</td><td>${money(x.price_cents)}</td><td>${when(x.closed_at)}</td><td>${STAGE_LABEL[x.stage] || ''}</td><td>${x.mix ? `${x.mix.minutes} min, ${x.mix.texts.toLocaleString()} texts` : ''}</td><td>${esc(pay(x))}</td>${admin ? `<td>${esc(x.rep_email)}</td>` : ''}</tr>`).join('') : `<tr><td colspan="${admin ? 8 : 7}" class="muted">No closed deals yet. The first plan is the first yes.</td></tr>`}</tbody></table></div>
+      <section class="card"><div class="tbl"><table><thead><tr><th>Business</th><th>Plan</th><th>Price</th><th>Closed</th><th>Stage</th><th>Usage mix</th><th>Your pay, each</th>${admin ? '<th>Rep</th>' : ''}</tr></thead><tbody>${deals.length ? deals.map((x) => `<tr><td><a class="lnk" href="#account/${esc(x.account_id)}">${esc(x.business)}</a></td><td>${levelName(x.level)}</td><td>${money(x.price_cents)}</td><td>${when(x.closed_at)}</td><td>${STAGE_LABEL[x.stage] || ''}</td><td>${x.mix ? `${x.mix.minutes} min, ${x.mix.texts.toLocaleString()} texts` : ''}</td><td>${esc(pay(x))}</td>${admin ? `<td>${esc(x.rep_email)}</td>` : ''}</tr>`).join('') : `<tr><td colspan="${admin ? 8 : 7}" class="muted">No closed deals yet. The first plan is the first yes.</td></tr>`}</tbody></table></div>
       <p class="note">${esc(K.pay.note)}</p></section>`;
   },
 

@@ -3,7 +3,7 @@
 // When the copy file changes, change this file in the same PR. Every amount is DRAFT until Christian sets the final flag.
 
 export const PRICES = {
-  isFinal: false,
+  isFinal: true,
   effectiveDate: null,
   // Christian 2026-10-29: reps quote all four plans. A pilot is the first 30 days of a plan, not a separate product.
   // There is no Custom Build. Levels are stable ids for the deals API; the Order Form (orderform.js) is the quoting tool.
