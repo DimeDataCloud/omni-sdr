@@ -107,7 +107,6 @@ export default function PrivacyPage() {
             <ul className="list-disc pl-5 space-y-2">
               <li><strong>The Client</strong> whose calls or messages it relates to.</li>
               <li><strong>Service providers</strong> who help us run the services: telephone and texting carriers, voice AI and language-model providers, hosting, email, and payment processing. They are bound by contract to use the data only to provide services to us. The list is in Exhibit B of our Master Services Agreement, available from support{"@"}omnisdr.com.</li>
-              <li><strong>Dime Data,</strong> which supplies our software platform and bills Clients on our behalf.</li>
               <li><strong>Authorities,</strong> when the law requires it, or to protect people&apos;s safety or our legal rights.</li>
               <li><strong>A buyer or successor entity,</strong> if OmniSDR&apos;s business is transferred, including when it becomes a limited liability company. That entity remains bound by this policy.</li>
             </ul>
